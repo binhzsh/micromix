@@ -1,0 +1,92 @@
+name: micromix
+
+services:
+  minimax-music3:
+    image: lmsysorg/sglang-omni:dev
+    container_name: micromix-minimax-music3
+    command:
+      - sgl-omni
+      - serve
+      - --model-path
+      - ${MINIMAX_MUSIC3_MODEL:-MiniMaxAI/MiniMax-Music3}
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8900"
+      - --max-running-requests
+      - ${MINIMAX_MAX_RUNNING_REQUESTS:-64}
+    ports:
+      - "8900:8900"
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HOME=/models/.cache/huggingface
+      - TRANSFORMERS_CACHE=/models/.cache/huggingface
+      - TORCH_HOME=/models/.cache/torch
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ${MINIMAX_CACHE_ROOT:-/mnt/fast_pool/fast_models/micromix/minimax}:/models/.cache
+      - ${MICROMIX_DATA_ROOT:-./data}/minimax:/data
+    restart: unless-stopped
+    init: true
+    shm_size: ${MINIMAX_SHM_SIZE:-32g}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${MINIMAX_GPU_COUNT:-1}
+              capabilities: [gpu]
+
+  muscriptor:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm
+    container_name: micromix-muscriptor
+    command: >
+      sh -c "uvx --python 3.12 muscriptor serve
+      --model ${MUSICOR_MODEL:-medium}
+      --device ${MUSICOR_DEVICE:-cuda}
+      --host 0.0.0.0
+      --port 8901"
+    ports:
+      - "8901:8901"
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HOME=/root/.cache/huggingface
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface
+      - TORCH_HOME=/root/.cache/torch
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ${MUSICOR_CACHE_ROOT:-/mnt/fast_pool/fast_models/micromix/muscriptor}:/root/.cache
+      - ${MICROMIX_DATA_ROOT:-./data}/muscriptor:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    init: true
+
+  muscriptor-api:
+    build:
+      context: ./services/muscriptor-api
+    container_name: micromix-muscriptor-api
+    depends_on:
+      - muscriptor
+    ports:
+      - "8902:8902"
+    environment:
+      - MINIMAX_UPSTREAM_URL=http://minimax-music3:8900
+      - MUSCRIPTOR_UPSTREAM_URL=http://muscriptor:8901
+      - MINIMAX_MODEL=${MINIMAX_MUSIC3_MODEL:-MiniMaxAI/MiniMax-Music3}
+      - MINIMAX_API_TIMEOUT_SECONDS=${MINIMAX_API_TIMEOUT_SECONDS:-1200}
+      - MUSCRIPTOR_API_TIMEOUT_SECONDS=${MUSICOR_API_TIMEOUT_SECONDS:-1200}
+      - OUTPUT_DIR=/data
+      - MAX_REQUEST_SIZE_MB=${MUSICOR_API_MAX_REQUEST_SIZE_MB:-200}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ${MICROMIX_DATA_ROOT:-./data}/muscriptor-api:/data
+    restart: unless-stopped
+    init: true
