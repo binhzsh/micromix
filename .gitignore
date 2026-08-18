@@ -1,5 +1,22 @@
-data/
-.env
-__pycache__/
-*.pyc
+# Xcode
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+*.xcactivitylog
+*.xcbkptlist
+*.xccovarchive
 
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+*.dSYM
+.dSYM/
