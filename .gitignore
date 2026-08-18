@@ -6,3 +6,7 @@ __pycache__/
 
 # nested git worktree for the macOS native app
 macos/
+
+# code analysis artifacts (codegraph / graphify)
+.codegraph/
+graphify-out/
