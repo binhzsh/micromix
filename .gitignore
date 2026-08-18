@@ -3,3 +3,6 @@ data/
 __pycache__/
 *.pyc
 
+
+# nested git worktree for the macOS native app
+macos/
