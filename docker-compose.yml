@@ -5,16 +5,31 @@ services:
     image: lmsysorg/sglang-omni:dev
     container_name: micromix-minimax-music3
     command:
-      - sgl-omni
+      - sglang
       - serve
       - --model-path
       - ${MINIMAX_MUSIC3_MODEL:-MiniMaxAI/MiniMax-Music3}
+      - --model-type
+      - ${MINIMAX_MODEL_TYPE:-diffusion}
+      - --backend
+      - ${MINIMAX_BACKEND:-diffusers}
+      - --num-gpus
+      - ${MINIMAX_NUM_GPUS:-1}
+      - --trust-remote-code
+      - --attention-backend
+      - ${MINIMAX_ATTENTION_BACKEND:-flashinfer}
+      - --dit-cpu-offload
+      - ${MINIMAX_DIT_CPU_OFFLOAD:-false}
+      - --vae-cpu-offload
+      - ${MINIMAX_VAE_CPU_OFFLOAD:-false}
+      - --text-encoder-cpu-offload
+      - ${MINIMAX_TEXT_ENCODER_CPU_OFFLOAD:-false}
       - --host
       - "0.0.0.0"
       - --port
       - "8900"
-      - --max-running-requests
-      - ${MINIMAX_MAX_RUNNING_REQUESTS:-64}
+      - --sp-degree
+      - ${MINIMAX_SP_DEGREE:-1}
     ports:
       - "8900:8900"
     environment:

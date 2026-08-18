@@ -171,7 +171,7 @@ async def minimax_audio_speech(payload: dict[str, Any]):
     )
 
 
-@app.post("/transcribe/midi")
+@app.post("/transcribe/midi", response_model=None)
 async def transcribe_midi(
     audio_file: UploadFile = File(...),
     instruments: list[str] = Form(default_factory=list),
