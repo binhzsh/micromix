@@ -10,6 +10,8 @@ final class ConnectionMonitor: ObservableObject {
     @Published private(set) var minimaxOK: Bool = false
     @Published private(set) var muscriptorOK: Bool = false
     @Published var lastError: String?
+    /// Instruments for the transcribe picker, fetched at launch / refresh.
+    @Published private(set) var instruments: [String] = []
 
     /// Poll interval per the design spec.
     static let pollInterval: TimeInterval = 15
@@ -33,6 +35,16 @@ final class ConnectionMonitor: ObservableObject {
             }
         }
         Task { [weak self] in try? await self?.refresh() }
+    }
+
+    /// Load the instrument list from `/instruments` (best-effort; the picker
+    /// degrades to an empty state if the server is down).
+    func refreshInstruments() async {
+        do {
+            instruments = try await api.instruments()
+        } catch {
+            instruments = []
+        }
     }
 
     /// Perform one immediate health check.

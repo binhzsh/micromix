@@ -16,6 +16,8 @@ struct MicromixApp: App {
 
         // Kick off a connection health check; the monitor polls every 15 s.
         monitor.start()
+        // Fetch the transcribe instrument list once at launch.
+        Task { await monitor.refreshInstruments() }
 
         return AppRoot(
             generate: generate,

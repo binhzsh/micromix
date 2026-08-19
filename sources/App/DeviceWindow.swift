@@ -26,12 +26,14 @@ struct DeviceWindow: View {
     @ObservedObject var midiPreview: MidiPreview
     @ObservedObject var connection: ConnectionMonitor
 
-    /// Instruments for the transcribe picker (fetched at launch / refresh).
-    @State private var instruments: [String] = []
-
     var body: some View {
         VStack(spacing: 0) {
-            ScreenRegion(mode: selectedMode, connection: connection)
+            ScreenRegion(
+                mode: selectedMode,
+                generate: generate,
+                transcribe: transcribe,
+                connection: connection
+            )
             DeckRegion(
                 mode: $selectedMode,
                 generate: generate,
@@ -40,7 +42,6 @@ struct DeviceWindow: View {
                 player: player,
                 midiPreview: midiPreview,
                 connection: connection,
-                instruments: $instruments,
                 selectedID: $selectedID
             )
         }
@@ -62,6 +63,8 @@ struct DeviceWindow: View {
 
 private struct ScreenRegion: View {
     let mode: DeviceMode
+    @ObservedObject var generate: GenerateViewModel
+    @ObservedObject var transcribe: TranscribeViewModel
     @ObservedObject var connection: ConnectionMonitor
 
     var body: some View {
@@ -70,7 +73,7 @@ private struct ScreenRegion: View {
             DotMatrixScreen(
                 title: "MICROMIX",
                 statusLine: statusLine,
-                readout: "00:00",
+                readout: readout,
                 readoutColor: readoutColor
             )
         }
@@ -84,13 +87,40 @@ private struct ScreenRegion: View {
         connection.isConnected ? Palette.screenText : Palette.accentRed
     }
 
+    /// Live big readout: elapsed time while a job runs, result/error text after.
+    private var readout: String {
+        if generate.isRunning { return format(elapsed: generate.elapsed) }
+        if transcribe.isRunning { return format(elapsed: transcribe.elapsed) }
+        if case .error(let msg) = generate.phase {
+            return shorten(msg)
+        }
+        if case .error(let msg) = transcribe.phase {
+            return shorten(msg)
+        }
+        if generate.phase == .done { return "GENERATED" }
+        if transcribe.phase == .done { return "TRANSCRIBED" }
+        return "00:00"
+    }
+
     private var statusLine: String {
         guard connection.isConnected else { return "SERVER UNREACHABLE — CHECK WIREGUARD" }
         switch mode {
-        case .generate: return "READY — ENTER PROMPT"
-        case .transcribe: return "READY — SELECT AUDIO"
-        case .library: return "NO ITEMS"
+        case .generate:
+            return generate.isRunning ? "GENERATING…" : "READY — ENTER PROMPT"
+        case .transcribe:
+            return transcribe.isRunning ? "TRANSCRIBING…" : "READY — SELECT AUDIO"
+        case .library: return "LIBRARY"
         }
+    }
+
+    private func format(elapsed: TimeInterval) -> String {
+        let m = Int(elapsed) / 60
+        let s = Int(elapsed) % 60
+        return String(format: "%02d:%02d", m, s)
+    }
+
+    private func shorten(_ s: String) -> String {
+        s.count > 22 ? String(s.prefix(22)) : s
     }
 }
 
@@ -105,7 +135,6 @@ private struct DeckRegion: View {
     @ObservedObject var midiPreview: MidiPreview
     @ObservedObject var connection: ConnectionMonitor
 
-    @Binding var instruments: [String]
     @Binding var selectedID: UUID?
 
     private let columns = [
@@ -150,7 +179,7 @@ private struct DeckRegion: View {
         case .generate:
             GenerateScreen(viewModel: generate)
         case .transcribe:
-            TranscribeScreen(viewModel: transcribe, instruments: instruments)
+            TranscribeScreen(viewModel: transcribe, instruments: connection.instruments)
         case .library:
             LibraryScreen(
                 library: library,

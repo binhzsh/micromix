@@ -55,22 +55,40 @@ struct GenerateScreen: View {
                 preset("FORMAT", value: viewModel.format.uppercased())
             }
 
-            // Primary action
-            Button(action: { viewModel.start() }) {
-                Text(viewModel.phase == .running ? "GENERATING…" : "GENERATE")
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .tracking(1.2)
-                    .foregroundColor(viewModel.phase == .running ? Palette.ink.opacity(0.6) : .white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(viewModel.phase == .running ? Palette.ink.opacity(0.18) : Palette.accentOrange)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(Palette.ink.opacity(0.85), lineWidth: 1.5)
-                    )
+            // Primary action (+ cancel while running)
+            HStack(spacing: 8) {
+                Button(action: { viewModel.start() }) {
+                    Text(viewModel.phase == .running ? "GENERATING…" : "GENERATE")
+                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .tracking(1.2)
+                        .foregroundColor(viewModel.phase == .running ? Palette.ink.opacity(0.6) : .white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(viewModel.phase == .running ? Palette.ink.opacity(0.18) : Palette.accentOrange)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Palette.ink.opacity(0.85), lineWidth: 1.5)
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(viewModel.isBlocked)
+
+                if viewModel.isRunning {
+                    Button(action: { viewModel.cancel() }) {
+                        Text("CANCEL")
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .tracking(1.2)
+                            .foregroundColor(Palette.accentRed)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(Palette.accentRed, lineWidth: 1.5)
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
             }
-            .buttonStyle(PlainButtonStyle())
-            .disabled(viewModel.isBlocked)
 
             Spacer(minLength: 0)
         }
