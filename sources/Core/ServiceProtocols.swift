@@ -12,6 +12,14 @@ protocol GenerateServicing: Sendable {
     func generate(input: String, lyrics: String?) async throws -> Data
 }
 
+/// Transcribes audio into MIDI.
+protocol TranscribeServicing: Sendable {
+    func transcribe(audio: Data,
+                    filename: String,
+                    instruments: [String],
+                    detectTempo: Bool) async throws -> Data
+}
+
 /// Persists a result item plus its bytes.
 protocol LibraryStoring: Sendable {
     @MainActor func add(_ item: LibraryItem, bytes: Data) throws
@@ -29,5 +37,7 @@ extension MicromixAPI: GenerateServicing {
         )
     }
 }
+
+extension MicromixAPI: TranscribeServicing {}
 
 extension LocalLibrary: LibraryStoring {}

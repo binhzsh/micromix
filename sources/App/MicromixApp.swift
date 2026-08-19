@@ -1,14 +1,54 @@
 import SwiftUI
 
 @main
+@MainActor
 struct MicromixApp: App {
-    @State private var selectedMode: DeviceMode = .generate
+    @State private var root = Self.makeRoot()
+
+    static func makeRoot() -> AppRoot {
+        let settings = SettingsStore()
+        let api = MicromixAPI(baseURL: settings.baseURL)
+        let library = LocalLibrary()
+        let monitor = ConnectionMonitor(api: api)
+
+        let generate = GenerateViewModel(api: api, library: library)
+        let transcribe = TranscribeViewModel(api: api, library: library)
+
+        // Kick off a connection health check; the monitor polls every 15 s.
+        monitor.start()
+
+        return AppRoot(
+            generate: generate,
+            transcribe: transcribe,
+            library: library,
+            player: AudioPlayer(),
+            midiPreview: MidiPreview(),
+            connection: monitor
+        )
+    }
 
     var body: some Scene {
         WindowGroup {
-            DeviceWindow(selectedMode: $selectedMode)
-                .frame(minWidth: 900, minHeight: 640)
+            DeviceWindow(
+                generate: root.generate,
+                transcribe: root.transcribe,
+                library: root.library,
+                player: root.player,
+                midiPreview: root.midiPreview,
+                connection: root.connection
+            )
+            .frame(minWidth: 900, minHeight: 640)
         }
         .defaultSize(width: 980, height: 700)
     }
+}
+
+/// Composition root holding long-lived shared dependencies.
+struct AppRoot: Sendable {
+    let generate: GenerateViewModel
+    let transcribe: TranscribeViewModel
+    let library: LocalLibrary
+    let player: AudioPlayer
+    let midiPreview: MidiPreview
+    let connection: ConnectionMonitor
 }

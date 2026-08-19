@@ -12,15 +12,37 @@ enum DeviceMode: String, CaseIterable, Identifiable {
 /// Single-window device-panel chassis: a recessed dark screen panel (~60%)
 /// on top and a light control deck (~40%) below, inside a rounded frame.
 ///
-/// v1 scaffold wires the mode switcher; each mode's screen and deck content
-/// are placeholder panels filled in by later tasks.
+/// Owns the three flows' view models and shared infra (audio/MIDI playback,
+/// connection health), renders the active mode's screen + deck, and drives the
+/// connection LED + error banners.
 struct DeviceWindow: View {
-    @Binding var selectedMode: DeviceMode
+    @State private var selectedMode: DeviceMode = .generate
+    @State private var selectedID: UUID?
+
+    @ObservedObject var generate: GenerateViewModel
+    @ObservedObject var transcribe: TranscribeViewModel
+    @ObservedObject var library: LocalLibrary
+    @ObservedObject var player: AudioPlayer
+    @ObservedObject var midiPreview: MidiPreview
+    @ObservedObject var connection: ConnectionMonitor
+
+    /// Instruments for the transcribe picker (fetched at launch / refresh).
+    @State private var instruments: [String] = []
 
     var body: some View {
         VStack(spacing: 0) {
-            ScreenRegion(mode: selectedMode)
-            DeckRegion(selectedMode: $selectedMode)
+            ScreenRegion(mode: selectedMode, connection: connection)
+            DeckRegion(
+                mode: $selectedMode,
+                generate: generate,
+                transcribe: transcribe,
+                library: library,
+                player: player,
+                midiPreview: midiPreview,
+                connection: connection,
+                instruments: $instruments,
+                selectedID: $selectedID
+            )
         }
         .background(Palette.deck)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -40,6 +62,7 @@ struct DeviceWindow: View {
 
 private struct ScreenRegion: View {
     let mode: DeviceMode
+    @ObservedObject var connection: ConnectionMonitor
 
     var body: some View {
         ZStack {
@@ -47,7 +70,8 @@ private struct ScreenRegion: View {
             DotMatrixScreen(
                 title: "MICROMIX",
                 statusLine: statusLine,
-                readout: "00:00"
+                readout: "00:00",
+                readoutColor: readoutColor
             )
         }
         .overlay(ScanlinesOverlay())
@@ -56,7 +80,12 @@ private struct ScreenRegion: View {
         .frame(height: 400)
     }
 
+    private var readoutColor: Color {
+        connection.isConnected ? Palette.screenText : Palette.accentRed
+    }
+
     private var statusLine: String {
+        guard connection.isConnected else { return "SERVER UNREACHABLE — CHECK WIREGUARD" }
         switch mode {
         case .generate: return "READY — ENTER PROMPT"
         case .transcribe: return "READY — SELECT AUDIO"
@@ -68,7 +97,16 @@ private struct ScreenRegion: View {
 // MARK: - Deck region (bottom ~40%)
 
 private struct DeckRegion: View {
-    @Binding var selectedMode: DeviceMode
+    @Binding var mode: DeviceMode
+    @ObservedObject var generate: GenerateViewModel
+    @ObservedObject var transcribe: TranscribeViewModel
+    @ObservedObject var library: LocalLibrary
+    @ObservedObject var player: AudioPlayer
+    @ObservedObject var midiPreview: MidiPreview
+    @ObservedObject var connection: ConnectionMonitor
+
+    @Binding var instruments: [String]
+    @Binding var selectedID: UUID?
 
     private let columns = [
         GridItem(.flexible()),
@@ -77,35 +115,63 @@ private struct DeckRegion: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Typography.monoLabel("1. GENERATE   2. TRANSCRIBE   3. LIBRARY", size: 11)
-                .foregroundColor(Palette.ink.opacity(0.6))
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Typography.monoLabel("1. GENERATE   2. TRANSCRIBE   3. LIBRARY", size: 11)
+                    .foregroundColor(Palette.ink.opacity(0.6))
+                Spacer()
+                connectionRow
+            }
 
             LazyVGrid(columns: columns, spacing: 24) {
-                ForEach(DeviceMode.allCases) { mode in
+                ForEach(DeviceMode.allCases) { m in
                     PanelButton(
-                        title: mode.rawValue,
-                        index: index(of: mode),
-                        isActive: mode == selectedMode,
-                        action: { selectedMode = mode }
+                        title: m.rawValue,
+                        index: index(of: m),
+                        isActive: m == mode,
+                        action: { mode = m }
                     )
                 }
             }
 
-            Text("MODE CONTROLS — PLACEHOLDER")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .tracking(1.0)
-                .foregroundColor(Palette.ink.opacity(0.7))
-                .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
-                .padding(16)
-                .background(Palette.deck)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Palette.divider, lineWidth: 1))
+            modeControls
 
             Spacer(minLength: 0)
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.deck)
+    }
+
+    // MARK: - Mode controls
+
+    @ViewBuilder private var modeControls: some View {
+        switch mode {
+        case .generate:
+            GenerateScreen(viewModel: generate)
+        case .transcribe:
+            TranscribeScreen(viewModel: transcribe, instruments: instruments)
+        case .library:
+            LibraryScreen(
+                library: library,
+                player: player,
+                midiPreview: midiPreview,
+                selectedID: $selectedID
+            )
+        }
+    }
+
+    private var connectionRow: some View {
+        HStack(spacing: 6) {
+            LED(
+                color: connection.isConnected ? .green : .red,
+                blinking: !connection.isConnected
+            )
+            Text(connection.isConnected ? "LINK OK" : "NO LINK")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(Palette.ink.opacity(0.6))
+                .tracking(1.0)
+        }
     }
 
     private func index(of mode: DeviceMode) -> Int {

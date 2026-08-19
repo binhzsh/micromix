@@ -5,6 +5,7 @@ import SwiftUI
 struct LibraryScreen: View {
     @ObservedObject var library: LocalLibrary
     @ObservedObject var player: AudioPlayer
+    @ObservedObject var midiPreview: MidiPreview
     @Binding var selectedID: UUID?
 
     private let columns = [
@@ -95,23 +96,38 @@ struct LibraryScreen: View {
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .background(selected ? Palette.accentBlue.opacity(0.10) : Color.clear)
-        .onTapGesture { selectedID = item.id }
+        .onTapGesture {
+            midiPreview.stop()
+            selectedID = item.id
+        }
     }
 
     private var transport: some View {
         HStack(spacing: 10) {
             button("PLAY", color: Palette.accentGreen, disabled: selectedItem == nil) {
-                guard let item = selectedItem, item.kind == .audio else { return }
+                guard let item = selectedItem else { return }
                 let url = library.resolvedURL(for: item)
-                player.load(url: url, item: item)
-                player.play()
+                if item.kind == .audio {
+                    player.load(url: url, item: item)
+                    player.play()
+                } else {
+                    if midiPreview.load(url: url, item: item) {
+                        midiPreview.play()
+                    }
+                }
             }
-            button("PAUSE", color: Palette.ink, disabled: !player.isPlaying) {
-                player.pause()
+            button("PAUSE", color: Palette.ink, disabled: !player.isPlaying && !midiPreview.isPlaying) {
+                if player.isPlaying { player.pause() }
+                if midiPreview.isPlaying { midiPreview.stop() }
+            }
+            button("STOP", color: Palette.ink, disabled: !player.isPlaying && !midiPreview.isPlaying) {
+                if player.isPlaying { player.stop() }
+                if midiPreview.isPlaying { midiPreview.stop() }
             }
             button("DELETE", color: Palette.accentRed, disabled: selectedItem == nil) {
                 guard let item = selectedItem else { return }
                 if player.currentItem?.id == item.id { player.stop() }
+                if midiPreview.currentItem?.id == item.id { midiPreview.stop() }
                 try? library.remove(id: item.id)
             }
             button("REVEAL", color: Palette.accentBlue, disabled: selectedItem == nil) {

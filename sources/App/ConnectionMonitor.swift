@@ -1,0 +1,57 @@
+import Foundation
+import Combine
+
+/// Polls `MicromixAPI.health()` every 15 s (and on demand) and publishes a
+/// connection snapshot the UI uses to drive the connection LED and to disable
+/// GENERATE/TRANSCRIBE while the server is unreachable.
+@MainActor
+final class ConnectionMonitor: ObservableObject {
+    @Published var connected: Bool = false
+    @Published private(set) var minimaxOK: Bool = false
+    @Published private(set) var muscriptorOK: Bool = false
+    @Published var lastError: String?
+
+    /// Poll interval per the design spec.
+    static let pollInterval: TimeInterval = 15
+
+    private let api: MicromixAPI
+    private var poller: Task<Void, Never>?
+    private var cancellables = Set<AnyCancellable>()
+
+    init(api: MicromixAPI) {
+        self.api = api
+    }
+
+    /// Start the periodic poller (idempotent).
+    func start() {
+        guard poller == nil else { return }
+        poller = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.pollInterval))
+                guard let self else { return }
+                try? await refresh()
+            }
+        }
+        Task { [weak self] in try? await self?.refresh() }
+    }
+
+    /// Perform one immediate health check.
+    func refresh() async {
+        do {
+            let health = try await api.health()
+            connected = true
+            minimaxOK = health.minimax == "ok"
+            muscriptorOK = health.muscriptor == "ok"
+            lastError = nil
+        } catch {
+            connected = false
+            minimaxOK = false
+            muscriptorOK = false
+            let message = (error as? MicromixAPIError)?.errorDescription
+                ?? error.localizedDescription
+            lastError = message
+        }
+    }
+
+    var isConnected: Bool { connected }
+}
