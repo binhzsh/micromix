@@ -1,0 +1,31 @@
+name: Micromix
+options:
+  bundleIdPrefix: com.micromix
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+configs:
+  Debug: debug
+  Release: release
+targets:
+  Micromix:
+    type: application
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.micromix.app
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        INFOPLIST_FILE: sources/App/Info.plist
+        ENABLE_HARDENED_RUNTIME: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+    scheme:
+      testTargets: []
+parameters:
+  config: Debug
