@@ -95,6 +95,8 @@ final class GenerateViewModel: ObservableObject {
                 }
             } catch is CancellationError {
                 await MainActor.run { self.phase = .cancelled }
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                await MainActor.run { self.phase = .cancelled }
             } catch {
                 let message = (error as? MicromixAPIError)?.errorDescription
                     ?? error.localizedDescription

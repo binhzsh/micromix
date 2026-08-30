@@ -162,7 +162,7 @@ actor MicromixAPI {
         }
         appendPart(
             name: "detect_tempo",
-            value: Data((detectTempo ? "best-effort" : "off").utf8)
+            value: Data((detectTempo ? "best-effort" : "false").utf8)
         )
         appendPart(name: "return_file", value: Data("false".utf8))
         body.appendString("--\(boundary)--\r\n")

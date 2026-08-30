@@ -7,6 +7,8 @@ import SwiftUI
 struct TranscribeScreen: View {
     @ObservedObject var viewModel: TranscribeViewModel
     let instruments: [String]
+    /// Whether the server is reachable; disables the primary action when down.
+    var serverAvailable: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -43,7 +45,7 @@ struct TranscribeScreen: View {
                         )
                 }
                 .buttonStyle(PlainButtonStyle())
-                .disabled(viewModel.isBlocked)
+                .disabled(viewModel.isBlocked || !serverAvailable)
 
                 if viewModel.isRunning {
                     Button(action: { viewModel.cancel() }) {

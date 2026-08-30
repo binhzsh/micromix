@@ -39,5 +39,3 @@ extension MicromixAPI: GenerateServicing {
 }
 
 extension MicromixAPI: TranscribeServicing {}
-
-extension LocalLibrary: LibraryStoring {}

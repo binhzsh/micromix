@@ -14,6 +14,10 @@ final class JobRunner: ObservableObject {
     private var startDate: Date?
     private var currentJob: Job?
 
+    /// Incremented on every `start()`; guards against a stale task from a
+    /// previous job clobbering state for the current job (restart race).
+    private var generation: Int = 0
+
     /// A job encapsulates its work plus an optional cancel hook (e.g. to
     /// cancel a specific URLSession task). The operation may throw; coöperating
     /// cancellation should throw `CancellationError`.
@@ -38,6 +42,8 @@ final class JobRunner: ObservableObject {
     func start(_ job: Job) {
         if isRunning { cancel() }
 
+        generation += 1
+        let gen = generation
         status = .running
         elapsed = 0
         startDate = Date()
@@ -48,15 +54,19 @@ final class JobRunner: ObservableObject {
             guard let self else { return }
             do {
                 try await job.work()
-                guard !Task.isCancelled else {
-                    self.finish(.cancelled)
+                // Only the most recent generation may finalize state.
+                guard gen == self.generation, !Task.isCancelled else {
+                    if gen == self.generation { self.finish(.cancelled, gen: gen) }
                     return
                 }
-                self.finish(.done)
+                self.finish(.done, gen: gen)
             } catch is CancellationError {
-                self.finish(.cancelled)
+                self.finish(.cancelled, gen: gen)
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                // URLSession surfaces cancellation as URLError(.cancelled).
+                self.finish(.cancelled, gen: gen)
             } catch {
-                self.finish(.error("\(job.name): \(error.localizedDescription)"))
+                self.finish(.error("\(job.name): \(error.localizedDescription)"), gen: gen)
             }
         }
     }
@@ -67,11 +77,13 @@ final class JobRunner: ObservableObject {
         task?.cancel()
         task = nil
         if status == .running {
-            finish(.cancelled)
+            finish(.cancelled, gen: generation)
         }
     }
 
-    private func finish(_ state: JobStatus) {
+    private func finish(_ state: JobStatus, gen: Int) {
+        // Ignore stale finalization from superseded job generations.
+        guard gen == generation else { return }
         // Capture a final elapsed so a quick job still reports a positive time.
         if let start = startDate {
             elapsed = max(elapsed, Date().timeIntervalSince(start))

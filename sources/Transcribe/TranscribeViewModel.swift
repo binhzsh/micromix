@@ -15,6 +15,7 @@ final class TranscribeViewModel: ObservableObject {
         case idle
         case running
         case done
+        case cancelled
         case error(String)
     }
 
@@ -128,7 +129,9 @@ final class TranscribeViewModel: ObservableObject {
                     self.phase = .done
                 }
             } catch is CancellationError {
-                await MainActor.run { self.phase = .error("CANCELLED") }
+                await MainActor.run { self.phase = .cancelled }
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                await MainActor.run { self.phase = .cancelled }
             } catch {
                 let message = (error as? MicromixAPIError)?.errorDescription
                     ?? error.localizedDescription
@@ -142,7 +145,7 @@ final class TranscribeViewModel: ObservableObject {
     func cancel() {
         runner.cancel()
         if phase == .running {
-            phase = .error("CANCELLED")
+            phase = .cancelled
         }
     }
 

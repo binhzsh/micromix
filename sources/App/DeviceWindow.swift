@@ -98,7 +98,9 @@ private struct ScreenRegion: View {
             return shorten(msg)
         }
         if generate.phase == .done { return "GENERATED" }
+        if generate.phase == .cancelled { return "CANCELLED" }
         if transcribe.phase == .done { return "TRANSCRIBED" }
+        if transcribe.phase == .cancelled { return "CANCELLED" }
         return "00:00"
     }
 
@@ -177,9 +179,13 @@ private struct DeckRegion: View {
     @ViewBuilder private var modeControls: some View {
         switch mode {
         case .generate:
-            GenerateScreen(viewModel: generate)
+            GenerateScreen(viewModel: generate, serverAvailable: connection.isConnected)
         case .transcribe:
-            TranscribeScreen(viewModel: transcribe, instruments: connection.instruments)
+            TranscribeScreen(
+                viewModel: transcribe,
+                instruments: connection.instruments,
+                serverAvailable: connection.isConnected
+            )
         case .library:
             LibraryScreen(
                 library: library,

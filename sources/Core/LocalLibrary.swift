@@ -93,3 +93,11 @@ final class LocalLibrary: ObservableObject {
         return d
     }()
 }
+
+/// `LocalLibrary` is a `@MainActor` class, so the compiler can verify its
+/// `LibraryStoring` conformance is thread-safe without an `@unchecked Sendable`
+/// assertion: every mutating path (`add`/`remove`) and all other mutable state
+/// (`items`, the manifest) are isolated to the main actor. Declaring the
+/// conformance in this file (rather than retroactively in `ServiceProtocols`)
+/// lets the compiler infer `Sendable` from the `@MainActor` declaration.
+extension LocalLibrary: LibraryStoring {}

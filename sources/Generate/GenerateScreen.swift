@@ -6,6 +6,8 @@ import SwiftUI
 /// inputs and fires the flow through `GenerateViewModel`.
 struct GenerateScreen: View {
     @ObservedObject var viewModel: GenerateViewModel
+    /// Whether the server is reachable; disables the primary action when down.
+    var serverAvailable: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -71,7 +73,7 @@ struct GenerateScreen: View {
                         )
                 }
                 .buttonStyle(PlainButtonStyle())
-                .disabled(viewModel.isBlocked)
+                .disabled(viewModel.isBlocked || !serverAvailable)
 
                 if viewModel.isRunning {
                     Button(action: { viewModel.cancel() }) {

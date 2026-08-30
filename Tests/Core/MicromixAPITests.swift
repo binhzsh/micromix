@@ -6,7 +6,7 @@ import Testing
 struct MicromixAPITests {
 
     private func makeAPI() -> MicromixAPI {
-        MicromixAPI(baseURL: "http://localhost:8902", configuration: .mock())
+        MicromixAPI(baseURL: "http://10.10.10.10:8902", configuration: .mock())
     }
 
     @Test("health GET path and JSON decode")
@@ -74,6 +74,26 @@ struct MicromixAPITests {
         }
         let api = makeAPI()
         _ = try await api.transcribe(audio: Data([0]), filename: "a.wav", instruments: ["Piano", "Drums"], detectTempo: true)
+    }
+
+    @Test("detect_tempo maps off toggle to \"false\" (valid contract value)")
+    func transcribeDetectTempoOff() async throws {
+        MockURLProtocol.handler = { request in
+            let body = MockURLProtocol.body(of: request)
+            let text = String(data: body, encoding: .utf8) ?? ""
+            // "off" is NOT a valid upstream value; it must be "false".
+            let crlf = "\r\n"
+            let marker = "name=\"detect_tempo\""
+            guard let range = text.range(of: marker) else {
+                Issue.record("missing detect_tempo field")
+                return (HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: nil, headerFields: nil)!, Data())
+            }
+            #expect(!text[range.upperBound...].hasPrefix(crlf + crlf + "off"))
+            #expect(text[range.upperBound...].hasPrefix(crlf + crlf + "false"))
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data())
+        }
+        let api = makeAPI()
+        _ = try await api.transcribe(audio: Data([0]), filename: "a.wav", instruments: [], detectTempo: false)
     }
 
     @Test("instruments flattens grouped dict into a single list")
