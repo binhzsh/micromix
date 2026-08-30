@@ -4,24 +4,22 @@ Native macOS (SwiftUI) front-end for the Micromix local inference stack.
 
 ## Layout
 
-This directory is a git **worktree** living on branch `native-macos-app`, nested
-under the main `micromix` checkout (ignored by the parent repo via `.gitignore`).
-
-Xcode/SwiftUI project lives here and talks to the local `micromix-api` wrapper
-(`http://localhost:8902`).
+This directory contains the Xcode/SwiftUI project within the Micromix monorepo.
+The app talks to the `micromix-api` gateway on `lts1` over WireGuard.
 
 ## Backend it consumes
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /health` | service health / upstream status |
-| `POST /v1/audio/speech` | MiniMax-Music3 text → music generation |
-| `POST /transcribe/midi` | MuScriptor audio → MIDI transcription |
-| `GET /files/{filename}` | fetch written MIDI files |
-| `GET /instruments` | supported instrument groups for the picker |
+| `GET /v1/health` | gateway, GPU, and worker health |
+| `GET /v1/capabilities` | generation presets and transcription instruments |
+| `POST /v1/jobs/generation` | ACE-Step music generation job |
+| `POST /v1/jobs/transcription` | MuScriptor audio-to-MIDI job |
+| `GET /v1/jobs/{id}` | poll durable job state |
+| `GET /v1/assets/{id}` | download a completed result |
 
 See root `README.md` for the full contract and `docker compose` instructions.
 
-## Status
-
-Scaffolding — no Xcode project yet.
+Generate, Transcribe, Library, playback, and MIDI preview are implemented. The
+durable job API, SwiftData catalog, and Music Understanding analysis are the
+next MVP layer.
