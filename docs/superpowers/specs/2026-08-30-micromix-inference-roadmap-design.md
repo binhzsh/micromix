@@ -1,8 +1,9 @@
 # Micromix Inference Feature Landscape and Roadmap
 
 **Date:** 2026-08-30
-**Status:** active product direction; durable asset foundation deployed, remaining
-scope revised after Logic Pro 12.3 overlap audit
+**Status:** active product direction; Phase 1B server operations deployed;
+scope revised for an AI-first Micromix workflow with Logic Pro as the finishing
+environment
 **Scope:** inference, audio processing, model capabilities, and supporting data
 contracts. Visual and UI work is intentionally excluded.
 
@@ -42,9 +43,10 @@ The next feature phase should be a **Logic-complementary Reimagine workflow**:
 6. Retain MuScriptor only for its differentiated polyphonic or multi-instrument
    transcription value, verified against Logic's monophonic audio-to-MIDI path.
 
-This ordering produces a useful new creative result with the already deployed
-ACE-Step stack without recreating the DAW capabilities already optimized for the
-M2 Max and integrated into Logic Pro.
+This ordering makes Micromix the fast, reproducible AI/ML workspace and keeps
+Logic as the project-aware finishing environment. Overlap is permitted when a
+Micromix operation is materially simpler, batchable, reproducible, model-specific,
+or required by a model pipeline; it must not become a second general editor.
 
 ### 2.1 Product boundary after the Logic Pro audit
 
@@ -57,22 +59,21 @@ or specialized model transformations that Logic does not expose.
 | Full-song generation, source-conditioned reimagining, semantic remix, localized generative replacement | Micromix/ACE-Step | Build next |
 | Neural singer identity conversion using private voice models | Micromix/RVC or Applio | Build after Reimagine |
 | Polyphonic or multi-instrument audio transcription | Micromix/MuScriptor | Maintain and benchmark |
-| Stem separation into vocals, drums, bass, guitar, piano, and other | Logic Stem Splitter | Do not build a primary Micromix separator |
-| Tempo detection, beat mapping, conforming, and time stretching | Logic Smart Tempo and Flex Time | Do not build user-facing duplicates |
-| Chord extraction and chord-driven accompaniment | Logic Chord ID and Session Players | Do not build |
-| Vocal pitch correction and detailed pitch/timing editing | Logic Pitch Correction and Flex Pitch | Do not build as a Micromix feature |
+| Stem separation into vocals, drums, bass, guitar, piano, and other | Logic Stem Splitter | Evaluate a one-click prep/export utility only after a quality and speed benchmark |
+| Tempo/key/chord analysis | Logic Smart Tempo, Chord ID, and Flex Time | Automatic inference preflight and provenance only; no interactive editor |
+| Chord-driven accompaniment | Logic Session Players | Do not build |
+| Vocal pitch correction and detailed pitch/timing editing | Logic Pitch Correction and Flex Pitch | Logic-first; allow only hidden conversion-required correction |
 | Saturation, mix polish, and final mastering | Logic ChromaGlow and Mastering Assistant | Do not build |
 | Lyric rewriting | Logic Notepad Writing Tools | Do not build a generic writing assistant |
 | Recording, comping, arrangement, mixing, and delivery | Logic Pro | Explicitly outside Micromix |
 
 The intended round trip is therefore:
 
-1. Prepare, separate, align, and optionally tune source material in Logic.
-2. Export only the source mix, region, or vocal stem needed by Micromix.
-3. Generate, reimagine, repaint, transcribe, or convert voice identity in
-   Micromix, retaining source and parameter provenance.
-4. Import the resulting alternates or stems into Logic for arrangement, mixing,
-   and mastering.
+1. Import a source, mix, region, or vocal stem into Micromix.
+2. Use one-click model transforms, analysis, preflight, and alternates there,
+   retaining source and parameter provenance.
+3. Import the chosen assets into Logic for comping, cutting, arrangement,
+   detailed edits, mixing, and mastering.
 
 ### 2.2 Logic Pro 12.3 intelligence audit
 
@@ -114,15 +115,14 @@ demonstrably outperform Logic on a repeated real-world use case.
 - Local file inspection through AVFoundation and, on supported systems, Apple
   Music Understanding for rhythm, key, and instrument activity.
 - Generate, Analyze, Transcribe, and Library app workflows.
+- Phase 1B gateway operations: reference-audio generation, Remix/Cover,
+  Repaint, deterministic one-to-four variations, source/output asset links,
+  atomic multiple-output persistence, and bounded ACE recovery.
 
 ### 3.2 Important current gaps
 
-- The API has only `generation` and `transcription` job kinds.
-- A job has one optional output asset and no modeled input-asset relationship.
-- ACE-Step accepts no source or reference audio through the Micromix gateway.
-- Remix/Cover, Repaint, Lego, Extract, and Complete are not exposed.
-- The gateway accepts seed, BPM, key, and time signature, but the Mac generation
-  client does not send them.
+- The Mac client does not yet expose Phase 1B reference, Remix/Cover, Repaint,
+  seed, variation, BPM, key, or time-signature controls.
 - Jobs can be listed, but the Mac does not restore or reattach to unfinished jobs
   after app restart.
 - The library records a result file, not its source assets, transformations,
@@ -197,11 +197,12 @@ own language model already performs generation-specific planning.
 - Normalized asset/job relationships and backward-compatible responses.
 - Shared retention behavior for uploaded and generated assets.
 
-### Phase 1B — Reimagine operations (next)
+### Phase 1B — Reimagine operations (server deployed; native controls next)
 
 #### Functional scope
 
-- Submit and recover source-audio jobs across gateway and app restarts.
+- The gateway submits and recovers source-audio jobs across restarts; the next
+  Mac phase adds client reattachment and provenance controls.
 - Add ACE-Step reference-audio conditioning.
 - Add Remix/Cover for broad reinterpretation of a source.
 - Add Repaint with an explicit time range for localized replacement.
@@ -299,12 +300,12 @@ Priority meanings:
 | --- | --- | --- | --- |
 | Text-to-music | Implemented | Maintain | Turbo and Quality presets already cover fast exploration and better renders |
 | Lyrics-to-song | Implemented | Maintain | Keep structured lyrics and instrumental generation |
-| Reference audio/style conditioning | Missing | Now | Highest-value bridge between an existing song and generation |
-| Remix/Cover | Missing | Now | Broad reinterpretation while preserving useful source identity |
-| Repaint | Missing | Now | High-value localized repair/replacement with an explicit time range |
-| Seed control | Gateway only | Now | Reproducibility and variation comparison |
-| BPM, key, time signature | Gateway only | Now | Prefill from local analysis; allow override |
-| Multiple variations/batch | Missing | Now | Cap at a small practical count; requires multiple output assets |
+| Reference audio/style conditioning | Gateway deployed | Now | Add native controls; highest-value bridge between an existing song and generation |
+| Remix/Cover | Gateway deployed | Now | Add native controls for broad source reinterpretation |
+| Repaint | Gateway deployed | Now | Add native controls for localized repair/replacement |
+| Seed control | Gateway deployed | Now | Add native control for reproducibility and variation comparison |
+| BPM, key, time signature | Gateway deployed | Now | Prefill from local analysis; allow override |
+| Multiple variations/batch | Gateway deployed | Now | Add native alternative selection and import every output |
 | Output format selection | Missing | Evaluate | WAV/WAV32 for production; compressed formats mainly for previews |
 | Vocal language | Missing | Evaluate | Add when multilingual lyrics are actively used |
 | Complete/continuation | Missing | Evaluate | Useful for extending sketches once source-asset handling exists |
@@ -349,8 +350,8 @@ them as typed operations instead of one bag of optional parameters.
 
 | Capability | Status | Priority | Notes |
 | --- | --- | --- | --- |
-| Vocal/instrumental separation | Logic-owned | Reject | Stem Splitter is the default preparation path |
-| Multistem separation | Logic-owned | Reject | Stem Splitter already provides vocals, drums, bass, guitar, piano, and other |
+| Vocal/instrumental separation | Logic-first | Evaluate | Consider a one-click model prep/export utility only if a benchmark is faster or better for Micromix workflows |
+| Multistem separation | Logic-first | Evaluate | Same benchmark gate; no stem editor or mixing surface |
 | Prompt-based separation | Maestro only | Defer | Powerful but less predictable than fixed stem targets |
 | Vocal denoise/enhancement | Maestro only | Evaluate | Internal conversion preflight only; benchmark before use |
 | RVC voice conversion | Maestro only | Next | Use private, user-selected voice models |
@@ -386,6 +387,7 @@ them as typed operations instead of one bag of optional parameters.
 | Capability | Status | Priority | Notes |
 | --- | --- | --- | --- |
 | Trim/combine/render | Logic-owned | Reject | Arrangement and bounce belong in Logic |
+| Input trim, silence removal, level safety | Missing | Evaluate | Permit a one-click preflight only when it improves a model input or export consistency |
 | Gain/pan/fades/crossfades | Logic-owned | Reject | Arrangement and mixing belong in Logic |
 | Pitch shift | Logic-owned | Reject | Flex Pitch, Pitch Shifter, and region transpose cover this |
 | Time stretch/tempo match | Logic-owned | Reject | Smart Tempo and Flex Time cover this |
@@ -473,6 +475,22 @@ New jobs require contract tests, persistence/recovery tests, adapter tests, and
 an `lts1` smoke test. Audio quality acceptance remains a manual listening task;
 desktop automation is neither needed nor permitted by repository policy.
 
+## 8.1 Revised overlap rule and candidate shortlist
+
+An overlap may enter Micromix only if it passes at least one of these tests:
+
+- it is a necessary internal stage for a differentiated model workflow;
+- it turns a repeated multi-step Logic detour into one intentional action;
+- it can run unattended across variants or batches with retained provenance; or
+- it measurably improves quality, speed, or reliability on the private corpus.
+
+The next candidates, in order, are: (1) a narrow private vocal-conversion
+workflow; (2) an optional benchmarked stem-prep/export utility; (3) compact
+model-input preflight for silence trimming, safe level normalization, and
+analysis-derived metadata; and (4) enriched polyphonic transcription export.
+None implies a general waveform editor, mixer, pitch editor, arranger, or
+mastering surface.
+
 ## 9. Source inventory
 
 ### Repository sources
@@ -518,6 +536,7 @@ Micromix by this design decision.
 - [WWDC26: Explore Music Understanding](https://developer.apple.com/videos/play/wwdc2026/253/)
 - [Apple Sound Analysis](https://developer.apple.com/documentation/SoundAnalysis)
 - [Apple Core ML](https://developer.apple.com/documentation/CoreML)
+- [Logic Pro User Guide: What’s new](https://support.apple.com/guide/logicpro/whats-new-in-logic-pro-lgcp4a62a494/mac)
 - [AVFoundation offline audio processing](https://developer.apple.com/documentation/avfaudio/performing-offline-audio-processing)
 - [Apple Foundation Models](https://developer.apple.com/documentation/foundationmodels)
 - [ShazamKit](https://developer.apple.com/shazamkit/)
