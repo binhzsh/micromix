@@ -1,125 +1,181 @@
 import SwiftUI
 
-/// GENERATE mode: the text/lyrics editor deck plus the orange GENERATE action.
-/// Screen readouts (elapsed, GENERATING, result/error) are rendered by the
-/// enclosing `DeviceWindow` via `DotMatrixScreen`; this view owns the deck
-/// inputs and fires the flow through `GenerateViewModel`.
+/// GENERATE mode: bounded text and lyrics inputs, compact engine controls, and
+/// a primary action whose visual state reflects whether generation is ready.
 struct GenerateScreen: View {
     @ObservedObject var viewModel: GenerateViewModel
-    /// Whether the server is reachable; disables the primary action when down.
     var serverAvailable: Bool = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             Typography.monoLabel("1. GENERATE — TEXT OR LYRICS", size: 11)
-                .foregroundColor(Palette.ink.opacity(0.6))
+                .foregroundColor(Palette.ink.opacity(0.76))
 
-            // Prompt editor
-            VStack(alignment: .leading, spacing: 6) {
-                Typography.monoLabel("PROMPT", size: 10)
-                    .foregroundColor(Palette.ink.opacity(0.5))
-                TextEditor(text: $viewModel.prompt)
-                    .font(Typography.body(13))
-                    .foregroundColor(Palette.ink)
-                    .frame(minHeight: 64)
-                    .padding(6)
-                    .background(Palette.deck)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Palette.divider, lineWidth: 1))
-                    .disabled(viewModel.isBlocked)
-            }
-
-            // Lyrics toggle + editor
-            Toggle(isOn: $viewModel.useLyrics) {
-                Typography.monoLabel("USE LYRICS", size: 11)
-                    .foregroundColor(Palette.ink)
-            }
-            .toggleStyle(.switch)
-            .disabled(viewModel.isBlocked)
-
-            if viewModel.useLyrics {
-                VStack(alignment: .leading, spacing: 6) {
-                    Typography.monoLabel("LYRICS", size: 10)
-                        .foregroundColor(Palette.ink.opacity(0.5))
-                    TextEditor(text: $viewModel.lyrics)
-                        .font(Typography.body(13))
-                        .foregroundColor(Palette.ink)
-                        .frame(minHeight: 56)
-                        .padding(6)
-                        .background(Palette.deck)
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Palette.divider, lineWidth: 1))
-                        .disabled(viewModel.isBlocked)
-                }
-            }
-
-            HStack(spacing: 18) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Typography.monoLabel("ENGINE", size: 10)
-                        .foregroundColor(Palette.ink.opacity(0.5))
-                    Picker("ENGINE", selection: $viewModel.preset) {
-                        Text("XL TURBO").tag("turbo")
-                        Text("XL QUALITY").tag("quality")
+            DeckPanel {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle(isOn: $viewModel.useLyrics) {
+                        Typography.monoLabel("USE LYRICS", size: 11)
+                            .foregroundColor(Palette.ink)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    .frame(width: 210)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Typography.monoLabel("DURATION  \(Int(viewModel.durationSeconds)) SEC", size: 10)
-                        .foregroundColor(Palette.ink.opacity(0.5))
-                    Slider(value: $viewModel.durationSeconds, in: 10...120, step: 5)
-                        .frame(width: 180)
-                }
-                preset("FORMAT", value: viewModel.format.uppercased())
-            }
-            .disabled(viewModel.isBlocked)
+                    .toggleStyle(PanelToggleStyle())
+                    .disabled(viewModel.isBlocked)
 
-            // Primary action (+ cancel while running)
-            HStack(spacing: 8) {
-                Button(action: { viewModel.start() }) {
-                    Text(viewModel.phase == .running ? "GENERATING…" : "GENERATE")
-                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                        .tracking(1.2)
-                        .foregroundColor(viewModel.phase == .running ? Palette.ink.opacity(0.6) : .white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(viewModel.phase == .running ? Palette.ink.opacity(0.18) : Palette.accentOrange)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Palette.ink.opacity(0.85), lineWidth: 1.5)
+                    HStack(alignment: .top, spacing: 10) {
+                        editorGroup(
+                            label: "PROMPT",
+                            text: $viewModel.prompt,
+                            placeholder: "DESCRIBE THE TRACK, MOOD, INSTRUMENTS OR ARRANGEMENT"
                         )
+
+                        if viewModel.useLyrics {
+                            editorGroup(
+                                label: "LYRICS",
+                                text: $viewModel.lyrics,
+                                placeholder: "PASTE LYRICS OR WRITE VERSE / CHORUS SECTIONS"
+                            )
+                        }
+                    }
                 }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(viewModel.isBlocked || !serverAvailable)
+            }
+
+            DeckPanel {
+                HStack(alignment: .top, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Typography.monoLabel("ENGINE", size: 10)
+                            .foregroundColor(Palette.ink.opacity(0.68))
+                        HStack(spacing: 6) {
+                            ForEach(["turbo", "quality"], id: \.self) { preset in
+                                let selected = viewModel.preset == preset
+                                Button {
+                                    viewModel.preset = preset
+                                } label: {
+                                    Text(preset == "turbo" ? "XL TURBO" : "XL QUALITY")
+                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                        .foregroundColor(selected ? .white : Palette.ink)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(selected ? Palette.ink : Palette.deck)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 3)
+                                                .stroke(selected ? Palette.ink : Palette.divider, lineWidth: 1)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(preset == "turbo" ? "XL Turbo engine" : "XL Quality engine")
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Typography.monoLabel("DURATION  \(Int(viewModel.durationSeconds)) SEC", size: 10)
+                            .foregroundColor(Palette.ink.opacity(0.68))
+                        Slider(value: $viewModel.durationSeconds, in: 10...120, step: 5)
+                            .tint(Palette.accentOrange)
+                            .frame(width: 180)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Typography.monoLabel("FORMAT", size: 10)
+                            .foregroundColor(Palette.ink.opacity(0.68))
+                        Text(viewModel.format.uppercased())
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Palette.ink)
+                            .padding(.vertical, 6)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .disabled(viewModel.isBlocked)
+            }
+
+            HStack(spacing: 8) {
+                PrimaryActionButton(
+                    title: viewModel.isRunning ? "GENERATING…" : "GENERATE",
+                    isEnabled: canGenerate,
+                    action: { viewModel.start() }
+                )
+                .keyboardShortcut(.return, modifiers: [.command])
+                .accessibilityHint(canGenerate ? "Starts music generation" : unavailableReason)
 
                 if viewModel.isRunning {
-                    Button(action: { viewModel.cancel() }) {
-                        Text("CANCEL")
-                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                            .tracking(1.2)
-                            .foregroundColor(Palette.accentRed)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(Palette.accentRed, lineWidth: 1.5)
-                            )
-                    }
-                    .buttonStyle(PlainButtonStyle())
+                    cancelButton
                 }
             }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
 
-            Spacer(minLength: 0)
+    private var canGenerate: Bool {
+        !viewModel.effectiveInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !viewModel.isBlocked
+            && serverAvailable
+    }
+
+    private var unavailableReason: String {
+        if !serverAvailable { return "Server connection is unavailable" }
+        if viewModel.isBlocked { return "Generation is already running" }
+        return "Enter a prompt or lyrics first"
+    }
+
+    private func editor(
+        text: Binding<String>,
+        placeholder: String,
+        minHeight: CGFloat,
+        idealHeight: CGFloat,
+        maxHeight: CGFloat
+    ) -> some View {
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: text)
+                .font(Typography.body(13))
+                .foregroundColor(Palette.ink)
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .background(Palette.deck)
+            if text.wrappedValue.isEmpty {
+                Text(placeholder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(Palette.ink.opacity(0.46))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 14)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(minHeight: minHeight, idealHeight: idealHeight, maxHeight: maxHeight)
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Palette.divider, lineWidth: 1))
+        .disabled(viewModel.isBlocked)
+    }
+
+    private func editorGroup(
+        label: String,
+        text: Binding<String>,
+        placeholder: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Typography.monoLabel(label, size: 10)
+                .foregroundColor(Palette.ink.opacity(0.68))
+            editor(
+                text: text,
+                placeholder: placeholder,
+                minHeight: 58,
+                idealHeight: 70,
+                maxHeight: 88
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func preset(_ label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Typography.monoLabel(label, size: 10)
-                .foregroundColor(Palette.ink.opacity(0.5))
-            Text(value)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundColor(Palette.ink.opacity(0.8))
+    private var cancelButton: some View {
+        Button(action: { viewModel.cancel() }) {
+            Text("CANCEL")
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .tracking(1.2)
+                .foregroundColor(Palette.accentRed)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Palette.accentRed, lineWidth: 1.5)
+                )
         }
+        .buttonStyle(.plain)
     }
 }

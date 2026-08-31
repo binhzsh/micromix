@@ -33,28 +33,25 @@ struct DeviceWindow: View {
     @ObservedObject var connection: ConnectionMonitor
 
     var body: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 0) {
-                ScreenRegion(
-                    mode: selectedMode,
-                    generate: generate,
-                    transcribe: transcribe,
-                    analyze: analyze,
-                    connection: connection,
-                    height: min(220, max(110, geometry.size.height * 0.22))
-                )
-                DeckRegion(
-                    mode: $selectedMode,
-                    generate: generate,
-                    transcribe: transcribe,
-                    analyze: analyze,
-                    library: library,
-                    player: player,
-                    midiPreview: midiPreview,
-                    connection: connection,
-                    selectedID: $selectedID
-                )
-            }
+        VStack(spacing: 0) {
+            ScreenRegion(
+                mode: selectedMode,
+                generate: generate,
+                transcribe: transcribe,
+                analyze: analyze,
+                connection: connection
+            )
+            DeckRegion(
+                mode: $selectedMode,
+                generate: generate,
+                transcribe: transcribe,
+                analyze: analyze,
+                library: library,
+                player: player,
+                midiPreview: midiPreview,
+                connection: connection,
+                selectedID: $selectedID
+            )
         }
         .background(Palette.deck)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -70,7 +67,7 @@ struct DeviceWindow: View {
     }
 }
 
-// MARK: - Screen region (top ~60%)
+// MARK: - Screen region
 
 private struct ScreenRegion: View {
     let mode: DeviceMode
@@ -78,13 +75,12 @@ private struct ScreenRegion: View {
     @ObservedObject var transcribe: TranscribeViewModel
     @ObservedObject var analyze: AnalyzeViewModel
     @ObservedObject var connection: ConnectionMonitor
-    let height: CGFloat
 
     var body: some View {
         ZStack {
             Palette.screen
             DotMatrixScreen(
-                title: "MICROMIX",
+                title: "MICROMIX / \(mode.rawValue)",
                 statusLine: statusLine,
                 readout: readout,
                 readoutColor: readoutColor
@@ -93,7 +89,7 @@ private struct ScreenRegion: View {
         .overlay(ScanlinesOverlay())
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(14)
-        .frame(height: height)
+        .frame(height: 200)
     }
 
     private var readoutColor: Color {
@@ -149,7 +145,7 @@ private struct ScreenRegion: View {
     }
 }
 
-// MARK: - Deck region (bottom ~40%)
+// MARK: - Deck region
 
 private struct DeckRegion: View {
     @Binding var mode: DeviceMode
@@ -171,15 +167,15 @@ private struct DeckRegion: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Typography.monoLabel("1. GENERATE   2. ANALYZE   3. TRANSCRIBE   4. LIBRARY", size: 11)
-                    .foregroundColor(Palette.ink.opacity(0.6))
+                Typography.monoLabel("MODE SELECT", size: 10)
+                    .foregroundColor(Palette.ink.opacity(0.72))
                 Spacer()
                 connectionRow
             }
 
-            LazyVGrid(columns: columns, spacing: 24) {
+            LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(DeviceMode.allCases) { m in
                     PanelButton(
                         title: m.rawValue,
@@ -190,11 +186,14 @@ private struct DeckRegion: View {
                 }
             }
 
-            modeControls
+            Divider().overlay(Palette.divider)
 
+            modeControls
+                .frame(maxWidth: 1_120, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
             Spacer(minLength: 0)
         }
-        .padding(24)
+        .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.deck)
     }
@@ -218,7 +217,9 @@ private struct DeckRegion: View {
                 library: library,
                 player: player,
                 midiPreview: midiPreview,
-                selectedID: $selectedID
+                selectedID: $selectedID,
+                onGenerate: { mode = .generate },
+                onTranscribe: { mode = .transcribe }
             )
         }
     }
@@ -231,7 +232,7 @@ private struct DeckRegion: View {
             )
             Text(connection.isConnected ? "LINK OK" : "NO LINK")
                 .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(Palette.ink.opacity(0.6))
+                .foregroundColor(Palette.ink.opacity(0.72))
                 .tracking(1.0)
         }
     }

@@ -13,24 +13,46 @@ struct DeviceWindowTests {
 
     @Test("lyrics layout keeps the primary action visible at the default window size")
     func lyricsActionVisible() throws {
-        #expect(try orangePixelCount(width: 980, height: 700) > 1_000)
+        let count = try orangePixelCount(width: 980, height: 700, populated: true)
+        #expect(count > 1_000)
     }
 
     @Test("lyrics layout keeps the primary action visible at the minimum window size")
     func lyricsActionVisibleAtMinimumSize() throws {
-        #expect(try orangePixelCount(width: 900, height: 640) > 1_000)
+        let count = try orangePixelCount(width: 900, height: 640, populated: true)
+        #expect(count > 1_000)
     }
 
-    private func orangePixelCount(width: CGFloat, height: CGFloat) throws -> Int {
+    @Test("empty generation input does not present an enabled orange action")
+    func emptyGenerateActionIsVisuallyDisabled() throws {
+        #expect(try orangePixelCount(width: 980, height: 700, populated: false) < 500)
+    }
+
+    private func orangePixelCount(width: CGFloat, height: CGFloat, populated: Bool) throws -> Int {
+        let bitmap = try renderBitmap(width: width, height: height, populated: populated)
+        return pixelCount(in: bitmap) { color in
+            color.redComponent > 0.9
+                && color.greenComponent > 0.25
+                && color.greenComponent < 0.48
+                && color.blueComponent < 0.2
+                && color.alphaComponent > 0.9
+        }
+    }
+
+    private func renderBitmap(width: CGFloat, height: CGFloat, populated: Bool) throws -> NSBitmapImageRep {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("micromix-layout-\(UUID().uuidString)")
 
         let api = MicromixAPI(baseURL: "http://127.0.0.1:1")
         let library = LocalLibrary(directory: directory)
         let generate = GenerateViewModel(api: api, library: library)
-        generate.prompt = "A compact test groove"
-        generate.useLyrics = true
-        generate.lyrics = "[Verse]\nHeadless layout regression"
+        if populated {
+            generate.prompt = "A compact test groove"
+            generate.useLyrics = true
+            generate.lyrics = "[Verse]\nHeadless layout regression"
+        }
+        let connection = ConnectionMonitor(api: api)
+        connection.connected = true
 
         let view = DeviceWindow(
             generate: generate,
@@ -39,7 +61,7 @@ struct DeviceWindowTests {
             library: library,
             player: AudioPlayer(),
             midiPreview: MidiPreview(),
-            connection: ConnectionMonitor(api: api)
+            connection: connection
         )
         .frame(width: width, height: height)
 
@@ -49,25 +71,26 @@ struct DeviceWindowTests {
               let data = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: data) else {
             Issue.record("DeviceWindow did not render")
-            return 0
+            throw CocoaError(.fileReadCorruptFile)
         }
-        var orangePixels = 0
+        return bitmap
+    }
+
+    private func pixelCount(
+        in bitmap: NSBitmapImageRep,
+        matching predicate: (NSColor) -> Bool
+    ) -> Int {
+        var matchingPixels = 0
         for y in 0..<bitmap.pixelsHigh {
             for x in 0..<bitmap.pixelsWide {
                 guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else {
                     continue
                 }
-                if color.redComponent > 0.9,
-                   color.greenComponent > 0.45,
-                   color.greenComponent < 0.75,
-                   color.blueComponent > 0.2,
-                   color.blueComponent < 0.65,
-                   color.alphaComponent > 0.9 {
-                    orangePixels += 1
+                if predicate(color) {
+                    matchingPixels += 1
                 }
             }
         }
-
-        return orangePixels
+        return matchingPixels
     }
 }

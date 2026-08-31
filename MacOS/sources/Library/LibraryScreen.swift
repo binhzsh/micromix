@@ -7,6 +7,8 @@ struct LibraryScreen: View {
     @ObservedObject var player: AudioPlayer
     @ObservedObject var midiPreview: MidiPreview
     @Binding var selectedID: UUID?
+    var onGenerate: () -> Void = {}
+    var onTranscribe: () -> Void = {}
 
     private let columns = [
         GridItem(.fixed(44), alignment: .leading),
@@ -20,7 +22,6 @@ struct LibraryScreen: View {
         VStack(alignment: .leading, spacing: 10) {
             header
             listOrEmpty
-            Spacer(minLength: 0)
             transport
         }
     }
@@ -28,16 +29,31 @@ struct LibraryScreen: View {
     private var header: some View {
         HStack(spacing: 8) {
             Typography.monoLabel("LIBRARY — \(library.items.count) ITEM\(library.items.count == 1 ? "" : "S")", size: 11)
-                .foregroundColor(Palette.ink.opacity(0.6))
+                .foregroundColor(Palette.ink.opacity(0.76))
             Spacer()
         }
     }
 
     @ViewBuilder private var listOrEmpty: some View {
         if library.items.isEmpty {
-            Typography.monoLabel("NO ITEMS", size: 12)
-                .foregroundColor(Palette.ink.opacity(0.55))
-                .frame(maxWidth: .infinity, minHeight: 100, alignment: .center)
+            DeckPanel {
+                VStack(spacing: 12) {
+                    Image(systemName: "waveform.path.ecg.rectangle")
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundColor(Palette.accentBlue)
+                    Typography.monoLabel("NO TRACKS YET", size: 13)
+                        .foregroundColor(Palette.ink)
+                    Text("Generate a new piece or transcribe audio to build your private library.")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(Palette.ink.opacity(0.66))
+                        .multilineTextAlignment(.center)
+                    HStack(spacing: 8) {
+                        emptyAction("GENERATE", color: Palette.accentOrange, action: onGenerate)
+                        emptyAction("TRANSCRIBE", color: Palette.accentBlue, action: onTranscribe)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 130)
+            }
         } else {
             table
         }
@@ -76,7 +92,7 @@ struct LibraryScreen: View {
         return LazyVGrid(columns: columns, spacing: 8) {
             Text("\(index)")
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(Palette.ink.opacity(0.55))
+                .foregroundColor(Palette.ink.opacity(0.68))
             Text(item.title)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(Palette.ink)
@@ -89,7 +105,7 @@ struct LibraryScreen: View {
                 .foregroundColor(Palette.ink.opacity(0.7))
             Text(item.createdAt, style: .date)
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Palette.ink.opacity(0.6))
+                .foregroundColor(Palette.ink.opacity(0.68))
                 .multilineTextAlignment(.trailing)
         }
         .padding(.horizontal, 10)
@@ -146,13 +162,13 @@ struct LibraryScreen: View {
             Text(title)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .tracking(1.0)
-                .foregroundColor(disabled ? Palette.ink.opacity(0.3) : color)
+                .foregroundColor(disabled ? Palette.ink.opacity(0.46) : color)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .background(Palette.deck)
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
-                        .stroke(disabled ? Palette.divider : color, lineWidth: 1.5)
+                        .stroke(disabled ? Palette.ink.opacity(0.22) : color, lineWidth: 1.5)
                 )
         }
         .buttonStyle(PlainButtonStyle())
@@ -161,7 +177,18 @@ struct LibraryScreen: View {
 
     private func col(_ text: String) -> some View {
         Typography.monoLabel(text, size: 10)
-            .foregroundColor(Palette.ink.opacity(0.5))
+            .foregroundColor(Palette.ink.opacity(0.64))
+    }
+
+    private func emptyAction(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Typography.monoLabel(title, size: 10)
+                .foregroundColor(color)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(color, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
     }
 
     private var selectedItem: LibraryItem? {
