@@ -52,7 +52,7 @@ private final class RecordingReattacher: ReimagineJobReattaching {
 }
 
 @MainActor
-private final class NeverCalledReimagineAPI: DurableReimagineSubmitting, @unchecked Sendable {
+private final class NeverCalledReimagineAPI: DurableReimagineSubmitting, DurableJobCancelling, @unchecked Sendable {
     private(set) var callCount = 0
 
     func uploadAsset(data: Data, filename: String, mediaType: String) async throws -> RemoteAsset {
@@ -66,10 +66,15 @@ private final class NeverCalledReimagineAPI: DurableReimagineSubmitting, @unchec
         Issue.record("submit must not be called for invalid input")
         throw CancellationError()
     }
+
+    func cancel(jobID: String) async throws {
+        callCount += 1
+        Issue.record("cancel must not be called for invalid input")
+    }
 }
 
 @MainActor
-private final class SuspendedUploadReimagineAPI: DurableReimagineSubmitting, @unchecked Sendable {
+private final class SuspendedUploadReimagineAPI: DurableReimagineSubmitting, DurableJobCancelling, @unchecked Sendable {
     private(set) var uploadStarted = false
     var releaseUpload = false
     private(set) var submittedRequest: ReimagineRequest?
@@ -97,6 +102,8 @@ private final class SuspendedUploadReimagineAPI: DurableReimagineSubmitting, @un
             from: Data(#"{"id":"job-1","kind":"generation","state":"queued","parameters":{"operation":"reference"},"progress":null,"error":null}"#.utf8)
         )
     }
+
+    func cancel(jobID: String) async throws {}
 }
 
 @MainActor
@@ -113,6 +120,106 @@ private final class SuspendedRecoveryReattacher: ReimagineJobReattaching {
             try Task.checkCancellation()
             await Task.yield()
         }
+    }
+}
+
+@MainActor
+private final class RestartRaceReimagineAPI: DurableReimagineSubmitting, DurableJobCancelling, @unchecked Sendable {
+    private(set) var uploadCount = 0
+    private(set) var cancelledJobIDs: [String] = []
+    private(set) var staleSubmissionFinished = false
+    var releaseFirstUpload = false
+
+    func uploadAsset(data: Data, filename: String, mediaType: String) async throws -> RemoteAsset {
+        uploadCount += 1
+        let uploadNumber = uploadCount
+        if uploadNumber == 1 {
+            while !releaseFirstUpload {
+                await Task.yield()
+            }
+        }
+        return RemoteAsset(
+            id: "source-\(uploadNumber)",
+            filename: filename,
+            mediaType: mediaType,
+            sizeBytes: data.count,
+            sha256: String(repeating: "0", count: 64),
+            downloadUrl: "/v1/assets/source-\(uploadNumber)"
+        )
+    }
+
+    func submitReimagine(_ request: ReimagineRequest) async throws -> RemoteJob {
+        let sourceAssetID: String
+        switch request {
+        case let .reference(_, _, _, _, _, _, _, _, _, id),
+             let .remix(_, _, _, _, _, _, id),
+             let .repaint(_, _, _, _, _, _, _, _, id):
+            sourceAssetID = id
+        }
+        let jobID = sourceAssetID == "source-1" ? "job-1" : "job-2"
+        if jobID == "job-1" {
+            staleSubmissionFinished = true
+        }
+        return try JSONDecoder().decode(
+            RemoteJob.self,
+            from: Data(
+                """
+                {"id":"\(jobID)","kind":"generation","state":"queued","parameters":{"operation":"reference"},"progress":null,"error":null}
+                """.utf8
+            )
+        )
+    }
+
+    func cancel(jobID: String) async throws {
+        cancelledJobIDs.append(jobID)
+    }
+}
+
+@MainActor
+private final class RestartRaceReattacher: ReimagineJobReattaching {
+    private(set) var secondRecoveryStarted = false
+    private(set) var staleRecoveryFinished = false
+    var releaseSecondRecovery = false
+
+    func track(_ job: RemoteJob) throws {}
+
+    func recoverSubmittedJob(id: String) async throws -> [LibraryItem] {
+        if id == "job-1" {
+            staleRecoveryFinished = true
+            throw URLError(.cancelled)
+        }
+        secondRecoveryStarted = true
+        while !releaseSecondRecovery {
+            await Task.yield()
+        }
+        return []
+    }
+}
+
+@MainActor
+private final class URLCancelledReattacher: ReimagineJobReattaching {
+    func track(_ job: RemoteJob) throws {}
+
+    func recoverSubmittedJob(id: String) async throws -> [LibraryItem] {
+        throw URLError(.cancelled)
+    }
+}
+
+private final class SourceReadProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedMainThread: Bool?
+
+    var wasReadOnMainThread: Bool? {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedMainThread
+    }
+
+    func read(_ url: URL) throws -> Data {
+        lock.lock()
+        recordedMainThread = Thread.isMainThread
+        lock.unlock()
+        return Data("off-main-fixture".utf8)
     }
 }
 
@@ -141,6 +248,7 @@ struct ReimagineViewModelTests {
             ("seed nonnumeric", { $0.seedText = "seed" }, "SEED MUST BE 0–4,294,967,295"),
             ("duration below range", { $0.durationSeconds = 9 }, "DURATION MUST BE 10–600 SECONDS"),
             ("duration above range", { $0.durationSeconds = 601 }, "DURATION MUST BE 10–600 SECONDS"),
+            ("duration is not finite", { $0.durationSeconds = .infinity }, "DURATION MUST BE 10–600 SECONDS"),
             ("BPM below range", { $0.bpmText = "29" }, "BPM MUST BE 30–300"),
             ("BPM above range", { $0.bpmText = "301" }, "BPM MUST BE 30–300"),
             ("BPM nonnumeric", { $0.bpmText = "fast" }, "BPM MUST BE 30–300"),
@@ -160,6 +268,16 @@ struct ReimagineViewModelTests {
                 $0.operation = .repaint
                 $0.startSeconds = 8
                 $0.endSeconds = 4
+            }, "REPAINT RANGE MUST BE 3–90 SECONDS"),
+            ("repaint start is not finite", {
+                $0.operation = .repaint
+                $0.startSeconds = .nan
+                $0.endSeconds = 12
+            }, "REPAINT RANGE MUST BE 3–90 SECONDS"),
+            ("repaint end is not finite", {
+                $0.operation = .repaint
+                $0.startSeconds = 4
+                $0.endSeconds = .infinity
             }, "REPAINT RANGE MUST BE 3–90 SECONDS"),
         ]
 
@@ -198,6 +316,40 @@ struct ReimagineViewModelTests {
         #expect(blankPrompt.start() == false)
         #expect(blankPrompt.errorMessage == "ENTER A PROMPT")
         #expect(blankPromptAPI.callCount == 0)
+    }
+
+    @Test("inclusive control boundaries are accepted")
+    func inclusiveControlBoundariesAreAccepted() async throws {
+        let sourceURL = try fixtureAudioURL()
+
+        let referenceAPI = AcceptedReimagineAPI()
+        let reference = ReimagineViewModel(
+            api: referenceAPI,
+            reattacher: RecordingReattacher()
+        )
+        reference.sourceURL = sourceURL
+        reference.prompt = "lower boundaries"
+        reference.seedText = "0"
+        reference.variationCount = 1
+        reference.durationSeconds = 10
+        reference.bpmText = "30"
+
+        #expect(reference.start())
+        try await eventually { referenceAPI.submittedRequests.count == 1 }
+
+        let repaintAPI = AcceptedReimagineAPI()
+        let repaint = ReimagineViewModel(
+            api: repaintAPI,
+            reattacher: RecordingReattacher()
+        )
+        repaint.sourceURL = sourceURL
+        repaint.operation = .repaint
+        repaint.prompt = "upper repaint boundary"
+        repaint.startSeconds = 5
+        repaint.endSeconds = 95
+
+        #expect(repaint.start())
+        try await eventually { repaintAPI.submittedRequests.count == 1 }
     }
 
     @Test("each operation submits only its permitted typed controls")
@@ -394,6 +546,68 @@ struct ReimagineViewModelTests {
         try await eventually { api.cancelledJobIDs == ["job-1"] }
 
         #expect(model.phase == .cancelled)
+    }
+
+    @Test("a cancelled run cannot overwrite an immediately restarted run")
+    func cancelledRunCannotOverwriteRestart() async throws {
+        let api = RestartRaceReimagineAPI()
+        let reattacher = RestartRaceReattacher()
+        let model = ReimagineViewModel(api: api, reattacher: reattacher)
+        model.sourceURL = try fixtureAudioURL()
+        model.prompt = "first run"
+
+        #expect(model.start())
+        try await eventually { api.uploadCount == 1 }
+        model.cancel()
+
+        model.prompt = "second run"
+        #expect(model.start())
+        try await eventually { reattacher.secondRecoveryStarted }
+
+        api.releaseFirstUpload = true
+        try await eventually { api.staleSubmissionFinished }
+        let phaseAfterStaleCompletion = model.phase
+
+        model.cancel()
+        try await eventually { api.cancelledJobIDs.contains("job-2") }
+        reattacher.releaseSecondRecovery = true
+
+        #expect(phaseAfterStaleCompletion == .running)
+        #expect(api.cancelledJobIDs.contains("job-2"))
+    }
+
+    @Test("URLSession cancellation is published as cancellation")
+    func urlSessionCancellationIsNotAnError() async throws {
+        let model = ReimagineViewModel(
+            api: AcceptedReimagineAPI(),
+            reattacher: URLCancelledReattacher()
+        )
+        model.sourceURL = try fixtureAudioURL()
+        model.prompt = "new chorus"
+
+        #expect(model.start())
+        try await eventually { !model.isRunning }
+
+        #expect(model.phase == .cancelled)
+        #expect(model.errorMessage == nil)
+    }
+
+    @Test("source file reading runs outside the main actor")
+    func sourceFileReadingIsOffMainActor() async throws {
+        let api = AcceptedReimagineAPI()
+        let probe = SourceReadProbe()
+        let model = ReimagineViewModel(
+            api: api,
+            reattacher: RecordingReattacher(),
+            sourceReader: probe.read
+        )
+        model.sourceURL = try fixtureAudioURL()
+        model.prompt = "new chorus"
+
+        #expect(model.start())
+        try await eventually { api.submittedRequests.count == 1 }
+
+        #expect(probe.wasReadOnMainThread == false)
     }
 
     @Test("Analyze preserves its source URL for a Reimagine handoff")

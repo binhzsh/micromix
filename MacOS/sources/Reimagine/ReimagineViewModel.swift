@@ -48,19 +48,25 @@ final class ReimagineViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     private let api: any DurableReimagineSubmitting
+    private let canceller: any DurableJobCancelling
     private let reattacher: any ReimagineJobReattaching
+    private let sourceReader: @Sendable (URL) throws -> Data
     private var task: Task<Void, Never>?
-    private var submittedJobID: String?
+    private var currentRunID: UUID?
+    private var submittedJob: (runID: UUID, jobID: String)?
     private var isApplyingPrefill = false
     private var bpmWasManuallyEdited = false
     private var keyWasManuallyEdited = false
 
     init(
-        api: any DurableReimagineSubmitting,
-        reattacher: any ReimagineJobReattaching
+        api: any DurableReimagineSubmitting & DurableJobCancelling,
+        reattacher: any ReimagineJobReattaching,
+        sourceReader: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) }
     ) {
         self.api = api
+        self.canceller = api
         self.reattacher = reattacher
+        self.sourceReader = sourceReader
     }
 
     var isRunning: Bool { phase == .running }
@@ -136,7 +142,9 @@ final class ReimagineViewModel: ObservableObject {
         }
 
         let api = self.api
+        let canceller = self.canceller
         let reattacher = self.reattacher
+        let sourceReader = self.sourceReader
         let lyrics = useLyrics ? self.lyrics : nil
         let preset = self.preset
         let variationCount = self.variationCount
@@ -144,13 +152,17 @@ final class ReimagineViewModel: ObservableObject {
         let timeSignature = Self.optionalTrimmed(self.timeSignature)
         let sourceStrength = self.sourceStrength
         let repaintStrength = self.repaintStrength
+        let runID = UUID()
+        currentRunID = runID
         phase = .running
         errorMessage = nil
         results = []
 
         task = Task {
             do {
-                let data = try Data(contentsOf: sourceURL)
+                let data = try await Task.detached(priority: .userInitiated) {
+                    try sourceReader(sourceURL)
+                }.value
                 let asset = try await api.uploadAsset(
                     data: data,
                     filename: sourceURL.lastPathComponent,
@@ -195,35 +207,52 @@ final class ReimagineViewModel: ObservableObject {
                     )
                 }
                 let job = try await api.submitReimagine(request)
-                submittedJobID = job.id
                 try reattacher.track(job)
+                guard currentRunID == runID, !Task.isCancelled else {
+                    Task { try? await canceller.cancel(jobID: job.id) }
+                    return
+                }
+                submittedJob = (runID, job.id)
                 let recovered = try await reattacher.recoverSubmittedJob(id: job.id)
-                guard !Task.isCancelled else { return }
+                guard currentRunID == runID, !Task.isCancelled else { return }
                 results = recovered
-                submittedJobID = nil
+                submittedJob = nil
+                currentRunID = nil
+                task = nil
                 phase = .done
-            } catch is CancellationError {
-                submittedJobID = nil
-                phase = .cancelled
             } catch {
-                submittedJobID = nil
-                let message = (error as? MicromixAPIError)?.errorDescription
-                    ?? error.localizedDescription
-                fail(message)
+                guard currentRunID == runID else { return }
+                submittedJob = nil
+                currentRunID = nil
+                task = nil
+                if Self.isCancellation(error) {
+                    errorMessage = nil
+                    phase = .cancelled
+                } else {
+                    let message = (error as? MicromixAPIError)?.errorDescription
+                        ?? error.localizedDescription
+                    fail(message)
+                }
             }
         }
         return true
     }
 
     func cancel() {
-        let acceptedJobID = submittedJobID
+        let cancelledRunID = currentRunID
+        let acceptedJobID = submittedJob.flatMap { submitted in
+            submitted.runID == cancelledRunID ? submitted.jobID : nil
+        }
+        currentRunID = nil
+        submittedJob = nil
         task?.cancel()
         task = nil
         if isRunning {
+            errorMessage = nil
             phase = .cancelled
         }
-        if let acceptedJobID, let cancelling = api as? any DurableJobCancelling {
-            Task { try? await cancelling.cancel(jobID: acceptedJobID) }
+        if let acceptedJobID {
+            Task { try? await canceller.cancel(jobID: acceptedJobID) }
         }
     }
 
@@ -245,5 +274,10 @@ final class ReimagineViewModel: ObservableObject {
     private static func optionalTrimmed(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError
+            || (error as? URLError)?.code == .cancelled
     }
 }
