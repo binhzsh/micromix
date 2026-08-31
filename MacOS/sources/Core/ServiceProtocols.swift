@@ -54,6 +54,12 @@ protocol DurableTranscriptionSubmitting: Sendable {
     ) async throws -> RemoteJob
 }
 
+/// Source upload and durable reimagine submission for recovery-capable flows.
+protocol DurableReimagineSubmitting: Sendable {
+    func uploadAsset(data: Data, filename: String, mediaType: String) async throws -> RemoteAsset
+    func submitReimagine(_ request: ReimagineRequest) async throws -> RemoteJob
+}
+
 protocol DurableJobCancelling: Sendable {
     func cancel(jobID: String) async throws
 }
@@ -70,5 +76,7 @@ extension MicromixAPI: DurableJobServicing {}
 extension MicromixAPI: DurableGenerationSubmitting {}
 
 extension MicromixAPI: DurableTranscriptionSubmitting {}
+
+extension MicromixAPI: DurableReimagineSubmitting {}
 
 extension MicromixAPI: DurableJobCancelling {}

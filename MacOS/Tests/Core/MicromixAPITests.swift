@@ -5,11 +5,92 @@ import Testing
 @Suite("MicromixAPI request building + decoding")
 struct MicromixAPITests {
 
+    private final class RequestRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var recordedRequests: [URLRequest] = []
+        private var recordedJSONBodies: [[String: Any]] = []
+
+        var requests: [URLRequest] {
+            lock.withLock { recordedRequests }
+        }
+
+        var jsonBodies: [[String: Any]] {
+            lock.withLock { recordedJSONBodies }
+        }
+
+        func record(_ request: URLRequest) {
+            let body = MockURLProtocol.body(of: request)
+            let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+            lock.withLock {
+                recordedRequests.append(request)
+                if let json {
+                    recordedJSONBodies.append(json)
+                }
+            }
+        }
+    }
+
     private let succeededAudioJob = #"{"id":"job-1","kind":"generation","state":"succeeded","progress":1,"progress_detail":null,"error":null,"asset":{"id":"asset-1","filename":"result.wav","media_type":"audio/wav","size_bytes":3,"sha256":"abc","download_url":"/v1/assets/asset-1"}}"#
     private let succeededMIDIJob = #"{"id":"job-2","kind":"transcription","state":"succeeded","progress":1,"progress_detail":null,"error":null,"asset":{"id":"asset-2","filename":"result.mid","media_type":"audio/midi","size_bytes":4,"sha256":"def","download_url":"/v1/assets/asset-2"}}"#
 
     private func makeAPI() -> MicromixAPI {
         MicromixAPI(baseURL: "http://10.10.10.10:8902", configuration: .mock())
+    }
+
+    private func makeRecordingAPI() -> (MicromixAPI, RequestRecorder) {
+        let recorder = RequestRecorder()
+        MockURLProtocol.handler = { request in
+            recorder.record(request)
+            let body = #"{"id":"job-reimagine","kind":"generation","state":"queued","progress":null,"progress_detail":null,"error":null,"asset":null}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 202, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+        }
+        return (makeAPI(), recorder)
+    }
+
+    @Test("reference reimagine posts exact route and body")
+    func referenceRequestPostsExactRouteAndBody() async throws {
+        let request = ReimagineRequest.reference(
+            prompt: "warm piano", lyrics: nil, preset: "turbo", seed: 42,
+            variationCount: 2, durationSeconds: 45, bpm: 120, key: "C minor",
+            timeSignature: "4", sourceAssetID: "asset-1"
+        )
+        let (api, recorder) = makeRecordingAPI()
+        _ = try await api.submitReimagine(request)
+        #expect(recorder.requests.last?.url?.path == "/v1/jobs/reference-generation")
+        #expect(recorder.jsonBodies.last?["reference_asset_id"] as? String == "asset-1")
+        #expect(recorder.jsonBodies.last?["variation_count"] as? Int == 2)
+    }
+
+    @Test("repaint reimagine posts source and range")
+    func repaintPostsSourceAndRange() async throws {
+        let request = ReimagineRequest.repaint(
+            prompt: "replace bridge", lyrics: nil, preset: "quality", seed: nil,
+            variationCount: 1, startSeconds: 12, endSeconds: 24,
+            repaintStrength: 0.5, sourceAssetID: "source-7"
+        )
+        let (api, recorder) = makeRecordingAPI()
+        _ = try await api.submitReimagine(request)
+        #expect(recorder.requests.last?.url?.path == "/v1/jobs/repaint")
+        #expect(recorder.jsonBodies.last?["source_asset_id"] as? String == "source-7")
+    }
+
+    @Test("asset upload uses audio_file multipart field and decodes the asset")
+    func uploadAssetUsesAudioFileMultipart() async throws {
+        MockURLProtocol.handler = { request in
+            let body = String(data: MockURLProtocol.body(of: request), encoding: .utf8) ?? ""
+            #expect(request.url?.path == "/v1/assets")
+            #expect(body.contains(#"name="audio_file"; filename="source.wav""#))
+            #expect(request.value(forHTTPHeaderField: "Content-Type")?.contains("multipart/form-data") == true)
+            let response = #"{"id":"asset-upload","filename":"source.wav","media_type":"audio/wav","size_bytes":3,"sha256":"abc","download_url":"/v1/assets/asset-upload"}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 201, httpVersion: nil, headerFields: nil)!, Data(response.utf8))
+        }
+
+        let asset = try await makeAPI().uploadAsset(
+            data: Data([0x52, 0x49, 0x46]), filename: "source.wav", mediaType: "audio/wav"
+        )
+
+        #expect(asset.id == "asset-upload")
+        #expect(asset.mediaType == "audio/wav")
     }
 
     @Test("health GET path and JSON decode")

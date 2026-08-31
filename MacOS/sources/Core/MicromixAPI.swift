@@ -114,6 +114,31 @@ actor MicromixAPI {
         )
     }
 
+    /// Upload a source audio asset for later reference, remix, or repaint jobs.
+    func uploadAsset(data: Data, filename: String, mediaType: String) async throws -> RemoteAsset {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        let payload = Self.multipartAudioBody(
+            boundary: boundary,
+            filename: filename,
+            mediaType: mediaType,
+            audio: data
+        )
+        let (responseData, response) = try await send(
+            path: "/v1/assets",
+            method: "POST",
+            body: payload,
+            contentType: "multipart/form-data; boundary=\(boundary)"
+        )
+        try Self.validate(response, data: responseData)
+        return try Self.decoder.decode(RemoteAsset.self, from: responseData)
+    }
+
+    /// Submit a source-conditioned generation job and return its durable gateway ID.
+    func submitReimagine(_ request: ReimagineRequest) async throws -> RemoteJob {
+        let (path, body) = try Self.pathAndBody(for: request)
+        return try await submitJob(path: path, body: body)
+    }
+
     func jobs() async throws -> [RemoteJob] {
         let (data, response) = try await send(path: "/v1/jobs", method: "GET")
         try Self.validate(response, data: data)
@@ -247,6 +272,71 @@ actor MicromixAPI {
         appendPart(name: "detect_tempo", value: Data((detectTempo ? "true" : "false").utf8))
         body.appendString("--\(boundary)--\r\n")
         return body
+    }
+
+    private static func multipartAudioBody(
+        boundary: String,
+        filename: String,
+        mediaType: String,
+        audio: Data
+    ) -> Data {
+        var body = Data()
+        body.appendString("--\(boundary)\r\n")
+        body.appendString("Content-Disposition: form-data; name=\"audio_file\"; filename=\"\(filename)\"\r\n")
+        body.appendString("Content-Type: \(mediaType)\r\n\r\n")
+        body.append(audio)
+        body.appendString("\r\n--\(boundary)--\r\n")
+        return body
+    }
+
+    private static func pathAndBody(for request: ReimagineRequest) throws -> (String, Data) {
+        var body: [String: Any]
+        let path: String
+
+        switch request {
+        case let .reference(prompt, lyrics, preset, seed, variationCount, durationSeconds, bpm, key, timeSignature, sourceAssetID):
+            path = "/v1/jobs/reference-generation"
+            body = [
+                "prompt": prompt,
+                "preset": preset,
+                "variation_count": variationCount,
+                "duration_seconds": durationSeconds,
+                "reference_asset_id": sourceAssetID,
+            ]
+            if let bpm { body["bpm"] = bpm }
+            if let key { body["key"] = key }
+            if let timeSignature { body["time_signature"] = timeSignature }
+            if let lyrics, !lyrics.isEmpty { body["lyrics"] = lyrics }
+            if let seed { body["seed"] = seed }
+
+        case let .remix(prompt, lyrics, preset, seed, variationCount, sourceStrength, sourceAssetID):
+            path = "/v1/jobs/remix"
+            body = [
+                "prompt": prompt,
+                "preset": preset,
+                "variation_count": variationCount,
+                "source_strength": sourceStrength,
+                "source_asset_id": sourceAssetID,
+            ]
+            if let lyrics, !lyrics.isEmpty { body["lyrics"] = lyrics }
+            if let seed { body["seed"] = seed }
+
+        case let .repaint(prompt, lyrics, preset, seed, variationCount, startSeconds, endSeconds, repaintStrength, sourceAssetID):
+            path = "/v1/jobs/repaint"
+            body = [
+                "prompt": prompt,
+                "preset": preset,
+                "variation_count": variationCount,
+                "start_seconds": startSeconds,
+                "end_seconds": endSeconds,
+                "repaint_strength": repaintStrength,
+                "source_asset_id": sourceAssetID,
+            ]
+            if let lyrics, !lyrics.isEmpty { body["lyrics"] = lyrics }
+            if let seed { body["seed"] = seed }
+        }
+
+        return (path, try JSONSerialization.data(withJSONObject: body))
     }
 
     private static let decoder: JSONDecoder = {

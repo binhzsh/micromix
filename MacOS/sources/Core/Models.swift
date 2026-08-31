@@ -82,6 +82,47 @@ struct RemoteAsset: Codable, Equatable, Sendable {
     let downloadUrl: String
 }
 
+enum ReimagineOperation: String, Codable, Sendable {
+    case reference
+    case remix
+    case repaint
+}
+
+enum ReimagineRequest: Sendable {
+    case reference(
+        prompt: String,
+        lyrics: String?,
+        preset: String,
+        seed: UInt32?,
+        variationCount: Int,
+        durationSeconds: Double,
+        bpm: Int?,
+        key: String?,
+        timeSignature: String?,
+        sourceAssetID: String
+    )
+    case remix(
+        prompt: String,
+        lyrics: String?,
+        preset: String,
+        seed: UInt32?,
+        variationCount: Int,
+        sourceStrength: Double,
+        sourceAssetID: String
+    )
+    case repaint(
+        prompt: String,
+        lyrics: String?,
+        preset: String,
+        seed: UInt32?,
+        variationCount: Int,
+        startSeconds: Double,
+        endSeconds: Double,
+        repaintStrength: Double,
+        sourceAssetID: String
+    )
+}
+
 struct RemoteAssetLink: Codable, Equatable, Sendable {
     let name: String
     let position: Int
