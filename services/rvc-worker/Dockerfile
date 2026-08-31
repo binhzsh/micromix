@@ -1,6 +1,6 @@
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
-ARG RVC_COMMIT=main
+ARG RVC_COMMIT=81eed5e8f68b6bed1789f682fe78cdd324495afc
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \

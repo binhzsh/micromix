@@ -6,7 +6,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from micromix_api.adapters import ACEClient, GPUClient, MuScriptorClient
+from micromix_api.adapters import ACEClient, GPUClient, MuScriptorClient, RVCClient
 
 
 @pytest.mark.asyncio
@@ -258,6 +258,38 @@ async def test_runtime_status_and_instrument_queries():
     assert await ace.health() == "ready"
     assert await muscriptor.health() == "cold"
     assert await muscriptor.instruments() == ["piano", "vocals"]
+
+
+@pytest.mark.asyncio
+async def test_rvc_client_forwards_private_conversion_contract():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"output_path": "/data/assets/job/rvc-output.wav"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    rvc = RVCClient("http://rvc.test", client=client)
+
+    output = await rvc.convert(
+        Path("/data/assets/input.wav"),
+        Path("/voices/models/private.pth"),
+        Path("/voices/indexes/private.index"),
+        Path("/data/assets/job/rvc-output.wav"),
+        -3,
+        "rmvpe",
+    )
+
+    assert output == Path("/data/assets/job/rvc-output.wav")
+    assert captured == {
+        "source_path": "/data/assets/input.wav",
+        "model_path": "/voices/models/private.pth",
+        "index_path": "/voices/indexes/private.index",
+        "output_path": "/data/assets/job/rvc-output.wav",
+        "pitch_shift_semitones": -3,
+        "f0_method": "rmvpe",
+    }
+    await client.aclose()
     await client.aclose()
 
 

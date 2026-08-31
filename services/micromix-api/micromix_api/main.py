@@ -10,7 +10,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, sta
 from fastapi.responses import FileResponse
 
 from .config import Settings
-from .adapters import ACEClient, GPUClient, MuScriptorClient
+from .adapters import ACEClient, GPUClient, MuScriptorClient, RVCClient
 from .coordinator import Coordinator, Dispatcher
 from .generation import resolve_variation_seeds
 from .models import (
@@ -68,8 +68,9 @@ def create_app(
     gpu = GPUClient(resolved.gpu_router_url)
     ace = ACEClient(resolved.ace_url)
     muscriptor = MuScriptorClient(resolved.muscriptor_url)
+    rvc = RVCClient(resolved.rvc_url)
     voice_profiles = VoiceProfileRegistry(resolved.voice_profile_root)
-    coordinator = Coordinator(store, gpu, ace, muscriptor)
+    coordinator = Coordinator(store, gpu, ace, muscriptor, rvc)
     dispatcher = Dispatcher(coordinator)
 
     @asynccontextmanager
@@ -95,6 +96,7 @@ def create_app(
             await gpu.aclose()
             await ace.aclose()
             await muscriptor.aclose()
+            await rvc.aclose()
             await store.close()
 
     app = FastAPI(title="micromix-api", version="0.2.0", lifespan=lifespan)
@@ -102,15 +104,17 @@ def create_app(
     @app.get("/v1/health")
     async def health() -> dict:
         if start_dispatcher:
-            gpu_status, ace_status, muscriptor_status = await asyncio.gather(
+            gpu_status, ace_status, muscriptor_status, rvc_status = await asyncio.gather(
                 gpu.status(),
                 ace.health(),
                 muscriptor.health(),
+                rvc.health(),
             )
         else:
             gpu_status = {"status": "unknown", "free_mib": None, "holders": []}
             ace_status = "cold"
             muscriptor_status = "cold"
+            rvc_status = "cold"
         return {
             "service": "micromix-api",
             "status": "ok",
@@ -119,6 +123,7 @@ def create_app(
             "workers": {
                 "ace_step": {"status": ace_status},
                 "muscriptor": {"status": muscriptor_status},
+                "rvc": {"status": rvc_status},
             },
         }
 

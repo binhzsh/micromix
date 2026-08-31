@@ -286,3 +286,48 @@ class MuScriptorClient:
 
     async def aclose(self) -> None:
         await self.client.aclose()
+
+
+class RVCClient:
+    def __init__(self, base_url: str, *, client: httpx.AsyncClient | None = None):
+        self.base_url = base_url.rstrip("/")
+        self.client = client or httpx.AsyncClient(timeout=1200)
+
+    async def convert(
+        self,
+        source_path: Path,
+        model_path: Path,
+        index_path: Path | None,
+        output_path: Path,
+        pitch_shift_semitones: int,
+        f0_method: str,
+    ) -> Path:
+        response = await self.client.post(
+            f"{self.base_url}/convert",
+            json={
+                "source_path": str(source_path),
+                "model_path": str(model_path),
+                "index_path": str(index_path) if index_path else None,
+                "output_path": str(output_path),
+                "pitch_shift_semitones": pitch_shift_semitones,
+                "f0_method": f0_method,
+            },
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(_error_detail(response))
+        value = response.json().get("output_path")
+        if not isinstance(value, str) or not value:
+            raise RuntimeError("private voice conversion worker produced no output path")
+        return Path(value)
+
+    async def health(self) -> str:
+        try:
+            response = await self.client.get(f"{self.base_url}/health")
+            if response.status_code != 200:
+                return "unreachable"
+            return str(response.json().get("status", "unreachable"))
+        except Exception:  # noqa: BLE001
+            return "unreachable"
+
+    async def aclose(self) -> None:
+        await self.client.aclose()

@@ -44,7 +44,7 @@ async def test_health_and_capabilities_have_stable_shapes(client: httpx.AsyncCli
     capabilities = (await client.get("/v1/capabilities")).json()
 
     assert health["service"] == "micromix-api"
-    assert set(health["workers"]) == {"ace_step", "muscriptor"}
+    assert set(health["workers"]) == {"ace_step", "muscriptor", "rvc"}
     assert [item["id"] for item in capabilities["generation_presets"]] == [
         "turbo",
         "quality",
