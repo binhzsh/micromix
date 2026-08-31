@@ -24,6 +24,7 @@ from .models import (
     ReferenceGenerationRequest,
     RemixRequest,
     RepaintRequest,
+    VocalConversionRequest,
 )
 from .store import InputAssetBinding, JobStore
 
@@ -231,6 +232,17 @@ def create_app(
             GenerationOperation.repaint,
             "source_asset_id",
             "source",
+        )
+
+    @app.post(
+        "/v1/jobs/vocal-conversion",
+        response_model=JobRecord,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def submit_vocal_conversion(payload: VocalConversionRequest) -> JobRecord:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="private voice profiles are not configured",
         )
 
     @app.post(

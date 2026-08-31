@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class JobKind(str, Enum):
     generation = "generation"
     transcription = "transcription"
+    vocal_conversion = "vocal_conversion"
 
 
 class GenerationOperation(str, Enum):
@@ -130,6 +131,15 @@ class RepaintRequest(GenerationControls):
         if duration > 90.0:
             raise ValueError("repaint interval must not exceed 90 seconds")
         return self
+
+
+class VocalConversionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_asset_id: str = Field(min_length=1)
+    voice_profile_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,63}$")
+    pitch_shift_semitones: int = Field(default=0, ge=-24, le=24)
+    f0_method: Literal["rmvpe"] = "rmvpe"
 
 
 class GenerationPreset(BaseModel):

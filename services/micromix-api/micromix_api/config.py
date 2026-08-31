@@ -15,6 +15,7 @@ class Settings:
     muscriptor_url: str
     gpu_router_url: str
     max_upload_mib: int = 200
+    voice_profile_root: Path = Path("/voices")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -28,4 +29,5 @@ class Settings:
             muscriptor_url=os.getenv("MUSCRIPTOR_URL", "http://muscriptor:8901"),
             gpu_router_url=os.getenv("GPU_ROUTER_URL", "http://gpu-router:9999"),
             max_upload_mib=int(os.getenv("MAX_UPLOAD_MIB", "200")),
+            voice_profile_root=Path(os.getenv("VOICE_PROFILE_ROOT", "/voices")),
         )
