@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from micromix_api.models import JobKind, JobState
+from micromix_api.models import AssetDirection, JobKind, JobState
 from micromix_api.store import JobStore
 
 
@@ -15,6 +15,11 @@ async def store(tmp_path: Path):
     await value.open()
     yield value
     await value.close()
+
+
+def test_asset_direction_uses_stable_wire_values():
+    assert AssetDirection.input.value == "input"
+    assert AssetDirection.output.value == "output"
 
 
 @pytest.mark.asyncio

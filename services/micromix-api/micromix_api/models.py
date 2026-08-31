@@ -21,6 +21,11 @@ class JobState(str, Enum):
     cancelled = "cancelled"
 
 
+class AssetDirection(str, Enum):
+    input = "input"
+    output = "output"
+
+
 TERMINAL_STATES = {JobState.succeeded, JobState.failed, JobState.cancelled}
 
 
@@ -34,6 +39,14 @@ class AssetRecord(BaseModel):
     sha256: str
     download_url: str
     relative_path: str = Field(exclude=True)
+
+
+class JobAssetLink(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    position: int
+    asset: AssetRecord
 
 
 class JobRecord(BaseModel):
@@ -51,6 +64,8 @@ class JobRecord(BaseModel):
     error: str | None = None
     created_at: datetime
     updated_at: datetime
+    inputs: list[JobAssetLink] = Field(default_factory=list)
+    outputs: list[JobAssetLink] = Field(default_factory=list)
     asset: AssetRecord | None = None
 
 
