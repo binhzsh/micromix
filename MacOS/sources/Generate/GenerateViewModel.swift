@@ -28,6 +28,12 @@ final class GenerateViewModel: ObservableObject {
     @Published var useLyrics: Bool = false
     @Published var preset: String = "turbo"
     @Published var durationSeconds: Double = 30
+    @Published var seedText = ""
+    @Published var variationCount = 1
+    @Published var bpmText = ""
+    @Published var key = ""
+    @Published var timeSignature = ""
+    @Published var vocalLanguage: VocalLanguage = .automatic
 
     // Flow state
     @Published private(set) var phase: Phase = .idle
@@ -86,6 +92,7 @@ final class GenerateViewModel: ObservableObject {
         let lyricsArg = useLyrics ? lyrics : nil
         let preset = self.preset
         let durationSeconds = self.durationSeconds
+        guard let options = generationOptions() else { return false }
         let title = Self.title(from: input)
         let submittedJob = SubmittedJobReference()
         phase = .running
@@ -98,7 +105,8 @@ final class GenerateViewModel: ObservableObject {
                         input: input,
                         lyrics: lyricsArg,
                         preset: preset,
-                        durationSeconds: durationSeconds
+                        durationSeconds: durationSeconds,
+                        options: options
                     )
                     await submittedJob.set(job.id)
                     try await reattacher.track(job)
@@ -111,7 +119,10 @@ final class GenerateViewModel: ObservableObject {
                     return
                 }
 
-                let data = try await api.generate(input: input, lyrics: lyricsArg, preset: preset, durationSeconds: durationSeconds)
+                let data = try await api.generate(
+                    input: input, lyrics: lyricsArg, preset: preset,
+                    durationSeconds: durationSeconds, options: options
+                )
                 let item = LibraryItem(
                     id: UUID(),
                     kind: .audio,
@@ -157,5 +168,46 @@ final class GenerateViewModel: ObservableObject {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "GENERATED" }
         return trimmed.count > 40 ? String(trimmed.prefix(40)) + "…" : trimmed
+    }
+
+    private func generationOptions() -> GenerationOptions? {
+        let trimmedSeed = seedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let seed: UInt32?
+        if trimmedSeed.isEmpty {
+            seed = nil
+        } else if let parsed = UInt32(trimmedSeed) {
+            seed = parsed
+        } else {
+            phase = .error("SEED MUST BE 0–4,294,967,295")
+            return nil
+        }
+        guard (1...4).contains(variationCount) else {
+            phase = .error("VARIATIONS MUST BE 1–4")
+            return nil
+        }
+        let trimmedBPM = bpmText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bpm: Int?
+        if trimmedBPM.isEmpty {
+            bpm = nil
+        } else if let parsed = Int(trimmedBPM), (30...300).contains(parsed) {
+            bpm = parsed
+        } else {
+            phase = .error("BPM MUST BE 30–300")
+            return nil
+        }
+        let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTimeSignature = timeSignature.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedTimeSignature.isEmpty || ["2", "3", "4", "6"].contains(trimmedTimeSignature) else {
+            phase = .error("METER MUST BE 2, 3, 4, OR 6")
+            return nil
+        }
+        return GenerationOptions(
+            seed: seed,
+            variationCount: variationCount,
+            bpm: bpm,
+            key: trimmedKey.isEmpty ? nil : trimmedKey,
+            timeSignature: trimmedTimeSignature.isEmpty ? nil : trimmedTimeSignature,
+            vocalLanguage: vocalLanguage
+        )
     }
 }

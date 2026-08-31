@@ -39,6 +39,7 @@ final class ReimagineViewModel: ObservableObject {
         }
     }
     @Published var timeSignature = ""
+    @Published var vocalLanguage: VocalLanguage = .automatic
     @Published var sourceStrength: Double = 0.5
     @Published var startSeconds: Double = 0
     @Published var endSeconds: Double = 10
@@ -150,6 +151,7 @@ final class ReimagineViewModel: ObservableObject {
         let variationCount = self.variationCount
         let key = Self.optionalTrimmed(self.key)
         let timeSignature = Self.optionalTrimmed(self.timeSignature)
+        let vocalLanguage = self.vocalLanguage
         let sourceStrength = self.sourceStrength
         let repaintStrength = self.repaintStrength
         let runID = UUID()
@@ -181,6 +183,7 @@ final class ReimagineViewModel: ObservableObject {
                         bpm: bpm,
                         key: key,
                         timeSignature: timeSignature,
+                        vocalLanguage: vocalLanguage,
                         sourceAssetID: asset.id
                     )
                 case .remix:

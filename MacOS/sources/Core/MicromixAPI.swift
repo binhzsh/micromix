@@ -54,9 +54,10 @@ actor MicromixAPI {
     func generate(input: String,
                   lyrics: String? = nil,
                   preset: String = "turbo",
-                  durationSeconds: Double = 30) async throws -> Data {
+                  durationSeconds: Double = 30,
+                  options: GenerationOptions = .init()) async throws -> Data {
         let job = try await submitGeneration(
-            input: input, lyrics: lyrics, preset: preset, durationSeconds: durationSeconds
+            input: input, lyrics: lyrics, preset: preset, durationSeconds: durationSeconds, options: options
         )
         return try await awaitAsset(for: job)
     }
@@ -66,7 +67,8 @@ actor MicromixAPI {
         input: String,
         lyrics: String? = nil,
         preset: String = "turbo",
-        durationSeconds: Double = 30
+        durationSeconds: Double = 30,
+        options: GenerationOptions = .init()
     ) async throws -> RemoteJob {
         var body: [String: Any] = [
             "prompt": input,
@@ -76,6 +78,12 @@ actor MicromixAPI {
         if let lyrics, !lyrics.isEmpty {
             body["lyrics"] = lyrics
         }
+        if let seed = options.seed { body["seed"] = seed }
+        body["variation_count"] = options.variationCount
+        if let bpm = options.bpm { body["bpm"] = bpm }
+        if let key = options.key, !key.isEmpty { body["key"] = key }
+        if let timeSignature = options.timeSignature, !timeSignature.isEmpty { body["time_signature"] = timeSignature }
+        if let vocalLanguage = options.vocalLanguage.apiValue { body["vocal_language"] = vocalLanguage }
         let payload = try JSONSerialization.data(withJSONObject: body)
         return try await submitJob(path: "/v1/jobs/generation", body: payload)
     }
@@ -294,7 +302,7 @@ actor MicromixAPI {
         let path: String
 
         switch request {
-        case let .reference(prompt, lyrics, preset, seed, variationCount, durationSeconds, bpm, key, timeSignature, sourceAssetID):
+        case let .reference(prompt, lyrics, preset, seed, variationCount, durationSeconds, bpm, key, timeSignature, vocalLanguage, sourceAssetID):
             path = "/v1/jobs/reference-generation"
             body = [
                 "prompt": prompt,
@@ -306,6 +314,7 @@ actor MicromixAPI {
             if let bpm { body["bpm"] = bpm }
             if let key { body["key"] = key }
             if let timeSignature { body["time_signature"] = timeSignature }
+            if let vocalLanguage = vocalLanguage.apiValue { body["vocal_language"] = vocalLanguage }
             if let lyrics, !lyrics.isEmpty { body["lyrics"] = lyrics }
             if let seed { body["seed"] = seed }
 

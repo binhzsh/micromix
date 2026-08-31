@@ -75,12 +75,43 @@ struct GenerateScreen: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
+                        Typography.monoLabel("VARIATIONS", size: 10)
+                            .foregroundColor(Palette.ink.opacity(0.68))
+                        Stepper("\(viewModel.variationCount)", value: $viewModel.variationCount, in: 1...4)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(width: 84)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
                         Typography.monoLabel("FORMAT", size: 10)
                             .foregroundColor(Palette.ink.opacity(0.68))
                         Text(viewModel.format.uppercased())
                             .font(.system(size: 12, weight: .semibold, design: .monospaced))
                             .foregroundColor(Palette.ink)
                             .padding(.vertical, 6)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .disabled(viewModel.isBlocked)
+            }
+
+            DeckPanel {
+                HStack(alignment: .bottom, spacing: 12) {
+                    compactField("SEED", text: $viewModel.seedText, width: 120)
+                    compactField("BPM", text: $viewModel.bpmText, width: 72)
+                    compactField("KEY", text: $viewModel.key, width: 92)
+                    compactField("METER", text: $viewModel.timeSignature, width: 72)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Typography.monoLabel("VOCAL LANGUAGE", size: 10)
+                            .foregroundColor(Palette.ink.opacity(0.68))
+                        Picker("Vocal language", selection: $viewModel.vocalLanguage) {
+                            ForEach(VocalLanguage.allCases) { language in
+                                Text(language.label).tag(language)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .frame(width: 235)
                     }
                     Spacer(minLength: 0)
                 }
@@ -161,6 +192,22 @@ struct GenerateScreen: View {
             )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func compactField(_ label: String, text: Binding<String>, width: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Typography.monoLabel(label, size: 10)
+                .foregroundColor(Palette.ink.opacity(0.68))
+            TextField(label, text: text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(Palette.ink)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(Palette.deck)
+                .overlay(RoundedRectangle(cornerRadius: 3).stroke(Palette.divider, lineWidth: 1))
+                .frame(width: width)
+        }
     }
 
     private var cancelButton: some View {

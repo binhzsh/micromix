@@ -10,6 +10,7 @@ private final class FakeGenerator: GenerateServicing, DurableGenerationSubmittin
     var capturedLyrics: String?
     var capturedPreset: String?
     var capturedDuration: Double?
+    var capturedOptions: GenerationOptions?
     var delay: Duration = .zero
     var submittedJob = try! JSONDecoder().decode(RemoteJob.self, from: Data("{\"id\":\"job-1\",\"kind\":\"generation\",\"state\":\"succeeded\",\"progress\":1,\"error\":null}".utf8))
     var outputs = [DownloadedRemoteAsset(asset: RemoteAsset(id: "out-1", filename: "result.wav", mediaType: "audio/wav", sizeBytes: 4, sha256: "75f56ac1ef945e2a21f45f004d29a52e618474d44dd8d36e318b3dba7c3b6de6", downloadUrl: "/v1/assets/out-1"), data: Data("wav!".utf8))]
@@ -18,22 +19,25 @@ private final class FakeGenerator: GenerateServicing, DurableGenerationSubmittin
     func generate(input: String,
                   lyrics: String?,
                   preset: String,
-                  durationSeconds: Double) async throws -> Data {
+                  durationSeconds: Double,
+                  options: GenerationOptions) async throws -> Data {
         self.capturedInput = input
         self.capturedLyrics = lyrics
         self.capturedPreset = preset
         self.capturedDuration = durationSeconds
+        self.capturedOptions = options
         if delay > .zero {
             try await Task.sleep(for: delay)
         }
         return try result.get()
     }
 
-    func submitGeneration(input: String, lyrics: String?, preset: String, durationSeconds: Double) async throws -> RemoteJob {
+    func submitGeneration(input: String, lyrics: String?, preset: String, durationSeconds: Double, options: GenerationOptions) async throws -> RemoteJob {
         capturedInput = input
         capturedLyrics = lyrics
         capturedPreset = preset
         capturedDuration = durationSeconds
+        capturedOptions = options
         return submittedJob
     }
 
@@ -79,6 +83,26 @@ struct GenerateViewModelTests {
         #expect(library.saved.count == 1)
         #expect(library.saved[0].0.kind == .audio)
         #expect(library.saved[0].0.relativePath.hasSuffix(".wav"))
+    }
+
+    @Test("generation options are captured with bilingual language intent")
+    func generationOptionsFlow() async throws {
+        let api = FakeGenerator()
+        let library = FakeLibrary()
+        let vm = GenerateViewModel(api: api, library: library)
+        vm.prompt = "Vietnamese pop"
+        vm.seedText = "42"
+        vm.variationCount = 3
+        vm.bpmText = "118"
+        vm.key = "A minor"
+        vm.timeSignature = "4"
+        vm.vocalLanguage = .vietnamese
+
+        #expect(vm.start())
+        await waitUntil { vm.phase == .done }
+        #expect(api.capturedOptions == GenerationOptions(
+            seed: 42, variationCount: 3, bpm: 118, key: "A minor", timeSignature: "4", vocalLanguage: .vietnamese
+        ))
     }
 
     @Test("usegrams when useLyrics is on sends lyrics as input")

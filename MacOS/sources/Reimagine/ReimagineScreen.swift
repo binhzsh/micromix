@@ -112,6 +112,16 @@ struct ReimagineScreen: View {
                     compactTextField("BPM", text: $viewModel.bpmText, width: 78)
                     compactTextField("KEY", text: $viewModel.key, width: 88)
                     compactTextField("METER", text: $viewModel.timeSignature, width: 88)
+                    if viewModel.operation == .reference {
+                        Picker("Vocal language", selection: $viewModel.vocalLanguage) {
+                            ForEach(VocalLanguage.allCases) { language in
+                                Text(language.label).tag(language)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 100)
+                    }
                     Spacer(minLength: 0)
                 }
             }

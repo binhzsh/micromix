@@ -12,7 +12,8 @@ protocol GenerateServicing: Sendable {
     func generate(input: String,
                   lyrics: String?,
                   preset: String,
-                  durationSeconds: Double) async throws -> Data
+                  durationSeconds: Double,
+                  options: GenerationOptions) async throws -> Data
 }
 
 /// Transcribes audio into MIDI.
@@ -41,7 +42,8 @@ protocol DurableGenerationSubmitting: Sendable {
         input: String,
         lyrics: String?,
         preset: String,
-        durationSeconds: Double
+        durationSeconds: Double,
+        options: GenerationOptions
     ) async throws -> RemoteJob
 }
 

@@ -52,13 +52,14 @@ struct MicromixAPITests {
         let request = ReimagineRequest.reference(
             prompt: "warm piano", lyrics: nil, preset: "turbo", seed: 42,
             variationCount: 2, durationSeconds: 45, bpm: 120, key: "C minor",
-            timeSignature: "4", sourceAssetID: "asset-1"
+            timeSignature: "4", vocalLanguage: .vietnamese, sourceAssetID: "asset-1"
         )
         let (api, recorder) = makeRecordingAPI()
         _ = try await api.submitReimagine(request)
         #expect(recorder.requests.last?.url?.path == "/v1/jobs/reference-generation")
         #expect(recorder.jsonBodies.last?["reference_asset_id"] as? String == "asset-1")
         #expect(recorder.jsonBodies.last?["variation_count"] as? Int == 2)
+        #expect(recorder.jsonBodies.last?["vocal_language"] as? String == "vi")
     }
 
     @Test("repaint reimagine posts source and range")
@@ -127,6 +128,24 @@ struct MicromixAPITests {
         let api = makeAPI()
         let bytes = try await api.generate(input: "a lo-fi beat", preset: "quality", durationSeconds: 45)
         #expect(bytes == Data([0xFF, 0xF1, 0x00]))
+    }
+
+    @Test("generation sends optional creative controls")
+    func generationSendsCreativeControls() async throws {
+        MockURLProtocol.handler = { request in
+            let json = try JSONSerialization.jsonObject(with: MockURLProtocol.body(of: request)) as? [String: Any]
+            #expect(json?["seed"] as? UInt32 == 42)
+            #expect(json?["variation_count"] as? Int == 3)
+            #expect(json?["bpm"] as? Int == 118)
+            #expect(json?["key"] as? String == "A minor")
+            #expect(json?["time_signature"] as? String == "4")
+            #expect(json?["vocal_language"] as? String == "vi")
+            return (HTTPURLResponse(url: request.url!, statusCode: 202, httpVersion: nil, headerFields: nil)!, Data(succeededAudioJob.utf8))
+        }
+        _ = try await makeAPI().submitGeneration(
+            input: "vocal pop",
+            options: GenerationOptions(seed: 42, variationCount: 3, bpm: 118, key: "A minor", timeSignature: "4", vocalLanguage: .vietnamese)
+        )
     }
 
     @Test("transcribe builds multipart with audio_file, repeated instruments, detect_tempo, return_file=false")

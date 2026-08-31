@@ -68,6 +68,39 @@ struct GenerationPreset: Codable, Equatable, Identifiable, Sendable {
     let inferenceSteps: Int
 }
 
+enum VocalLanguage: String, CaseIterable, Codable, Identifiable, Sendable {
+    case automatic
+    case english
+    case vietnamese
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .automatic: "Auto"
+        case .english: "English"
+        case .vietnamese: "Vietnamese"
+        }
+    }
+
+    var apiValue: String? {
+        switch self {
+        case .automatic: nil
+        case .english: "en"
+        case .vietnamese: "vi"
+        }
+    }
+}
+
+struct GenerationOptions: Equatable, Sendable {
+    var seed: UInt32? = nil
+    var variationCount: Int = 1
+    var bpm: Int? = nil
+    var key: String? = nil
+    var timeSignature: String? = nil
+    var vocalLanguage: VocalLanguage = .automatic
+}
+
 struct Capabilities: Codable, Equatable, Sendable {
     let generationPresets: [GenerationPreset]
     let transcriptionInstruments: [String]
@@ -99,6 +132,7 @@ enum ReimagineRequest: Sendable {
         bpm: Int?,
         key: String?,
         timeSignature: String?,
+        vocalLanguage: VocalLanguage,
         sourceAssetID: String
     )
     case remix(

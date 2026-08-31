@@ -151,7 +151,7 @@ private final class RestartRaceReimagineAPI: DurableReimagineSubmitting, Durable
     func submitReimagine(_ request: ReimagineRequest) async throws -> RemoteJob {
         let sourceAssetID: String
         switch request {
-        case let .reference(_, _, _, _, _, _, _, _, _, id),
+        case let .reference(_, _, _, _, _, _, _, _, _, _, id),
              let .remix(_, _, _, _, _, _, id),
              let .repaint(_, _, _, _, _, _, _, _, id):
             sourceAssetID = id
@@ -376,7 +376,7 @@ struct ReimagineViewModelTests {
 
             guard case let .reference(
                 prompt, lyrics, preset, seed, variationCount, durationSeconds,
-                bpm, key, timeSignature, sourceAssetID
+                bpm, key, timeSignature, vocalLanguage, sourceAssetID
             ) = api.submittedRequests[0] else {
                 Issue.record("expected a reference request")
                 return
@@ -390,6 +390,7 @@ struct ReimagineViewModelTests {
             #expect(bpm == 300)
             #expect(key == "C minor")
             #expect(timeSignature == "4")
+            #expect(vocalLanguage == .automatic)
             #expect(sourceAssetID == "source-1")
             #expect(api.uploadedData == Data("fixture-audio".utf8))
             #expect(api.uploadedFilename == sourceURL.lastPathComponent)
@@ -522,7 +523,7 @@ struct ReimagineViewModelTests {
         api.releaseUpload = true
         try await eventually { api.submittedRequest != nil }
 
-        guard case let .reference(prompt, _, _, _, _, durationSeconds, _, _, _, _)
+        guard case let .reference(prompt, _, _, _, _, durationSeconds, _, _, _, _, _)
             = api.submittedRequest else {
             Issue.record("expected the reference request captured by start()")
             return
