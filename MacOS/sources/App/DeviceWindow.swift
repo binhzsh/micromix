@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The four MVP flows. Mode buttons on the deck switch between them.
+/// The studio workspaces. Mode buttons on the deck switch between them.
 enum DeviceMode: String, CaseIterable, Identifiable {
     case generate = "GENERATE"
+    case reimagine = "REIMAGINE"
     case analyze = "ANALYZE"
     case transcribe = "TRANSCRIBE"
     case library = "LIBRARY"
@@ -13,6 +14,15 @@ enum DeviceMode: String, CaseIterable, Identifiable {
         (Self.allCases.firstIndex(of: self) ?? 0) + 1
     }
 }
+
+// REIMAGINE screen contract, in order:
+// SOURCE (file picker, selected-file summary, Analyze source affordance),
+// OPERATION (Reference, Remix, Repaint selector with one sentence of help),
+// MUSICAL DIRECTION (prompt/lyrics, preset, editable BPM/key/meter),
+// RENDER (seed, variation count, operation-specific strength/range, Start/Cancel).
+// GENERATE remains text-first; ANALYZE inspection-first; TRANSCRIBE conversion-first;
+// LIBRARY result-first. Reimagine links to Analyze and Library rather than embedding
+// analysis history, playback, or a second asset browser.
 
 /// Single-window device-panel chassis with a compact recessed status screen
 /// above the light control deck, inside a rounded frame.
@@ -110,6 +120,8 @@ private struct ScreenRegion: View {
             if case .error(let message) = generate.phase { return shorten(message) }
             if generate.phase == .done { return "GENERATED" }
             if generate.phase == .cancelled { return "CANCELLED" }
+        case .reimagine:
+            return "READY"
         case .analyze:
             if analyze.isRunning { return "ANALYZING" }
             if analyze.analysis != nil { return "UNDERSTOOD" }
@@ -140,6 +152,9 @@ private struct ScreenRegion: View {
         case .generate:
             guard connection.isConnected else { return "SERVER UNREACHABLE — CHECK WIREGUARD" }
             return generate.isRunning ? "GENERATING…" : "READY — ENTER PROMPT"
+        case .reimagine:
+            guard connection.isConnected else { return "SERVER UNREACHABLE — CHECK WIREGUARD" }
+            return "READY — SELECT A SOURCE"
         case .analyze:
             return analyze.isRunning ? "ANALYZING LOCALLY…" : "READY — SELECT AUDIO"
         case .transcribe:
@@ -219,6 +234,10 @@ private struct DeckRegion: View {
         switch mode {
         case .generate:
             GenerateScreen(viewModel: generate, serverAvailable: connection.isConnected)
+        case .reimagine:
+            // Task 4 owns the screen implementation; keep this contract-only task
+            // independently compileable while the workspace remains selectable.
+            EmptyView()
         case .analyze:
             AnalyzeScreen(viewModel: analyze)
         case .transcribe:

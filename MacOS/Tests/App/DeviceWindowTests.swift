@@ -6,9 +6,12 @@ import Testing
 @MainActor
 @Suite("Device window regressions")
 struct DeviceWindowTests {
-    @Test("mode controls are numbered one through four")
-    func oneBasedModeNumbers() {
-        #expect(DeviceMode.allCases.map(\.displayIndex) == [1, 2, 3, 4])
+    @Test("studio modes are ordered and numbered one through five")
+    func studioModeOrderAndNumbers() {
+        #expect(DeviceMode.allCases.map(\.rawValue) == [
+            "GENERATE", "REIMAGINE", "ANALYZE", "TRANSCRIBE", "LIBRARY",
+        ])
+        #expect(DeviceMode.allCases.map(\.displayIndex) == [1, 2, 3, 4, 5])
     }
 
     @Test("lyrics layout keeps the primary action visible at the default window size")
