@@ -4,12 +4,19 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class JobKind(str, Enum):
     generation = "generation"
     transcription = "transcription"
+
+
+class GenerationOperation(str, Enum):
+    text = "text"
+    reference = "reference"
+    remix = "remix"
+    repaint = "repaint"
 
 
 class JobState(str, Enum):
@@ -69,17 +76,14 @@ class JobRecord(BaseModel):
     asset: AssetRecord | None = None
 
 
-class GenerationRequest(BaseModel):
+class GenerationControls(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     prompt: str = Field(min_length=1, max_length=4000)
     lyrics: str | None = Field(default=None, max_length=50_000)
     preset: Literal["turbo", "quality"] = "turbo"
-    duration_seconds: float = Field(default=30, ge=10, le=600)
-    seed: int | None = None
-    bpm: int | None = Field(default=None, ge=30, le=300)
-    key: str | None = Field(default=None, max_length=32)
-    time_signature: Literal["2", "3", "4", "6"] | None = None
+    seed: int | None = Field(default=None, ge=0, le=4_294_967_295)
+    variation_count: int = Field(default=2, ge=1, le=4)
 
     @field_validator("prompt")
     @classmethod
@@ -88,6 +92,43 @@ class GenerationRequest(BaseModel):
         if not value:
             raise ValueError("prompt must not be blank")
         return value
+
+
+class GenerationRequest(GenerationControls):
+    variation_count: int = Field(default=1, ge=1, le=4)
+    duration_seconds: float = Field(default=30, ge=10, le=600)
+    bpm: int | None = Field(default=None, ge=30, le=300)
+    key: str | None = Field(default=None, max_length=32)
+    time_signature: Literal["2", "3", "4", "6"] | None = None
+
+
+class ReferenceGenerationRequest(GenerationControls):
+    reference_asset_id: str = Field(min_length=1)
+    duration_seconds: float = Field(default=30, ge=10, le=600)
+    bpm: int | None = Field(default=None, ge=30, le=300)
+    key: str | None = Field(default=None, max_length=32)
+    time_signature: Literal["2", "3", "4", "6"] | None = None
+
+
+class RemixRequest(GenerationControls):
+    source_asset_id: str = Field(min_length=1)
+    source_strength: float = Field(default=0.6, ge=0.0, le=1.0)
+
+
+class RepaintRequest(GenerationControls):
+    source_asset_id: str = Field(min_length=1)
+    start_seconds: float = Field(ge=0.0)
+    end_seconds: float = Field(gt=0.0)
+    repaint_strength: float = Field(default=0.5, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_interval(self) -> "RepaintRequest":
+        duration = self.end_seconds - self.start_seconds
+        if duration < 3.0:
+            raise ValueError("repaint interval must be at least 3 seconds")
+        if duration > 90.0:
+            raise ValueError("repaint interval must not exceed 90 seconds")
+        return self
 
 
 class GenerationPreset(BaseModel):
