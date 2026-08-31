@@ -339,7 +339,7 @@ git push origin main
 - Produces: dated evidence for build, tests, deployment, health, capabilities,
   routes, and pinned models.
 
-- [ ] **Step 1: Record repository and deployment identity**
+- [x] **Step 1: Record repository and deployment identity**
 
 Capture the exact output of:
 
@@ -351,7 +351,7 @@ ssh lts1 'cd ~/apps/micromix && docker compose images'
 
 Summarize commit and image IDs in `results.md`; do not paste noisy full logs.
 
-- [ ] **Step 2: Record API health, capabilities, and route surface**
+- [x] **Step 2: Record API health, capabilities, and route surface**
 
 Run:
 
@@ -365,7 +365,7 @@ ssh lts1 'curl -fsS http://localhost:8902/openapi.json' \
 Record worker cold state, GPU availability, generation presets, instrument
 count, and required routes.
 
-- [ ] **Step 3: Record automated test totals**
+- [x] **Step 3: Record automated test totals**
 
 Add the pass/fail result and test count for:
 
@@ -374,7 +374,7 @@ Add the pass/fail result and test count for:
 - ACE supervisor tests; and
 - macOS Swift tests.
 
-- [ ] **Step 4: Run a real short generation smoke**
+- [x] **Step 4: Run a real short generation smoke**
 
 Run on `lts1`:
 
@@ -386,7 +386,7 @@ Expected: the job succeeds and `/tmp/micromix-smoke.wav` is created on `lts1`.
 Record wall time, terminal job state, output media type, and asset size. Do not
 commit the WAV.
 
-- [ ] **Step 5: Commit automated evidence**
+- [x] **Step 5: Commit automated evidence**
 
 ```bash
 git add docs/evaluations/phase-0/results.md
