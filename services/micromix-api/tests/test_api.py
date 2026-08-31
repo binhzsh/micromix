@@ -87,6 +87,24 @@ async def test_generation_submission_persists_supported_vocal_language(
 @pytest.mark.parametrize(
     "payload",
     [
+        {"source_asset_id": "asset-1", "voice_profile_id": "private-voice", "pitch_shift_semitones": -25},
+        {"source_asset_id": "asset-1", "voice_profile_id": "private-voice", "pitch_shift_semitones": 25},
+        {"source_asset_id": "asset-1", "voice_profile_id": "Private Voice"},
+        {"source_asset_id": "asset-1", "voice_profile_id": "private-voice", "f0_method": "crepe"},
+    ],
+)
+async def test_vocal_conversion_validation_rejects_unsupported_input(
+    client: httpx.AsyncClient,
+    payload: dict,
+):
+    response = await client.post("/v1/jobs/vocal-conversion", json=payload)
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
         {"prompt": "", "preset": "turbo", "duration_seconds": 30},
         {"prompt": "song", "preset": "unknown", "duration_seconds": 30},
         {"prompt": "song", "preset": "turbo", "duration_seconds": 9},
