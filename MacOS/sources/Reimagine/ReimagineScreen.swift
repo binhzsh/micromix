@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct ReimagineScreen: View {
     @ObservedObject var viewModel: ReimagineViewModel
     var serverAvailable: Bool = true
+    var analysisAvailable: Bool = true
     var onAnalyzeSource: (URL) -> Void = { _ in }
     var onOpenLibrary: () -> Void = {}
 
@@ -13,10 +14,17 @@ struct ReimagineScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sourceSection
-            operationSection
-            directionSection
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 8) {
+                    sourceSection
+                    operationSection
+                    directionSection
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .scrollIndicators(.visible)
             renderSection
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .fileImporter(
@@ -58,7 +66,7 @@ struct ReimagineScreen: View {
                 }
                 .buttonStyle(.borderless)
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .disabled(viewModel.sourceURL == nil || viewModel.isRunning)
+                .disabled(viewModel.sourceURL == nil || viewModel.isRunning || !analysisAvailable)
             }
         }
     }
@@ -70,13 +78,7 @@ struct ReimagineScreen: View {
                     sectionLabel("OPERATION")
                         .frame(width: 92, alignment: .leading)
                     ForEach(operations, id: \.rawValue) { operation in
-                        PanelButton(
-                            title: operation.rawValue,
-                            index: operationIndex(operation),
-                            isActive: viewModel.operation == operation,
-                            action: { viewModel.operation = operation }
-                        )
-                        .disabled(viewModel.isRunning)
+                        operationButton(operation)
                     }
                 }
                 Text(operationHelp)
@@ -218,8 +220,36 @@ struct ReimagineScreen: View {
         [.reference, .remix, .repaint]
     }
 
-    private func operationIndex(_ operation: ReimagineOperation) -> Int {
-        (operations.firstIndex(of: operation) ?? 0) + 1
+    private func operationButton(_ operation: ReimagineOperation) -> some View {
+        let selected = viewModel.operation == operation
+        return Button {
+            viewModel.operation = operation
+        } label: {
+            VStack(spacing: 5) {
+                Text(operation.rawValue.uppercased())
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .tracking(1.0)
+                    .foregroundColor(selected ? Palette.screenText : Palette.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Rectangle()
+                    .fill(selected ? Palette.accentBlue : Color.clear)
+                    .frame(width: 38, height: 3)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+            .background(selected ? Palette.ink : Palette.deck)
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Palette.ink.opacity(0.85), lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isRunning)
+        .accessibilityLabel("\(operation.rawValue.capitalized) operation")
+        .accessibilityValue(selected ? "Selected" : "Not selected")
+        .accessibilityHint(selected ? "Current operation" : "Selects this operation")
     }
 
     private func sectionLabel(_ title: String) -> some View {

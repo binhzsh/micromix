@@ -37,7 +37,41 @@ struct DeviceWindowTests {
         #expect(try reimagineOrangePixelCount(serverAvailable: true) > 1_000)
     }
 
-    private func reimagineOrangePixelCount(serverAvailable: Bool) throws -> Int {
+    @Test("Reimagine keeps Start visible in the minimum window deck allocation")
+    func reimagineStartVisibleAtMinimumWindowSize() throws {
+        let standaloneCount = try reimagineOrangePixelCount(
+            serverAvailable: true,
+            width: 940,
+            height: 380
+        )
+        let minimumWindowCounts = try [
+            ReimagineOperation.reference,
+            .remix,
+            .repaint,
+        ].map { operation in
+            try reimagineOrangePixelCount(
+                serverAvailable: true,
+                operation: operation,
+                width: 824,
+                height: 212
+            )
+        }
+
+        #expect(standaloneCount > 1_000)
+        for minimumWindowCount in minimumWindowCounts {
+            #expect(
+                minimumWindowCount > 1_000,
+                "Start was visible with 380 points but clipped in the minimum window's 212-point deck allocation"
+            )
+        }
+    }
+
+    private func reimagineOrangePixelCount(
+        serverAvailable: Bool,
+        operation: ReimagineOperation = .reference,
+        width: CGFloat = 940,
+        height: CGFloat = 380
+    ) throws -> Int {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("micromix-reimagine-layout-\(UUID().uuidString)")
         let api = MicromixAPI(baseURL: "http://127.0.0.1:1")
@@ -46,11 +80,12 @@ struct DeviceWindowTests {
         let reimagine = ReimagineViewModel(api: api, reattacher: reattacher)
         reimagine.sourceURL = URL(fileURLWithPath: "/tmp/source.wav")
         reimagine.prompt = "Turn this source into a compact synth groove"
+        reimagine.operation = operation
         let view = ReimagineScreen(
             viewModel: reimagine,
             serverAvailable: serverAvailable
         )
-        .frame(width: 940, height: 380)
+        .frame(width: width, height: height)
 
         let renderer = ImageRenderer(content: view)
         renderer.scale = 1

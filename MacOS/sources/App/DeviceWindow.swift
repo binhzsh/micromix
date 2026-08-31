@@ -247,7 +247,9 @@ private struct DeckRegion: View {
             ReimagineScreen(
                 viewModel: reimagine,
                 serverAvailable: connection.isConnected,
+                analysisAvailable: !analyze.isRunning,
                 onAnalyzeSource: { url in
+                    guard !analyze.isRunning else { return }
                     analyze.analyze(url: url)
                     mode = .analyze
                 },
