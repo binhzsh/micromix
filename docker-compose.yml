@@ -60,6 +60,30 @@ services:
               count: 1
               capabilities: [gpu]
 
+  rvc-worker:
+    build:
+      context: ./services/rvc-worker
+      args:
+        RVC_COMMIT: ${RVC_COMMIT:-main}
+    container_name: micromix-rvc
+    environment:
+      ASSET_ROOT: /data
+      VOICE_ROOT: /voices
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ${MICROMIX_DATA_ROOT:-./data}/gateway:/data
+      - ${VOICE_PROFILE_ROOT:-/mnt/fast_pool/fast_models/micromix/voices}:/voices:ro
+    networks: [default, shared_net]
+    restart: unless-stopped
+    init: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   micromix-api:
     build:
       context: ./services/micromix-api
@@ -67,11 +91,14 @@ services:
     depends_on:
       - ace-step
       - muscriptor
+      - rvc-worker
     ports:
       - "8902:8902"
     environment:
       ACE_URL: http://ace-step:8001
       MUSCRIPTOR_URL: http://muscriptor:8901
+      RVC_URL: http://rvc-worker:8910
+      VOICE_PROFILE_ROOT: /voices
       GPU_ROUTER_URL: http://gpu-router:9999
       DATA_ROOT: /data
       RETENTION_DAYS: ${MICROMIX_RETENTION_DAYS:-7}
