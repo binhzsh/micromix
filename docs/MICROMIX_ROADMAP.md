@@ -10,34 +10,40 @@
 
 ## Purpose
 
-Micromix is a small collection of high-leverage creative audio tools. It accepts
-songs, stems, vocals, or musical ideas, performs difficult AI transformations,
-and returns clean, reproducible WAV or MIDI assets for assembly and polish in
-Logic Pro.
+Micromix is a small collection of high-leverage creative audio tools and the
+preferred starting environment for experimentation. It accepts songs, stems,
+vocals, or musical ideas, performs difficult AI transformations, and aims to
+produce a coherent result that is roughly 70–80% finished. Logic Pro owns the
+last 20–30%: detailed arrangement, comping, editing, mix decisions, and final
+mastering.
 
 Micromix is not a DAW, model laboratory, public service, or automated music
 publishing system. Its value is making operations such as reimagining a song,
 creating a cover, swapping or improving a vocal, preparing mashup assets, and
 transcribing complex audio substantially simpler than a manual multi-tool
-workflow.
+workflow. When a transformation has multiple useful parts, Micromix should
+return both editable component assets and a convincing assembled reference mix.
 
 ## Product rules
 
 A feature belongs in Micromix only when it meets all applicable rules:
 
 1. It eliminates an annoying or complicated creative workflow.
-2. It produces a useful asset rather than another editing environment.
+2. It produces a useful asset or assembled creative result rather than another
+   editing environment.
 3. Its normal workflow needs only a few creative controls.
 4. It is meaningfully model-driven or better automated outside Logic.
 5. Its underlying model has passed a private quality evaluation.
 6. It preserves source, model, settings, and output provenance.
-7. It complements Logic rather than duplicating Logic's strong, project-aware
-   editing tools.
+7. It gets the result as close to the finish line as safe automation allows,
+   while leaving detailed, project-aware decisions to Logic.
 
 Do not expose inference steps, sampling internals, arbitrary model selection,
-LoRA controls, prompt-engineering machinery, waveform editing, mixing,
-mastering, or detailed pitch correction. Internally required processing may be
-automatic when it measurably improves the resulting asset.
+LoRA controls, prompt-engineering machinery, waveform editing, mixer channels,
+plugin racks, automation lanes, or detailed pitch correction. Automatic
+alignment, cleanup, balance, transitions, level safety, and reference finishing
+belong when they measurably improve the result and do not require a DAW-like
+editing surface.
 
 ## Product tools
 
@@ -45,13 +51,14 @@ Micromix converges on five excellent tools:
 
 1. **Reimagine** — generate, reference, remix/cover, replace a section, and
    eventually complete a vocal or partial arrangement.
-2. **Vocal Swap** — convert a prepared vocal to a selected private voice and
-   return dry, Logic-ready alternatives.
+2. **Vocal Swap** — start from a song or vocal stem, prepare and convert the
+   vocal to a selected private voice, improve it as needed, and return both
+   Logic-ready alternatives and an in-context preview.
 3. **Vocal Improve** — reduce noise, reverberation, intelligibility problems,
    and model artifacts while preserving identity and expression.
-4. **Mashup Assets** — turn two songs or selected stems into useful isolated,
-   transformed, and candidate combination assets without adding a timeline or
-   mixer.
+4. **Mashup** — turn two songs or selected stems into an automatically prepared
+   70–80% arrangement plus the isolated and transformed components needed for
+   final work in Logic, without adding a timeline or mixer.
 5. **Reliable Transcription** — generate validated polyphonic or
    multi-instrument MIDI, and MusicXML only if evaluation demonstrates value.
 
@@ -134,9 +141,12 @@ Logic without manual file hunting or parameter re-entry.
 
 ## Phase 2 — Vocal Swap
 
-**Goal:** produce convincing, dry vocal alternatives in a selected private voice
-from a prepared vocal stem.
+**Goal:** produce convincing vocal alternatives in a selected private voice and
+place them into enough musical context to judge and use immediately.
 
+- [ ] Accept either a complete song or an already prepared vocal stem.
+- [ ] For complete songs, evaluate and select an automatic vocal/accompaniment
+      preparation stage before exposing the workflow.
 - [ ] Evaluate the existing RVC and Applio capabilities on the private vocal
       corpus.
 - [ ] Compare identity transfer, lyric intelligibility, pitch/expression
@@ -145,14 +155,17 @@ from a prepared vocal stem.
 - [ ] Define a durable vocal-conversion job with source, target voice, model
       revision, parameters, alternatives, and output provenance.
 - [ ] Add a small local private voice library and a simple target-voice picker.
-- [ ] Build prepared vocal input to converted dry vocal alternatives.
+- [ ] Build automatic source preparation to converted vocal alternatives.
 - [ ] Add automatic internal preprocessing only when evaluation proves it
       improves conversion without changing the performance.
-- [ ] Verify every output can be imported and polished directly in Logic.
+- [ ] Return the converted vocal stems plus an automatically balanced in-context
+      reference mix when accompaniment is available.
+- [ ] Verify every stem and reference mix can be imported and polished directly
+      in Logic.
 
-**Exit gate:** at least one private target voice produces consistently usable
-conversions across the agreed corpus, with understandable failures and no
-manual server/model operation.
+**Exit gate:** starting from either a song or vocal stem, at least one private
+target voice produces consistently usable conversions across the agreed corpus,
+with understandable failures and no manual server/model operation.
 
 **Stop condition:** do not build a production UI if neither backend clears the
 quality bar.
@@ -160,14 +173,16 @@ quality bar.
 ## Phase 3 — Vocal Improve
 
 **Goal:** repair common vocal problems with one intentional operation while
-preserving the original performance.
+preserving the original performance and returning a result ready for creative
+use.
 
 - [ ] Evaluate candidate enhancement models on clean, noisy, reverberant, and
       expressive vocals.
 - [ ] Measure denoise, dereverberation, intelligibility, identity retention,
       transient damage, and musical artifacts.
 - [ ] Select only improvements that are reliably better than the input.
-- [ ] Build a minimal Improve Vocal operation returning a dry improved stem.
+- [ ] Build a minimal Improve Vocal operation returning an improved stem and an
+      in-context reference when accompaniment is available.
 - [ ] Allow Vocal Swap to use proven improvement stages internally when useful.
 - [ ] Preserve both the original and improved/converted lineage.
 
@@ -179,8 +194,8 @@ damage for cleaner metrics.
 
 ## Phase 4 — Mashup and cover assets
 
-**Goal:** reduce the work required to turn two songs or selected stems into
-useful mashup/cover building blocks for Logic.
+**Goal:** turn two songs or selected stems into a coherent 70–80% mashup or
+cover result plus editable building blocks for final work in Logic.
 
 - [ ] Define the smallest valuable two-source workflow using real desired
       mashups before choosing models or contracts.
@@ -190,16 +205,19 @@ useful mashup/cover building blocks for Logic.
 - [ ] Evaluate automatic musical compatibility and alignment suggestions using
       Apple analysis without creating an interactive tempo editor.
 - [ ] Generate named isolated, transformed, and candidate combination assets.
+- [ ] Automatically handle proven alignment, transitions, balance, and level
+      safety needed for a convincing assembled reference mix.
 - [ ] Preserve both source lineages and every transformation stage.
-- [ ] Export separate, dry assets for final timing, arrangement, mixing, and
-      mastering in Logic.
+- [ ] Export the assembled reference mix and separate components for final
+      timing, arrangement, mixing, and mastering in Logic.
 
-**Exit gate:** starting from the agreed source type, Micromix removes a repeated
-multi-tool preparation burden and returns assets that shorten the path to a
-creative Logic session.
+**Exit gate:** starting from the agreed source type, Micromix produces a
+musically convincing result that is approximately 70–80% complete and exports
+the components needed to finish it in Logic.
 
-**Stop condition:** do not add a timeline, mixer, automatic final master, or
-inferior duplicate of Logic Stem Splitter.
+**Stop condition:** do not add a timeline, mixer, detailed automation, or
+inferior duplicate of Logic Stem Splitter. An automatic reference finish is in
+scope; a user-controlled mastering environment is not.
 
 ## Phase 5 — Reliable transcription
 
@@ -233,7 +251,7 @@ separate technical product.
 - [ ] Suggest useful Repaint regions from detected song structure.
 - [ ] Prefill creative metadata while preserving explicit user overrides.
 - [ ] Add one-action handoffs among Library, Reimagine, Vocal Swap, Vocal
-      Improve, Mashup Assets, and Transcribe.
+      Improve, Mashup, and Transcribe.
 - [ ] Add lightweight song grouping only if real asset branching has become hard
       to navigate.
 - [ ] Keep analysis details compact and secondary to creating the next asset.
@@ -245,8 +263,9 @@ creative workflows without introducing a new editing surface.
 
 - LoRA or style-adapter training and controls
 - Public web application, hosted service, accounts, collaboration, or sharing
-- Recording, comping, waveform editing, arrangement, or multitrack timelines
-- Detailed pitch/timing correction, generic effects racks, mixing, or mastering
+- Recording, comping, waveform editing, or multitrack timelines
+- Manual detailed pitch/timing correction, mixer channels, plugin racks,
+  automation lanes, or user-controlled mastering
 - Chord-track, tempo-map, or elastic-audio replacements for Logic
 - Generic model playgrounds and expert inference parameter panels
 - Automatic publishing, distribution, or rights-management workflows
