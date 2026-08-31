@@ -62,6 +62,26 @@ class FakeMuScriptor:
         return self.output
 
 
+class FakeRVC:
+    def __init__(self, output: bytes = b"RIFF-converted"):
+        self.output = output
+        self.calls: list[tuple[Path, Path, Path | None, Path, int, str]] = []
+
+    async def convert(
+        self,
+        source_path: Path,
+        model_path: Path,
+        index_path: Path | None,
+        output_path: Path,
+        pitch_shift_semitones: int,
+        f0_method: str,
+    ) -> Path:
+        self.calls.append((source_path, model_path, index_path, output_path, pitch_shift_semitones, f0_method))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(self.output)
+        return output_path
+
+
 @pytest.fixture
 async def store(tmp_path: Path):
     value = JobStore(tmp_path / "gateway.db", tmp_path / "assets")
@@ -188,6 +208,44 @@ async def test_transcription_acquires_gpu_and_registers_midi(store: JobStore, tm
     assert muscriptor.calls == [(upload, ["vocals"], True)]
     assert gpu.requests == [("micromix-muscriptor", 4000, 60)]
     assert gpu.releases == ["micromix-muscriptor"]
+
+
+@pytest.mark.asyncio
+async def test_vocal_conversion_acquires_gpu_and_registers_converted_wav(
+    store: JobStore,
+    tmp_path: Path,
+):
+    source_path = store.asset_root / "imports" / "source.wav"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_bytes(b"RIFF-source")
+    source = await store.create_asset(source_path, "audio/wav", "source.wav")
+    model_path = tmp_path / "private-voice.pth"
+    model_path.write_bytes(b"weights")
+    job = await store.create_job(
+        JobKind.vocal_conversion,
+        {
+            "voice_profile_id": "private-voice",
+            "voice_profile_revision": "r1",
+            "pitch_shift_semitones": 2,
+            "f0_method": "rmvpe",
+            "_source_path": str(source_path),
+            "_model_path": str(model_path),
+        },
+        inputs=[InputAssetBinding(source.id, "source")],
+    )
+    gpu = FakeGPU()
+    rvc = FakeRVC()
+    coordinator = Coordinator(store, gpu, FakeACE([]), FakeMuScriptor(), rvc=rvc, poll_interval=0)
+
+    await coordinator.run_job(job.id)
+
+    completed = await store.get_job(job.id)
+    assert completed.state is JobState.succeeded
+    assert completed.outputs[0].name == "converted-vocal"
+    assert completed.outputs[0].asset.filename == "converted-vocal.wav"
+    assert gpu.requests == [("micromix-rvc", 8000, 60)]
+    assert gpu.releases == ["micromix-rvc"]
+    assert rvc.calls[0][4:] == (2, "rmvpe")
 
 
 @pytest.mark.asyncio
