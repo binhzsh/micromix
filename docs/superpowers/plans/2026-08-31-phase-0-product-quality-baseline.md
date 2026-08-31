@@ -61,7 +61,7 @@ for backend tests, Compose deployment, model revisions, and inference jobs.
 - Produces: clean Mac and `lts1` checkouts at the same exact commit, with the
   live Compose stack rebuilt from that commit.
 
-- [ ] **Step 1: Verify the Mac checkout is clean and pushed**
+- [x] **Step 1: Verify the Mac checkout is clean and pushed**
 
 Run:
 
@@ -74,7 +74,7 @@ git rev-parse origin/main
 
 Expected: no short-status entries and identical local/origin commit IDs.
 
-- [ ] **Step 2: Inspect the server checkout before changing it**
+- [x] **Step 2: Inspect the server checkout before changing it**
 
 Run:
 
@@ -84,7 +84,7 @@ ssh lts1 'cd ~/apps/micromix && git status --short --branch && git remote -v && 
 
 Expected: `main`, no local modifications, and the same GitHub repository.
 
-- [ ] **Step 3: Fast-forward the server checkout**
+- [x] **Step 3: Fast-forward the server checkout**
 
 Run:
 
@@ -94,7 +94,7 @@ ssh lts1 'cd ~/apps/micromix && git fetch origin && git pull --ff-only origin ma
 
 Expected: the returned commit matches the Mac's `origin/main`.
 
-- [ ] **Step 4: Run backend unit tests on the server**
+- [x] **Step 4: Run backend unit tests on the server**
 
 Run:
 
@@ -108,7 +108,7 @@ Expected: every suite passes. If the ACE supervisor environment does not have
 pytest available at the repository root, run its documented container or venv
 test command and record the exact replacement in `results.md`.
 
-- [ ] **Step 5: Rebuild and verify the deployed stack**
+- [x] **Step 5: Rebuild and verify the deployed stack**
 
 Run:
 
@@ -121,7 +121,7 @@ ssh lts1 'cd ~/apps/micromix && ./scripts/smoke-test.sh'
 Expected: all three services are running; `/v1/health` reports `ok`; the cold
 smoke prints capabilities without loading a GPU worker.
 
-- [ ] **Step 6: Run the full native test suite on the Mac**
+- [x] **Step 6: Run the full native test suite on the Mac**
 
 Run:
 
@@ -133,7 +133,7 @@ xcodebuild test -project Micromix.xcodeproj -scheme Micromix -destination 'platf
 
 Expected: `** TEST SUCCEEDED **` and all Swift Testing tests pass.
 
-- [ ] **Step 7: Mark Phase 0 active**
+- [x] **Step 7: Mark Phase 0 active**
 
 In `docs/MICROMIX_ROADMAP.md`, change only the Phase 0 heading to:
 
@@ -141,7 +141,7 @@ In `docs/MICROMIX_ROADMAP.md`, change only the Phase 0 heading to:
 ## Phase 0 — Product-quality baseline `[~]`
 ```
 
-- [ ] **Step 8: Commit the synchronization milestone**
+- [x] **Step 8: Commit the synchronization milestone**
 
 ```bash
 git add docs/MICROMIX_ROADMAP.md

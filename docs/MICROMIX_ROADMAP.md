@@ -92,7 +92,7 @@ The following foundation is complete:
 - [x] Apple Music Understanding aggregate BPM, key, and instrument prefill
 - [x] MuScriptor polyphonic and multi-instrument audio-to-MIDI
 
-## Phase 0 — Product-quality baseline
+## Phase 0 — Product-quality baseline `[~]`
 
 **Goal:** establish a trustworthy operational and evaluation baseline before
 adding another model workflow.
