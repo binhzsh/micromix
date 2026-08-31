@@ -1,7 +1,8 @@
 # Micromix Inference Feature Landscape and Roadmap
 
 **Date:** 2026-08-30
-**Status:** approved product direction; implementation not started
+**Status:** active product direction; durable asset foundation deployed, remaining
+scope revised after Logic Pro 12.3 overlap audit
 **Scope:** inference, audio processing, model capabilities, and supporting data
 contracts. Visual and UI work is intentionally excluded.
 
@@ -27,22 +28,77 @@ The architectural split remains:
 
 ## 2. Decision summary
 
-The next feature phase should be an **asset-aware Reimagine workflow**:
+The next feature phase should be a **Logic-complementary Reimagine workflow**:
 
-1. Extend durable jobs from output-only files to explicit input assets, output
-   assets, provenance, and restart-safe client reattachment.
+1. Keep the deployed durable input/output asset graph as the foundation.
 2. Add ACE-Step reference-audio generation, Remix/Cover, and Repaint.
-3. Expose only high-value controls: seed, BPM, key, time signature, and a small
-   variation count.
-4. Expand local Apple Music Understanding analysis to all six available
-   dimensions and use it to prefill inference metadata.
-5. After that foundation is stable, build a selective Maestro-derived cover
-   pipeline: separate, clean/tune, convert the voice, recombine, and master.
-6. Add deterministic mashup and arrangement utilities after the cover pipeline.
+3. Add restart-safe Mac reattachment, provenance, and only the inference controls
+   that materially affect reproducibility or source transformation.
+4. Use local Music Understanding only as inference preflight metadata, not as a
+   competing tempo, chord, or arrangement environment.
+5. Build neural voice identity conversion around vocal stems prepared in Logic;
+   keep cleanup or pitch handling internal and optional when conversion quality
+   requires it.
+6. Retain MuScriptor only for its differentiated polyphonic or multi-instrument
+   transcription value, verified against Logic's monophonic audio-to-MIDI path.
 
 This ordering produces a useful new creative result with the already deployed
-ACE-Step stack, while building the asset graph needed by covers, stems,
-transcription, and later multitrack operations.
+ACE-Step stack without recreating the DAW capabilities already optimized for the
+M2 Max and integrated into Logic Pro.
+
+### 2.1 Product boundary after the Logic Pro audit
+
+Logic Pro is the production environment. Micromix should not duplicate work that
+is faster, more editable, and better integrated there. Micromix owns heavyweight
+or specialized model transformations that Logic does not expose.
+
+| Workflow | Product owner | Micromix decision |
+| --- | --- | --- |
+| Full-song generation, source-conditioned reimagining, semantic remix, localized generative replacement | Micromix/ACE-Step | Build next |
+| Neural singer identity conversion using private voice models | Micromix/RVC or Applio | Build after Reimagine |
+| Polyphonic or multi-instrument audio transcription | Micromix/MuScriptor | Maintain and benchmark |
+| Stem separation into vocals, drums, bass, guitar, piano, and other | Logic Stem Splitter | Do not build a primary Micromix separator |
+| Tempo detection, beat mapping, conforming, and time stretching | Logic Smart Tempo and Flex Time | Do not build user-facing duplicates |
+| Chord extraction and chord-driven accompaniment | Logic Chord ID and Session Players | Do not build |
+| Vocal pitch correction and detailed pitch/timing editing | Logic Pitch Correction and Flex Pitch | Do not build as a Micromix feature |
+| Saturation, mix polish, and final mastering | Logic ChromaGlow and Mastering Assistant | Do not build |
+| Lyric rewriting | Logic Notepad Writing Tools | Do not build a generic writing assistant |
+| Recording, comping, arrangement, mixing, and delivery | Logic Pro | Explicitly outside Micromix |
+
+The intended round trip is therefore:
+
+1. Prepare, separate, align, and optionally tune source material in Logic.
+2. Export only the source mix, region, or vocal stem needed by Micromix.
+3. Generate, reimagine, repaint, transcribe, or convert voice identity in
+   Micromix, retaining source and parameter provenance.
+4. Import the resulting alternates or stems into Logic for arrangement, mixing,
+   and mastering.
+
+### 2.2 Logic Pro 12.3 intelligence audit
+
+Apple's current Logic Pro product page groups Session Players, Stem Splitter,
+Mastering Assistant, Chord ID, Pitch Correction, Smart Tempo, and ChromaGlow
+under its intelligence features. The current guide and release documentation
+add the following practical boundaries:
+
+| Logic capability | Current behavior relevant to Micromix | Roadmap consequence |
+| --- | --- | --- |
+| Session Players | AI-driven synth, bass, keyboard, and drum performances follow the Chord Track and can be regenerated or converted to MIDI | Reject generic backing-band, accompaniment, and chord-following generation |
+| Chord ID | Extracts chords from audio or MIDI directly into the Chord Track | Reject standalone chord detection; retain only hidden key/harmony metadata needed by an inference request |
+| Stem Splitter | On Apple silicon, extracts vocals, drums, bass, guitar, piano, and other, with presets and custom submixes | Remove fixed separation from the planned core cover pipeline |
+| Pitch Correction | Uses machine-learning pitch detection for real-time scale/chord-aware vocal correction | Reject user-facing autotune duplication |
+| Flex Pitch | Analyzes monophonic pitch, edits pitch/timing, quantizes notes, and creates MIDI | Position MuScriptor around polyphonic and multi-instrument transcription, not generic audio-to-MIDI |
+| Smart Tempo and Flex Time | Analyze musical tempo, map beats/downbeats, conform recordings or imported audio, and stretch material to project tempo | Reject Micromix tempo-alignment, beat-grid, and time-stretch tooling |
+| ChromaGlow | AI-modeled tube, tape, preamp, and compression coloration | Reject generic analog warmth or saturation processing |
+| Mastering Assistant | Analyzes a mix and applies adjustable EQ, dynamics, stereo, timbre, and loudness processing | Reject Matchering and automatic final mastering |
+| Writing Tools | Apple Intelligence can rewrite text and assist with lyrics in Notepad | Reject a generic lyric rewriting assistant; model-specific prompt formatting may remain internal |
+| Flashback Capture | Restores recent audio or MIDI performances even when record was not engaged | No overlap to build; capture belongs to the DAW |
+| Logic Pro 12.3 loop/Flex updates | Improve loop/downbeat detection, tempo metadata, and independent tempo/pitch following | Further reason not to reproduce loop conforming or elastic-audio utilities |
+
+This audit should be repeated when Logic adds material intelligence features.
+An overlap is not automatically forbidden when Micromix needs an operation
+inside a server pipeline, but such an operation must remain an internal stage or
+demonstrably outperform Logic on a repeated real-world use case.
 
 ## 3. Current baseline
 
@@ -111,9 +167,9 @@ all three naturally return multiple outputs.
 | Music Understanding analysis | M2 Max | Apple-optimized and offline |
 | Preview trim, gain, fades, simple effects | M2 Max/AVFoundation | Low-latency auditioning |
 | ACE-Step generation and audio editing | RTX 3090 | Existing CUDA deployment and model cache |
-| Stem separation | RTX 3090 | Large separation models; proven Maestro service |
-| Vocal conversion, tuning, enhancement | RTX 3090 | CUDA models and existing Maestro implementations |
-| Final deterministic render | `lts1` CPU/GPU as required | Reproducible pipeline and fewer large transfers |
+| Pipeline-only source cleanup | RTX 3090 | Use only when it measurably improves a model transformation |
+| Neural voice identity conversion | RTX 3090 | CUDA models and existing Maestro implementations |
+| Minimal deterministic render | `lts1` CPU/GPU as required | Assemble model outputs when a workflow requires it |
 | Logic Pro arrangement and final production | Mac | The DAW remains the production destination |
 
 Apple Foundation Models may later help rewrite prompts, structure lyrics, or
@@ -134,26 +190,28 @@ own language model already performs generation-specific planning.
 
 ## 5. Delivery phases
 
-### Phase 1 — Reimagine foundation (next)
+### Phase 1A — Durable asset foundation (deployed)
+
+- Reusable uploaded input assets.
+- Multiple typed output assets.
+- Normalized asset/job relationships and backward-compatible responses.
+- Shared retention behavior for uploaded and generated assets.
+
+### Phase 1B — Reimagine operations (next)
 
 #### Functional scope
 
-- Upload/import an audio source as a durable job input.
-- Model input/output asset relationships and multiple outputs.
 - Submit and recover source-audio jobs across gateway and app restarts.
 - Add ACE-Step reference-audio conditioning.
 - Add Remix/Cover for broad reinterpretation of a source.
 - Add Repaint with an explicit time range for localized replacement.
 - Support seed, BPM, key, time signature, and two-to-four variations.
-- Request and persist all Apple Music Understanding dimensions:
-  - key;
-  - rhythm, including BPM and beat/bar positions;
-  - structure;
-  - pace;
-  - instrument activity; and
-  - loudness.
-- Prefill compatible ACE-Step fields from local analysis while retaining user
-  override and recording the actual submitted values.
+- Request and persist only Music Understanding metadata that directly improves
+  source selection or an ACE-Step request. Initially this is key, BPM, and
+  structure; add other dimensions only when a model contract consumes them.
+- Prefill compatible fields from local analysis while retaining user override
+  and recording the actual submitted values. Do not turn Analyze into a chord,
+  beat-grid, or tempo-editing surface.
 - Import every successful output into the local library before expiry.
 
 #### Explicit non-goals
@@ -174,62 +232,56 @@ own language model already performs generation-specific planning.
 - Closing and reopening the app does not orphan a submitted job.
 - Each local result shows which source and transformation produced it.
 
-### Phase 2 — Cover and vocal pipeline
+### Phase 2 — Voice identity conversion
 
-Build one coherent `Cover a Song` pipeline from selected Maestro components:
+Build one narrow `Convert a Vocal` workflow from selected Maestro components:
 
-1. Separate the source into at least vocal and instrumental stems.
-2. Optionally clean the vocal with Resemble Enhance.
-3. Tune/correct pitch using Applio's F0/autotune controls when requested.
-4. Convert the vocal through an explicitly selected private RVC/Applio model.
-5. Recombine converted vocal and instrumental with deterministic level controls.
-6. Produce an unmastered mix and an optional mastered result.
+1. Accept a vocal stem prepared and, when desired, tuned in Logic Pro.
+2. Optionally apply model-specific cleanup only when it improves conversion.
+3. Convert vocal identity through an explicitly selected private RVC/Applio
+   model without acquiring or sharing third-party voices.
+4. Return the dry converted stem and provenance to Logic Pro.
 
-Start with the proven fixed stem separator rather than prompt-based separation.
-Fixed vocal/instrumental separation is predictable and directly supports the
-workflow. Evaluate ACE-Step Extract against it using real material before
-choosing ACE-Step as a replacement.
+Do not port Maestro's fixed separator, mixer, tuning UI, or Matchering service as
+part of this phase. Logic Pro owns separation, pitch correction, recombination,
+and mastering. A server-side separator or correction stage can be reconsidered
+only for unattended batch chaining or after a focused benchmark demonstrates a
+repeatable quality advantage.
 
 Reuse candidates from `~/apps/maestro` on `lts1`:
 
 | Maestro component | Potential Micromix role | Disposition |
 | --- | --- | --- |
-| `services/separator` | Fixed vocal/instrumental or multistem separation | Port first, with current tests |
-| `services/applio` | Voice conversion plus F0/autotune controls | Preferred combined vocal path to evaluate |
+| `services/separator` | Fixed vocal/instrumental or multistem separation | Do not port by default; Logic owns this workflow |
+| `services/applio` | Voice conversion plus F0/autotune controls | Evaluate conversion path; keep tuning internal |
 | `services/rvc` | Dedicated RVC training/conversion | Retain as fallback/reference implementation |
-| `services/resemble-enhance` | Denoise and vocal enhancement | Optional stage |
-| `services/mixer` | Trim, combine, pitch, vocal chain, render/bounce | Reuse deterministic operations selectively |
-| `services/matchering` | Reference-based final mastering | Optional final stage |
+| `services/resemble-enhance` | Denoise and vocal enhancement | Evaluate only as conversion preflight |
+| `services/mixer` | Trim, combine, pitch, vocal chain, render/bounce | Do not port as a product surface |
+| `services/matchering` | Reference-based final mastering | Reject; Logic Mastering Assistant owns finalization |
 | Gateway asset chaining | Input/output references and recovery semantics | Reuse concepts/tests, not gateway wholesale |
 
 Voice-model training is not required to prove the cover pipeline. Begin with an
 existing user-owned model. Add private training only after conversion quality
 and the end-to-end workflow are validated.
 
-### Phase 3 — Mashup and arrangement utilities
+### Phase 3 — Differentiated transcription and interchange
 
-Prioritize predictable DAW-adjacent operations:
+Benchmark MuScriptor against Logic's Flex Pitch audio-to-MIDI workflow using the
+private evaluation corpus. Continue investment only where MuScriptor provides a
+clear advantage: polyphonic material, multi-instrument transcription, useful
+instrument filtering, or richer score/event exports. Improve Logic-friendly MIDI
+and MusicXML interchange where the benchmark justifies it.
 
-- beat-grid and downbeat-aware region selection;
-- automatic tempo estimation and alignment;
-- high-quality time stretching;
-- key estimation and semitone pitch matching;
-- trim, crop, loop, fades, crossfades, gain, and pan;
-- vocal/instrumental replacement;
-- ordered timeline assembly and bounce;
-- loudness measurement, normalization, limiting, and optional reference
-  mastering; and
-- export of stems and final renders in Logic-friendly formats.
-
-These utilities are more useful for real mashups than adding another generative
-model. They should remain explicit operations rather than an opaque autonomous
-arranger.
+Tempo alignment, time stretching, chord extraction, arrangement primitives,
+mixing, and mastering are removed from this phase because Logic already provides
+editable, project-aware implementations.
 
 ### Phase 4 — Selective advanced capabilities
 
 Only promote items from the catalog below when a repeated workflow justifies
-their complexity. Likely candidates are ACE-Step Complete, targeted instrument
-extraction, improved MuScriptor export, and private style adaptation.
+their complexity and Logic does not already own it. Likely candidates are
+ACE-Step Complete, semantic or targeted source transformation, improved
+MuScriptor export, and private style adaptation.
 
 ## 6. Full potential feature catalog
 
@@ -257,7 +309,7 @@ Priority meanings:
 | Vocal language | Missing | Evaluate | Add when multilingual lyrics are actively used |
 | Complete/continuation | Missing | Evaluate | Useful for extending sketches once source-asset handling exists |
 | Lego/multitrack generation | Missing | Evaluate | Potential stem-aware creation; base/SFT model requirement raises cost |
-| Extract/track separation | Missing | Evaluate | Benchmark against the dedicated separator before adoption |
+| Extract/targeted source isolation | Missing | Evaluate | Consider only semantic targets Logic Stem Splitter cannot isolate |
 | Audio understanding/captioning | Missing | Evaluate | May complement Apple analysis, particularly on older macOS |
 | Cover strength and edit-specific controls | Missing | Now | Expose concise operation-level controls, not raw model internals |
 | Prompt formatting helper | Missing | Evaluate | Could use ACE planner or local Foundation Models |
@@ -279,30 +331,30 @@ them as typed operations instead of one bag of optional parameters.
 | Capability | Status | Priority | Notes |
 | --- | --- | --- | --- |
 | Duration/file metadata | Implemented | Maintain | AVFoundation fallback works on all supported targets |
-| Key detection | Partial | Now | Persist timestamped ranges/confidence where available |
-| BPM/rhythm | Partial | Now | Retain beat and bar locations, not only aggregate BPM |
-| Instrument activity | Partial | Now | Persist time ranges and normalize labels carefully |
-| Structure | Missing | Now | Sections, segments, and phrases enable editing and arrangement |
-| Pace | Missing | Now | Useful descriptive/selection input for generation |
-| Loudness | Missing | Now | Integrated, short-term, momentary, and peak values aid rendering |
+| Key detection | Partial | Maintain | Use as inference prefill; Logic owns interactive harmonic editing |
+| BPM/rhythm | Partial | Maintain | Use aggregate inference metadata; Logic owns beat maps and conforming |
+| Instrument activity | Partial | Evaluate | Expand only when it drives an inference request or source choice |
+| Structure | Missing | Next | Add when it drives source selection or Repaint ranges |
+| Pace | Missing | Evaluate | Add only when an inference contract consumes it |
+| Loudness | Missing | Evaluate | Logic owns production metering; retain only if render safety needs it |
 | Incremental/stream analysis | Missing | Evaluate | Useful for long recordings; unnecessary for initial file workflow |
 | Server-side ACE audio understanding | Missing | Evaluate | Fallback/cross-check for unsupported Macs or model-specific captioning |
 | Custom sound-event classification | Missing | Defer | Sound Analysis is capable, but no core workflow currently needs it |
 | Catalog/song recognition | Missing | Defer | ShazamKit identification does not materially advance creation |
-| Chord detection | Missing | Evaluate | Valuable for mashups if accuracy is adequate; not supplied by current local record |
-| Vocal melody/pitch contour | Missing | Next | Needed for tuning diagnostics and musical alignment |
+| Chord detection | Logic-owned | Reject | Chord ID already analyzes audio/MIDI into the Chord Track |
+| Vocal melody/pitch contour | Logic-owned | Reject | Flex Pitch and Pitch Correction own tuning diagnostics and edits |
 | Similarity/duplicate detection | Missing | Defer | Could help a large library, but current solo library is small |
 
 ### 6.3 Separation, vocals, and source repair
 
 | Capability | Status | Priority | Notes |
 | --- | --- | --- | --- |
-| Vocal/instrumental separation | Maestro only | Next | Core prerequisite for covers and vocal swaps |
-| Multistem separation | Maestro only | Evaluate | Drums, bass, guitar, piano, and other stems when quality warrants |
+| Vocal/instrumental separation | Logic-owned | Reject | Stem Splitter is the default preparation path |
+| Multistem separation | Logic-owned | Reject | Stem Splitter already provides vocals, drums, bass, guitar, piano, and other |
 | Prompt-based separation | Maestro only | Defer | Powerful but less predictable than fixed stem targets |
-| Vocal denoise/enhancement | Maestro only | Next | Resemble Enhance candidate; make bypass/comparison easy |
+| Vocal denoise/enhancement | Maestro only | Evaluate | Internal conversion preflight only; benchmark before use |
 | RVC voice conversion | Maestro only | Next | Use private, user-selected voice models |
-| F0/autotune correction | Maestro only | Next | Applio candidate; retain musical control and dry output |
+| F0/autotune correction | Logic-owned | Reject | Tune in Logic; retain only hidden model-required F0 handling |
 | Voice-model training | Maestro only | Defer | Not needed for first complete workflow |
 | De-essing/breath/noise controls | DSP/model dependent | Evaluate | Add only in response to recurring cleanup failures |
 | Source restoration/upscaling | Missing | Evaluate | Useful for archival material, but outside the first cover path |
@@ -312,7 +364,7 @@ them as typed operations instead of one bag of optional parameters.
 
 | Capability | Status | Priority | Notes |
 | --- | --- | --- | --- |
-| Audio-to-MIDI | Implemented | Maintain | Current MuScriptor path supersedes Maestro Basic Pitch |
+| Audio-to-MIDI | Implemented | Evaluate | Keep only where polyphonic/multi-instrument results beat Logic's monophonic Flex Pitch path |
 | Instrument filtering | Implemented | Maintain | Useful practical constraint |
 | Tempo detection toggle | Implemented | Maintain | Preserve source tempo when desired |
 | Small/medium/large MuScriptor models | Configurable server env | Evaluate | Benchmark accuracy, VRAM, and latency before exposing profiles |
@@ -322,7 +374,7 @@ them as typed operations instead of one bag of optional parameters.
 | Event stream output | Missing | Evaluate | Structured note/event editing may eventually benefit |
 | JSON/JSONL output | Missing | Evaluate | Useful for analysis pipelines, less useful to Logic directly |
 | Auralized check mix | Missing | Evaluate | Helpful for validating transcription without opening Logic |
-| Quantized MIDI | Missing | Next/Evaluate | High DAW value if timing remains musical |
+| Quantized MIDI | Missing | Evaluate | Logic owns quantization; add only if transcription accuracy requires it before export |
 | MusicXML | Missing | Evaluate | Useful for notation workflows |
 | Full score PDF | Missing | Defer | Requires MuseScore and is not central to Logic workflow |
 | Per-instrument PDFs/tabs | Missing | Defer | Retain as a future notation option |
@@ -333,15 +385,15 @@ them as typed operations instead of one bag of optional parameters.
 
 | Capability | Status | Priority | Notes |
 | --- | --- | --- | --- |
-| Trim/combine/render | Maestro only | Next | Deterministic foundation for covers and mashups |
-| Gain/pan/fades/crossfades | Partial Maestro concepts | Next | Necessary arrangement primitives |
-| Pitch shift | Maestro only | Next | Improve quality and add key-aware control |
-| Time stretch/tempo match | Missing | Next | Essential for mashups; preserve pitch by default |
-| Vocal processing chain | Maestro only | Next | Keep stages inspectable and bypassable |
-| Loudness normalization | Maestro only | Next | Deterministic delivery baseline |
-| Compression/limiting | Maestro only | Next | Conservative defaults; leave creative mix decisions to Logic |
-| Reference mastering | Maestro Matchering | Evaluate | Optional alternate output, never overwrite the mix |
-| Stem bundle export | Missing | Next | Multiple typed assets, Logic-friendly names and formats |
+| Trim/combine/render | Logic-owned | Reject | Arrangement and bounce belong in Logic |
+| Gain/pan/fades/crossfades | Logic-owned | Reject | Arrangement and mixing belong in Logic |
+| Pitch shift | Logic-owned | Reject | Flex Pitch, Pitch Shifter, and region transpose cover this |
+| Time stretch/tempo match | Logic-owned | Reject | Smart Tempo and Flex Time cover this |
+| Vocal processing chain | Logic-owned | Reject | Keep only model-required preprocessing internal |
+| Loudness normalization | Logic-owned | Reject | Logic owns delivery loudness and final bounce |
+| Compression/limiting | Logic-owned | Reject | Mixing and mastering belong in Logic |
+| Reference mastering | Logic-owned | Reject | Mastering Assistant replaces the planned Matchering path |
+| Stem bundle export | Conditional | Evaluate | Export multiple model outputs when produced; do not create stems merely to duplicate Logic |
 | WAV/WAV32/AIFF export | Partial | Next | Production formats first |
 | MP3/AAC/Opus export | Upstream ACE only | Evaluate | Convenience preview/share copies |
 | Direct Logic project creation | Missing | Defer | High integration cost; stable file export is sufficient initially |
@@ -353,8 +405,8 @@ them as typed operations instead of one bag of optional parameters.
 | Durable queued jobs | Implemented | Maintain | Preserve the current coordinator |
 | Server restart recovery | Implemented | Maintain | Extend to every new worker/operation |
 | Mac job reattachment | Missing | Now | Use existing job listing and recorded local pending jobs |
-| Multiple result assets | Missing | Now | Required by variations and stems |
-| Input asset upload/reference | Missing | Now | Required by every source-audio operation |
+| Multiple result assets | Implemented | Maintain | Deployed durable asset foundation supports named outputs |
+| Input asset upload/reference | Implemented | Maintain | Deployed reusable transient upload contract |
 | Transformation provenance | Missing | Now | Source, operation, parameters, model revision, result |
 | Project/song grouping | Missing | Evaluate | Lightweight grouping may help once results branch |
 | Version/branch relationships | Missing | Evaluate | Add when Repaint and cover outputs become numerous |
@@ -379,19 +431,20 @@ them as typed operations instead of one bag of optional parameters.
 
 ## 7. Alternatives considered
 
-### Cover pipeline first
+### Full cover pipeline first
 
 This would most directly realize vocal swapping, but it introduces separation,
 enhancement, conversion, tuning, mixing, multiple assets, and failure recovery
-at once. Building asset-aware jobs first reduces integration risk and avoids a
-one-off pipeline contract.
+at once. The Logic audit also shows that separation, tuning, mixing, and
+mastering already have stronger project-aware homes. The revised voice phase
+therefore accepts a prepared stem and returns a converted stem.
 
 ### Local utility foundation first
 
-Completing Apple analysis and DSP before server inference would be low risk and
-useful, but it would delay the differentiated source-audio capabilities already
-available in ACE-Step. Local analysis is therefore included in Phase 1 without
-making it the entire phase.
+Completing Apple analysis before server inference would be low risk, but it
+would delay the differentiated source-audio capabilities already available in
+ACE-Step and risk duplicating Logic. Local analysis therefore grows only when a
+specific inference contract consumes the result.
 
 ### Expose the full ACE-Step API
 
@@ -412,9 +465,9 @@ representing actual use:
 - at least one long source.
 
 Record runtime, peak VRAM, failure behavior, output format, perceived artifacts,
-source preservation, and usefulness after import into Logic. For overlapping
-tools—dedicated separator versus ACE Extract, for example—choose based on these
-results, not advertised feature breadth.
+source preservation, and usefulness after import into Logic. An overlapping
+tool must show a repeatable advantage over Logic on this corpus or be required
+as an internal unattended-pipeline stage before it can enter the roadmap.
 
 New jobs require contract tests, persistence/recovery tests, adapter tests, and
 an `lts1` smoke test. Audio quality acceptance remains a manual listening task;
@@ -468,10 +521,25 @@ Micromix by this design decision.
 - [AVFoundation offline audio processing](https://developer.apple.com/documentation/avfaudio/performing-offline-audio-processing)
 - [Apple Foundation Models](https://developer.apple.com/documentation/foundationmodels)
 - [ShazamKit](https://developer.apple.com/shazamkit/)
+- [Logic Pro for Mac 12.3: What's new](https://support.apple.com/guide/logicpro/whats-new-in-logic-pro-lgcp4a62a494/mac)
+- [Logic Pro intelligence features](https://www.apple.com/logic-pro/)
+- [Apple's 2026 Logic Pro intelligence announcement](https://www.apple.com/newsroom/2026/01/introducing-apple-creator-studio-an-inspiring-collection-of-creative-apps/)
+- [Session Players overview](https://support.apple.com/guide/logicpro/session-players-overview-lgcpbf624405/mac)
+- [Chord ID](https://support.apple.com/guide/logicpro/analyze-chords-audio-midi-regions-logic-pro-lgcp4993e80c/mac)
+- [Stem Splitter](https://support.apple.com/guide/logicpro/extract-vocal-instrumental-stems-stem-lgcp61bae908/mac)
+- [Pitch Correction](https://support.apple.com/guide/logicpro/pitch-correction-effect-lgcef2835dcc/mac)
+- [Flex Time and Pitch](https://support.apple.com/guide/logicpro/flex-time-and-pitch-overview-lgcp15968647/mac)
+- [Flex Pitch audio-to-MIDI](https://support.apple.com/guide/logicpro/create-midi-from-audio-recordings-lgcpe2fd1b83/mac)
+- [Smart Tempo](https://support.apple.com/guide/logicpro/smart-tempo-overview-lgcp9281e70c/mac)
+- [ChromaGlow](https://support.apple.com/guide/logicpro/chromaglow-lgcp0a30400b/mac)
+- [Mastering Assistant](https://support.apple.com/guide/logicpro/mastering-assistant-overview-lgcp7f94da0b/mac)
+- [Logic Pro 11.2 features and Writing Tools](https://www.apple.com/newsroom/2025/05/logic-pro-amplifies-beat-making-on-mac-and-ipad-with-advanced-new-capabilities/)
 
 ## 10. Immediate follow-up
 
-The next implementation design should cover Phase 1 only. It should define the
-asset/provenance schema, typed ACE-Step operation contracts, upload lifecycle,
-multi-output behavior, restart reconciliation, local analysis record, and a
-focused evaluation fixture set before any backend code is changed on `lts1`.
+The durable asset portion of Phase 1 is complete and deployed. The next
+implementation design should cover only Phase 1B: typed ACE-Step reference,
+Remix/Cover, and Repaint contracts; operation-specific inputs; adapter behavior;
+and a focused source-preservation evaluation set. After the server contract is
+verified, add Mac job reattachment, provenance, and concise controls. Do not
+start separation, tuning, mashup DSP, or mastering work as part of that plan.

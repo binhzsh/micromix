@@ -20,8 +20,9 @@ Docker/uv on `lts1`.
 
 **Spec:** `docs/superpowers/specs/2026-08-30-micromix-inference-roadmap-design.md`
 
-**Status:** implementation and isolated verification complete; live deployment
-awaiting review.
+**Status:** complete, merged to `main`, and deployed on `lts1` on 2026-08-30.
+Backend verification passed all 33 tests and the live schema/asset-link smoke
+check.
 
 ## Global Constraints
 
