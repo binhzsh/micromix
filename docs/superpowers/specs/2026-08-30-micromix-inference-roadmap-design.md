@@ -1,9 +1,7 @@
 # Micromix Inference Feature Landscape and Roadmap
 
 **Date:** 2026-08-30
-**Status:** active product direction; Phase 1B server operations deployed;
-scope revised for an AI-first Micromix workflow with Logic Pro as the finishing
-environment
+**Status:** historical discovery; superseded by `docs/MICROMIX_ROADMAP.md`
 **Scope:** inference, audio processing, model capabilities, and supporting data
 contracts. Visual and UI work is intentionally excluded.
 
@@ -500,11 +498,8 @@ mastering surface.
 - `services/ace-step/` — pinned ACE-Step worker.
 - `services/muscriptor-worker/` — current audio-to-MIDI worker.
 - `MacOS/sources/Audio/LocalMusicAnalyzer.swift` — current local analysis scope.
-- `MacOS/sources/Core/Models.swift` — current single-asset remote job model.
-- `MacOS/docs/superpowers/specs/2026-08-19-micromix-macos-app-design.md` —
-  historical MVP scope; backend and persistence contracts are superseded.
-- `MacOS/docs/superpowers/plans/2026-10-19-micromix-macos-app.md` — completed
-  native application plan.
+- `MacOS/sources/Core/Models.swift` — current durable remote job and provenance
+  model.
 
 ### Maestro sources inspected on `lts1`
 
@@ -556,9 +551,8 @@ Micromix by this design decision.
 
 ## 10. Immediate follow-up
 
-The durable asset portion of Phase 1 is complete and deployed. The next
-implementation design should cover only Phase 1B: typed ACE-Step reference,
-Remix/Cover, and Repaint contracts; operation-specific inputs; adapter behavior;
-and a focused source-preservation evaluation set. After the server contract is
-verified, add Mac job reattachment, provenance, and concise controls. Do not
-start separation, tuning, mashup DSP, or mastering work as part of that plan.
+Phase 1 is complete: durable assets, ACE-Step reference generation, Remix/Cover,
+Repaint, native job reattachment, provenance, and concise controls are deployed.
+Use `docs/MICROMIX_ROADMAP.md` for all current product direction, phase ordering,
+task status, and acceptance gates. This document remains historical capability
+discovery only.

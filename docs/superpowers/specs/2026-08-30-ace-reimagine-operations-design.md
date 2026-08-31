@@ -1,7 +1,7 @@
 # ACE Reimagine Operations Design
 
 **Date:** 2026-08-30
-**Status:** proposed design; awaiting written-spec review
+**Status:** implemented and deployed on `lts1` on 2026-08-31
 **Scope:** Phase 1B server contracts and execution for ACE-Step reference
 generation, Remix/Cover, Repaint, variations, and restart recovery. Native Mac
 reattachment and controls are a subsequent phase.

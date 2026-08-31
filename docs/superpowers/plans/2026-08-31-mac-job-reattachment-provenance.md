@@ -1,5 +1,9 @@
 # Mac Job Reattachment and Provenance Implementation Plan
 
+**Status:** Complete, merged to `main` on 2026-08-31. The native implementation
+covers durable job decoding, pending-job persistence and recovery, idempotent
+output import with provenance, startup wiring, and Library provenance controls.
+
 > Execute on an isolated local worktree. Run the full headless Xcode test suite
 > after every completed task. Do not automate the active desktop.
 

@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> checkbox syntax for tracking completed steps.
 
 **Goal:** Add durable reference generation, Remix/Cover, Repaint, deterministic
 variations, and bounded upstream recovery to the Micromix gateway.
@@ -17,6 +17,10 @@ hidden recovery counter so a vanished upstream task is resubmitted exactly once.
 pytest, Docker Compose, ACE-Step 1.5 pinned commit.
 
 **Spec:** `docs/superpowers/specs/2026-08-30-ace-reimagine-operations-design.md`
+
+**Status:** Complete, merged to `main`, and deployed on `lts1` on 2026-08-31.
+The backend suite passed 78 tests and the ACE supervisor suite passed 4 tests;
+the deployment and short inference smoke are recorded in Task 6.
 
 ## Global Constraints
 

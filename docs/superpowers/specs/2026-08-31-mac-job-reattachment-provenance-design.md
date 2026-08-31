@@ -1,7 +1,7 @@
 # Mac Job Reattachment and Provenance Design
 
 **Date:** 2026-08-31  
-**Status:** approved implementation design  
+**Status:** implemented on `main` on 2026-08-31
 **Scope:** native macOS durable-job recovery and local provenance for the
 deployed Phase 1B gateway. No backend or visual-redesign work.
 
