@@ -414,3 +414,31 @@ async def test_batch_registration_failure_removes_staged_files(
     assert failed.state is JobState.failed
     assert failed.outputs == []
     assert not (store.asset_root / job.id).exists()
+
+
+@pytest.mark.asyncio
+async def test_cancel_requested_prevents_missing_task_resubmission(store: JobStore):
+    job, _ = await create_source_job(store)
+    await store.update_job(
+        job.id,
+        state=JobState.queued,
+        upstream_id="lost-task",
+        cancel_requested=True,
+    )
+    ace = FakeACE([UpstreamResult.missing()])
+    coordinator = Coordinator(
+        store,
+        FakeGPU(),
+        ace,
+        FakeMuScriptor(),
+        poll_interval=0,
+    )
+
+    await coordinator.run_job(job.id)
+
+    cancelled = await store.get_job(job.id)
+    assert cancelled.state is JobState.cancelled
+    assert cancelled.outputs == []
+    assert ace.submissions == []
+    assert ace.polls == []
+    assert not (store.asset_root / job.id).exists()

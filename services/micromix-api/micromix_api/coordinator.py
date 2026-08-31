@@ -184,6 +184,15 @@ class Coordinator:
             )
 
         while True:
+            current = await self.store.get_job(job.id)
+            if current is not None and current.cancel_requested:
+                await self.store.update_job(
+                    job.id,
+                    state=JobState.cancelled,
+                    progress_detail=None,
+                )
+                return
+
             result = await self.ace.poll(upstream_id)
             if result.state == "running":
                 await self.store.update_job(
@@ -232,15 +241,6 @@ class Coordinator:
             if result.state != "succeeded":
                 raise RuntimeError(f"unexpected ACE-Step state: {result.state}")
 
-            current = await self.store.get_job(job.id)
-            if current is not None and current.cancel_requested:
-                await self.store.update_job(
-                    job.id,
-                    state=JobState.cancelled,
-                    progress_detail=None,
-                )
-                return
-
             expected_count = int(job.parameters.get("variation_count", 1))
             if len(result.outputs) != expected_count:
                 raise RuntimeError(
@@ -272,16 +272,14 @@ class Coordinator:
                             position=position,
                         )
                     )
-                await self.store.register_outputs(job.id, bindings)
+                await self.store.register_outputs(
+                    job.id,
+                    bindings,
+                    complete_job=True,
+                )
             except Exception:
                 self._remove_output_directory(directory)
                 raise
-            await self.store.update_job(
-                job.id,
-                state=JobState.succeeded,
-                progress=1.0,
-                progress_detail=None,
-            )
             return
 
     async def _run_transcription(self, job: JobRecord) -> None:

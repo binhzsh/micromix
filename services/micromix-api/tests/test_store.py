@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -347,6 +348,89 @@ async def test_register_outputs_rolls_back_when_any_output_is_invalid(
         )
 
     persisted = await store.get_job(job.id)
+    assert persisted.outputs == []
+    count = await (
+        await store.db.execute("SELECT COUNT(*) FROM assets")
+    ).fetchone()
+    assert count[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_concurrent_job_creation_is_serialized(store: JobStore):
+    jobs = await asyncio.gather(
+        *[
+            store.create_job(
+                JobKind.generation,
+                {"prompt": f"job-{index}"},
+            )
+            for index in range(8)
+        ]
+    )
+
+    persisted = await store.list_jobs()
+    assert {job.id for job in jobs} == {job.id for job in persisted}
+
+
+@pytest.mark.asyncio
+async def test_concurrent_asset_and_job_writes_do_not_cross_transactions(
+    store: JobStore,
+):
+    paths = []
+    for index in range(4):
+        path = store.asset_root / f"input-{index}.wav"
+        path.write_bytes(f"RIFF-{index}".encode())
+        paths.append(path)
+
+    results = await asyncio.gather(
+        *[
+            store.create_asset(path, "audio/wav", path.name)
+            for path in paths
+        ],
+        *[
+            store.create_job(
+                JobKind.generation,
+                {"prompt": f"job-{index}"},
+            )
+            for index in range(4)
+        ],
+    )
+
+    assert len(results) == 8
+    count = await (
+        await store.db.execute("SELECT COUNT(*) FROM assets")
+    ).fetchone()
+    assert count[0] == 4
+    assert len(await store.list_jobs()) == 4
+
+
+@pytest.mark.asyncio
+async def test_complete_with_outputs_rolls_back_links_when_state_update_fails(
+    store: JobStore,
+):
+    job = await store.create_job(JobKind.generation, {"prompt": "song"})
+    output = store.asset_root / "result.wav"
+    output.write_bytes(b"RIFF-result")
+    await store.db.execute(
+        """
+        CREATE TRIGGER reject_success
+        BEFORE UPDATE OF state ON jobs
+        WHEN NEW.state = 'succeeded'
+        BEGIN
+            SELECT RAISE(ABORT, 'reject success');
+        END
+        """
+    )
+    await store.db.commit()
+
+    with pytest.raises(Exception, match="reject success"):
+        await store.register_outputs(
+            job.id,
+            [OutputAssetBinding(output, "audio/wav", "result.wav")],
+            complete_job=True,
+        )
+
+    persisted = await store.get_job(job.id)
+    assert persisted.state is JobState.queued
     assert persisted.outputs == []
     count = await (
         await store.db.execute("SELECT COUNT(*) FROM assets")

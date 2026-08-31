@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import uuid
@@ -112,6 +113,14 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _serialized_write(method):
+    async def wrapped(self, *args, **kwargs):
+        async with self._write_lock:
+            return await method(self, *args, **kwargs)
+
+    return wrapped
+
+
 @dataclass(frozen=True, slots=True)
 class InputAssetBinding:
     asset_id: str
@@ -133,6 +142,7 @@ class JobStore:
         self.database_path = database_path
         self.asset_root = asset_root
         self._db: aiosqlite.Connection | None = None
+        self._write_lock = asyncio.Lock()
 
     async def open(self) -> None:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -158,6 +168,7 @@ class JobStore:
             raise RuntimeError("store is not open")
         return self._db
 
+    @_serialized_write
     async def create_job(
         self,
         kind: JobKind,
@@ -221,6 +232,7 @@ class JobStore:
         assert value is not None
         return value
 
+    @_serialized_write
     async def update_job(
         self,
         job_id: str,
@@ -266,6 +278,7 @@ class JobStore:
         assert value is not None
         return value
 
+    @_serialized_write
     async def update_internal_parameters(
         self,
         job_id: str,
@@ -315,6 +328,7 @@ class JobStore:
         )
         return [await self._job_from_row(row) for row in await cursor.fetchall()]
 
+    @_serialized_write
     async def create_asset(
         self,
         path: Path,
@@ -358,6 +372,7 @@ class JobStore:
             download_url=f"/v1/assets/{asset_id}",
         )
 
+    @_serialized_write
     async def attach_asset(
         self,
         job_id: str,
@@ -411,10 +426,13 @@ class JobStore:
         )
         return assets[0]
 
+    @_serialized_write
     async def register_outputs(
         self,
         job_id: str,
         outputs: list[OutputAssetBinding] | tuple[OutputAssetBinding, ...],
+        *,
+        complete_job: bool = False,
     ) -> list[AssetRecord]:
         if await self.get_job(job_id) is None:
             raise KeyError(job_id)
@@ -481,6 +499,20 @@ class JobStore:
                         position,
                     ),
                 )
+            if complete_job:
+                await self.db.execute(
+                    """
+                    UPDATE jobs SET state = ?, progress = ?,
+                        progress_detail = NULL, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        JobState.succeeded.value,
+                        1.0,
+                        _now().isoformat(),
+                        job_id,
+                    ),
+                )
             await self.db.commit()
         except Exception:
             await self.db.rollback()
@@ -528,6 +560,7 @@ class JobStore:
                     )
         return recovered
 
+    @_serialized_write
     async def prune_assets(self, *, older_than: datetime) -> int:
         cursor = await self.db.execute(
             """
