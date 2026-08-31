@@ -3,6 +3,7 @@ import Foundation
 
 @MainActor
 final class AnalyzeViewModel: ObservableObject {
+    @Published private(set) var sourceURL: URL?
     @Published private(set) var sourceName = ""
     @Published private(set) var analysis: LocalMusicAnalysis?
     @Published private(set) var isRunning = false
@@ -10,6 +11,7 @@ final class AnalyzeViewModel: ObservableObject {
 
     func analyze(url: URL) {
         guard !isRunning else { return }
+        sourceURL = url
         sourceName = url.lastPathComponent
         analysis = nil
         error = nil
