@@ -204,3 +204,49 @@ async def test_open_migrates_legacy_single_asset_schema(tmp_path: Path):
     assert migrated.asset == migrated.outputs[0].asset
     assert asset_value is not None and asset_value[1].read_bytes() == b"RIFF-legacy"
     assert version[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_prune_retains_shared_active_input_and_removes_old_orphan(
+    store: JobStore,
+):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    old_time = cutoff - timedelta(days=1)
+    shared_path = store.asset_root / "shared.wav"
+    shared_path.write_bytes(b"RIFF-shared")
+    shared = await store.create_asset(shared_path, "audio/wav", shared_path.name)
+    orphan_path = store.asset_root / "orphan.wav"
+    orphan_path.write_bytes(b"RIFF-orphan")
+    orphan = await store.create_asset(orphan_path, "audio/wav", orphan_path.name)
+    old_job = await store.create_job(JobKind.generation, {"prompt": "old"})
+    active_job = await store.create_job(JobKind.generation, {"prompt": "active"})
+    await store.attach_asset(
+        old_job.id,
+        shared.id,
+        AssetDirection.input,
+        "source",
+    )
+    await store.attach_asset(
+        active_job.id,
+        shared.id,
+        AssetDirection.input,
+        "source",
+    )
+    await store.update_job(
+        old_job.id,
+        state=JobState.succeeded,
+        updated_at=old_time,
+    )
+    await store.db.execute(
+        "UPDATE assets SET created_at = ? WHERE id IN (?, ?)",
+        (old_time.isoformat(), shared.id, orphan.id),
+    )
+    await store.db.commit()
+
+    count = await store.prune_assets(older_than=cutoff)
+
+    assert count == 1
+    assert shared_path.exists()
+    assert not orphan_path.exists()
+    assert await store.get_asset(orphan.id) is None
+    assert await store.get_asset(shared.id) is not None

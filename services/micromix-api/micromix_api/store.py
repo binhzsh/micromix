@@ -368,12 +368,34 @@ class JobStore:
     async def prune_assets(self, *, older_than: datetime) -> int:
         cursor = await self.db.execute(
             """
-            SELECT DISTINCT assets.id, assets.relative_path FROM assets
-            JOIN job_assets ON job_assets.asset_id = assets.id
-            JOIN jobs ON jobs.id = job_assets.job_id
-            WHERE jobs.state IN (?, ?, ?) AND jobs.updated_at < ?
+            SELECT assets.id, assets.relative_path
+            FROM assets
+            WHERE NOT EXISTS (
+                SELECT 1 FROM job_assets
+                JOIN jobs ON jobs.id = job_assets.job_id
+                WHERE job_assets.asset_id = assets.id
+                  AND (
+                      jobs.state NOT IN (?, ?, ?)
+                      OR jobs.updated_at >= ?
+                  )
+            )
+              AND (
+                  assets.created_at < ?
+                  OR EXISTS (
+                      SELECT 1 FROM job_assets
+                      JOIN jobs ON jobs.id = job_assets.job_id
+                      WHERE job_assets.asset_id = assets.id
+                        AND jobs.state IN (?, ?, ?)
+                        AND jobs.updated_at < ?
+                  )
+              )
             """,
             (
+                JobState.succeeded.value,
+                JobState.failed.value,
+                JobState.cancelled.value,
+                older_than.isoformat(),
+                older_than.isoformat(),
                 JobState.succeeded.value,
                 JobState.failed.value,
                 JobState.cancelled.value,
