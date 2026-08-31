@@ -37,13 +37,13 @@ pytest, Docker Compose, ACE-Step 1.5.
 - Modify: `services/micromix-api/micromix_api/models.py`
 - Test: `services/micromix-api/tests/test_api.py`
 
-- [ ] Write failing pytest cases asserting `vocal_language="en"` and `"vi"`
+- [x] Write failing pytest cases asserting `vocal_language="en"` and `"vi"`
       are accepted and `"fr"` returns HTTP 422.
-- [ ] Run the focused tests on `lts1` with the frozen uv container and confirm
+- [x] Run the focused tests on `lts1` with the frozen uv container and confirm
       they fail because `vocal_language` is rejected.
-- [ ] Add optional `Literal["en", "vi"]` to `GenerationControls`.
-- [ ] Re-run focused tests and the full API suite.
-- [ ] Commit: `feat(api): validate bilingual generation language`.
+- [x] Add optional `Literal["en", "vi"]` to `GenerationControls`.
+- [x] Re-run focused tests and the full API suite.
+- [x] Commit: `feat(api): validate bilingual generation language`.
 
 ### Task 2: Forward language only to supported ACE task types
 
@@ -52,13 +52,13 @@ pytest, Docker Compose, ACE-Step 1.5.
 - Modify: `services/micromix-api/micromix_api/adapters.py`
 - Test: `services/micromix-api/tests/test_adapters.py`
 
-- [ ] Write failing adapter tests for `vocal_language` on text and reference
+- [x] Write failing adapter tests for `vocal_language` on text and reference
       payloads, and absence on Remix/Repaint payloads.
-- [ ] Run the focused adapter tests and confirm the expected missing-key
+- [x] Run the focused adapter tests and confirm the expected missing-key
       failure.
-- [ ] Add the minimal `operation in {"text", "reference"}` payload mapping.
-- [ ] Re-run focused and full API tests.
-- [ ] Commit: `feat(api): forward bilingual ACE language intent`.
+- [x] Add the minimal `operation in {"text", "reference"}` payload mapping.
+- [x] Re-run focused and full API tests.
+- [x] Commit: `feat(api): forward bilingual ACE language intent`.
 
 ### Task 3: Add native generation option types and service seams
 
@@ -68,14 +68,14 @@ pytest, Docker Compose, ACE-Step 1.5.
 - Modify: `MacOS/sources/Core/ServiceProtocols.swift`
 - Modify: `MacOS/Tests/Generate/GenerateViewModelTests.swift`
 
-- [ ] Write failing Swift tests that pass `GenerationOptions` through fake
+- [x] Write failing Swift tests that pass `GenerationOptions` through fake
       durable and legacy generation services.
-- [ ] Run the focused Generate ViewModel tests and confirm compilation fails
+- [x] Run the focused Generate ViewModel tests and confirm compilation fails
       because the type and protocol argument do not exist.
-- [ ] Add `VocalLanguage` and `GenerationOptions`, then extend both generation
+- [x] Add `VocalLanguage` and `GenerationOptions`, then extend both generation
       protocols with the defaultable options argument.
-- [ ] Update fakes and rerun focused tests.
-- [ ] Commit: `feat(macos): model bilingual generation options`.
+- [x] Update fakes and rerun focused tests.
+- [x] Commit: `feat(macos): model bilingual generation options`.
 
 ### Task 4: Serialize Generate and Reference options precisely
 
@@ -85,16 +85,16 @@ pytest, Docker Compose, ACE-Step 1.5.
 - Modify: `MacOS/sources/Core/Models.swift`
 - Test: `MacOS/Tests/Core/MicromixAPITests.swift`
 
-- [ ] Write failing tests for a Vietnamese Generate body containing seed,
+- [x] Write failing tests for a Vietnamese Generate body containing seed,
       variations, BPM, key, time signature, and `vocal_language: "vi"`; write
       a second test proving Auto omits the language key.
-- [ ] Write a failing Reference test proving Vietnamese language serializes only
+- [x] Write a failing Reference test proving Vietnamese language serializes only
       on the reference route.
-- [ ] Run focused API tests and confirm failure.
-- [ ] Implement `GenerationOptions` body mapping, extend
+- [x] Run focused API tests and confirm failure.
+- [x] Implement `GenerationOptions` body mapping, extend
       `ReimagineRequest.reference`, and omit unset values.
-- [ ] Re-run focused API tests and the full macOS suite.
-- [ ] Commit: `feat(macos): serialize bilingual generation controls`.
+- [x] Re-run focused API tests and the full macOS suite.
+- [x] Commit: `feat(macos): serialize bilingual generation controls`.
 
 ### Task 5: Capture immutable options in Generate lifecycle
 
@@ -106,10 +106,10 @@ pytest, Docker Compose, ACE-Step 1.5.
 - [ ] Write a failing test that changes view-model controls after `start()` and
       proves the submitted durable request retains the original options.
 - [ ] Run the focused test and confirm failure.
-- [ ] Add published option fields, bounded local validation, and immutable
+- [x] Add published option fields, bounded local validation, and immutable
       capture before `JobRunner.start`.
-- [ ] Re-run focused Generate tests and the full macOS suite.
-- [ ] Commit: `feat(macos): retain generation option provenance`.
+- [x] Re-run focused Generate tests and the full macOS suite.
+- [x] Commit: `feat(macos): retain generation option provenance`.
 
 ### Task 6: Expose concise Generate and Reference controls
 
@@ -124,10 +124,10 @@ pytest, Docker Compose, ACE-Step 1.5.
 - [ ] Write failing layout and Reference-request tests for the language picker,
       musical-options disclosure, and no language key on Remix/Repaint.
 - [ ] Run focused tests and confirm the new UI/state is absent.
-- [ ] Add Auto/English/Vietnamese controls, compact bounded option inputs, and
+- [x] Add Auto/English/Vietnamese controls, compact bounded option inputs, and
       Reference-only language state.
-- [ ] Re-run focused tests and the full macOS suite.
-- [ ] Commit: `feat(macos): add bilingual creative controls`.
+- [x] Re-run focused tests and the full macOS suite.
+- [x] Commit: `feat(macos): add bilingual creative controls`.
 
 ### Task 7: Activate Phase 1 and deploy the server contract
 
