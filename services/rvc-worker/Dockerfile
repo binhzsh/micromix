@@ -14,11 +14,11 @@ RUN apt-get update \
 RUN git clone https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI.git /opt/rvc \
     && cd /opt/rvc \
     && git checkout "${RVC_COMMIT}" \
-    && python3 -m pip install --break-system-packages -r requirements.txt
+    && python3 -m pip install -r requirements.txt
 
 WORKDIR /app
 COPY requirements.txt .
-RUN python3 -m pip install --break-system-packages -r requirements.txt
+RUN python3 -m pip install -r requirements.txt
 COPY app.py .
 
 ENV RVC_ROOT=/opt/rvc \
