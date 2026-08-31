@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 from pathlib import Path
@@ -8,7 +9,7 @@ from typing import Protocol
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
 
 class ProcessControlling(Protocol):
@@ -133,6 +134,7 @@ def create_app(
         base_url="http://127.0.0.1:18001",
         timeout=1200,
     )
+    known_task_ids: set[str] = set()
 
     async def proxy(method: str, path: str, request: Request) -> Response:
         try:
@@ -163,11 +165,63 @@ def create_app(
 
     @app.post("/release_task")
     async def release_task(request: Request) -> Response:
-        return await proxy("POST", "/release_task", request)
+        response = await proxy("POST", "/release_task", request)
+        if response.status_code < 400:
+            try:
+                payload = json.loads(response.body)
+                task_id = payload.get("data", {}).get("task_id")
+                if task_id:
+                    known_task_ids.add(str(task_id))
+            except (AttributeError, TypeError, ValueError):
+                pass
+        return response
 
     @app.post("/query_result")
     async def query_result(request: Request) -> Response:
-        return await proxy("POST", "/query_result", request)
+        try:
+            request_payload = await request.json()
+        except (json.JSONDecodeError, ValueError):
+            request_payload = {}
+        task_ids = request_payload.get("task_id_list", [])
+        if isinstance(task_ids, str):
+            try:
+                task_ids = json.loads(task_ids)
+            except (json.JSONDecodeError, TypeError):
+                task_ids = []
+        if not isinstance(task_ids, list):
+            task_ids = []
+
+        if not process_manager.running:
+            return JSONResponse(
+                {
+                    "code": 200,
+                    "data": [
+                        {
+                            "task_id": str(task_id),
+                            "status": 3,
+                            "result": "[]",
+                        }
+                        for task_id in task_ids
+                    ],
+                }
+            )
+
+        response = await proxy("POST", "/query_result", request)
+        if response.status_code >= 400:
+            return response
+        try:
+            payload = json.loads(response.body)
+            for row in payload.get("data", []):
+                task_id = str(row.get("task_id", ""))
+                if (
+                    task_id not in known_task_ids
+                    and int(row.get("status", 0)) == 0
+                    and row.get("result") == "[]"
+                ):
+                    row["status"] = 3
+            return JSONResponse(payload, status_code=response.status_code)
+        except (AttributeError, TypeError, ValueError):
+            return response
 
     @app.get("/v1/audio")
     async def audio(request: Request) -> Response:
@@ -175,7 +229,9 @@ def create_app(
 
     @app.post("/api/gpu/release")
     async def release_gpu() -> dict[str, bool]:
-        return {"released": await process_manager.stop()}
+        released = await process_manager.stop()
+        known_task_ids.clear()
+        return {"released": released}
 
     return app
 

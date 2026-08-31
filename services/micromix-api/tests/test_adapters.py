@@ -103,8 +103,8 @@ async def test_ace_poll_parses_result_and_downloads_audio():
         if request.url.path == "/query_result":
             result = json.dumps(
                 [
-                    {"file": "/v1/audio?path=%2Ftmp%2Ffirst.wav", "status": 1},
-                    {"file": "/v1/audio?path=%2Ftmp%2Fsecond.wav", "status": 1},
+                    {"file": "/app/output/first.wav", "status": 1},
+                    {"file": "/app/output/second.wav", "status": 1},
                 ]
             )
             return httpx.Response(
@@ -339,4 +339,66 @@ async def test_ace_poll_distinguishes_missing_and_running_results(
     result = await ace.poll("task-1")
 
     assert result.state == expected_state
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("legacy_seed", "expected_random", "expected_seed"),
+    [
+        (9, False, 9),
+        (None, True, None),
+    ],
+)
+async def test_ace_submit_accepts_pre_upgrade_seed_parameters(
+    legacy_seed: int | None,
+    expected_random: bool,
+    expected_seed: int | None,
+):
+    captured: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={"code": 200, "data": {"task_id": "legacy-task"}},
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    ace = ACEClient("http://ace.test", client=client)
+    parameters = {
+        "prompt": "legacy queued song",
+        "preset": "turbo",
+        "duration_seconds": 10,
+    }
+    if legacy_seed is not None:
+        parameters["seed"] = legacy_seed
+
+    task_id = await ace.submit(parameters)
+
+    assert task_id == "legacy-task"
+    assert captured[0]["batch_size"] == 1
+    assert captured[0]["use_random_seed"] is expected_random
+    if expected_seed is None:
+        assert "seed" not in captured[0]
+    else:
+        assert captured[0]["seed"] == expected_seed
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_ace_poll_treats_worker_missing_status_as_missing():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "code": 200,
+                "data": [{"task_id": "lost", "status": 3, "result": "[]"}],
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    result = await ACEClient("http://ace.test", client=client).poll("lost")
+
+    assert result.state == "missing"
     await client.aclose()

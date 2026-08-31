@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import urlencode
 
 import httpx
 
@@ -94,9 +94,16 @@ class ACEClient:
             "audio_format": "wav",
             "task_type": task_type,
             "batch_size": parameters.get("variation_count", 1),
-            "use_random_seed": False,
-            "seed": ",".join(str(seed) for seed in parameters["seeds"]),
         }
+        seeds = parameters.get("seeds")
+        if seeds:
+            payload["use_random_seed"] = False
+            payload["seed"] = ",".join(str(seed) for seed in seeds)
+        elif parameters.get("seed") is not None:
+            payload["use_random_seed"] = False
+            payload["seed"] = parameters["seed"]
+        else:
+            payload["use_random_seed"] = True
         if parameters.get("duration_seconds") is not None:
             payload["audio_duration"] = parameters["duration_seconds"]
         for source, target in (
@@ -197,14 +204,14 @@ class ACEClient:
             return UpstreamResult.failed("ACE-Step produced no audio file")
         outputs: list[UpstreamOutput] = []
         for result in results:
-            file_url = str(result["file"])
+            source_path = str(result["file"])
+            file_url = str(
+                result.get("url")
+                or f"/v1/audio?{urlencode({'path': source_path})}"
+            )
             download = await self.client.get(f"{self.base_url}{file_url}")
             if download.status_code >= 400:
                 raise RuntimeError(_error_detail(download))
-            parsed = urlparse(file_url)
-            source_path = unquote(
-                parse_qs(parsed.query).get("path", ["result.wav"])[0]
-            )
             outputs.append(
                 UpstreamOutput(
                     data=download.content,
