@@ -1,5 +1,8 @@
+import wave
+
 from fastapi.testclient import TestClient
 
+from muscriptor_worker import main
 from muscriptor_worker.main import ModelManager, available_instruments, create_app
 
 
@@ -84,3 +87,46 @@ def test_default_instruments_do_not_import_muscriptor(monkeypatch):
     assert instruments[0] == "acoustic_bass"
     assert instruments[-1] == "voice"
     assert len(instruments) == 35
+
+
+def test_false_tempo_form_reaches_engine_as_boolean_false():
+    engine = FakeEngine()
+
+    with TestClient(create_app(ModelManager(lambda: engine))) as client:
+        response = client.post(
+            "/transcribe/midi",
+            files={"audio_file": ("song.wav", b"RIFF-audio", "audio/wav")},
+            data={"detect_tempo": "false"},
+        )
+
+    assert response.status_code == 200
+    assert engine.calls == [(b"RIFF-audio", [], False)]
+
+
+def test_audio_decode_falls_back_to_ffmpeg_after_native_readers_fail():
+    transcoded = []
+
+    def wav_reader(stream):
+        payload = stream.read()
+        if payload == b"m4a-audio":
+            raise wave.Error("not wav")
+        assert payload == b"RIFF-converted"
+        return [0.25], 16_000
+
+    def other_reader(stream):
+        assert stream.read() == b"m4a-audio"
+        raise RuntimeError("format not recognised")
+
+    def transcode(data):
+        transcoded.append(data)
+        return b"RIFF-converted"
+
+    result = main.decode_audio(
+        b"m4a-audio",
+        wav_reader=wav_reader,
+        other_reader=other_reader,
+        transcode=transcode,
+    )
+
+    assert result == ([0.25], 16_000)
+    assert transcoded == [b"m4a-audio"]

@@ -4,9 +4,12 @@ import asyncio
 import gc
 import io
 import os
+import subprocess
+import tempfile
 import wave
 from collections.abc import Callable
-from typing import Protocol
+from pathlib import Path
+from typing import Literal, Protocol
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -51,10 +54,55 @@ INSTRUMENTS = (
 )
 
 
+TempoDetection = bool | Literal["best-effort"]
+
+
 class TranscriptionEngine(Protocol):
-    def transcribe(self, data: bytes, instruments: list[str], detect_tempo: str) -> bytes: ...
+    def transcribe(
+        self,
+        data: bytes,
+        instruments: list[str],
+        detect_tempo: TempoDetection,
+    ) -> bytes: ...
 
     def release(self) -> None: ...
+
+
+def transcode_with_ffmpeg(data: bytes) -> bytes:
+    with tempfile.TemporaryDirectory(prefix="micromix-audio-") as directory:
+        input_path = Path(directory) / "input.audio"
+        output_path = Path(directory) / "decoded.wav"
+        input_path.write_bytes(data)
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-v", "error", "-y", "-i", str(input_path),
+                    "-acodec", "pcm_s16le", str(output_path),
+                ],
+                check=True,
+                capture_output=True,
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+            detail = getattr(exc, "stderr", b"")
+            message = detail.decode("utf-8", errors="replace").strip()
+            raise ValueError(f"could not decode audio with ffmpeg: {message or exc}") from exc
+        return output_path.read_bytes()
+
+
+def decode_audio(data, *, wav_reader, other_reader, transcode=transcode_with_ffmpeg):
+    try:
+        return wav_reader(io.BytesIO(data))
+    except (wave.Error, EOFError):
+        pass
+    try:
+        return other_reader(io.BytesIO(data))
+    except Exception:
+        try:
+            return wav_reader(io.BytesIO(transcode(data)))
+        except Exception as exc:
+            if isinstance(exc, ValueError):
+                raise
+            raise ValueError(f"could not decode audio: {exc}") from exc
 
 
 class MuScriptorEngine:
@@ -66,18 +114,19 @@ class MuScriptorEngine:
         dtype = os.getenv("MUSCRIPTOR_DTYPE")
         self.model = _load_model(model_path, device, dtype)
 
-    def transcribe(self, data: bytes, instruments: list[str], detect_tempo: str) -> bytes:
+    def transcribe(
+        self,
+        data: bytes,
+        instruments: list[str],
+        detect_tempo: TempoDetection,
+    ) -> bytes:
         from muscriptor.events import NoteStartEvent, ProgressEvent
         from muscriptor.tokenizer.mt3 import MT3_FULL_PLUS_GROUP_NAMES
         from muscriptor.utils.audio import _read_non_wav_file, _read_wav_file
 
-        try:
-            wav_data, sample_rate = _read_wav_file(io.BytesIO(data))
-        except (wave.Error, EOFError):
-            try:
-                wav_data, sample_rate = _read_non_wav_file(io.BytesIO(data))
-            except Exception as exc:
-                raise ValueError(f"could not decode audio: {exc}") from exc
+        wav_data, sample_rate = decode_audio(
+            data, wav_reader=_read_wav_file, other_reader=_read_non_wav_file
+        )
 
         unknown = [name for name in instruments if name not in MT3_FULL_PLUS_GROUP_NAMES]
         if unknown:
@@ -166,7 +215,7 @@ def create_app(manager: ModelManager | None = None) -> FastAPI:
     async def transcribe_midi(
         audio_file: UploadFile = File(...),
         instruments: list[str] = Form(default_factory=list),
-        detect_tempo: str = Form("best-effort"),
+        detect_tempo: TempoDetection = Form("best-effort"),
         return_file: bool = Form(False),
     ) -> Response:
         del return_file
