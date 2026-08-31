@@ -284,7 +284,7 @@ git push origin main
 - Consumes: one operation output and its corresponding source.
 - Produces: a comparable rating record with an explicit keep/fix/stop decision.
 
-- [ ] **Step 1: Create the scorecard rubric**
+- [x] **Step 1: Create the scorecard rubric**
 
 Create `docs/evaluations/phase-0/scorecard.md` with a 1–5 anchored scale for:
 
@@ -300,7 +300,7 @@ Define `1` as unusable, `3` as useful after material correction, and `5` as
 immediately useful with only normal finishing work. Lower artifact scores must
 mean worse artifacts so every dimension has the same higher-is-better direction.
 
-- [ ] **Step 2: Define the operation pass gate**
+- [x] **Step 2: Define the operation pass gate**
 
 Record these exact rules in the scorecard:
 
@@ -313,13 +313,13 @@ An operation passes the baseline when:
 - no case receives an artifact score of 1 without a documented limitation or fix.
 ```
 
-- [ ] **Step 3: Add runtime and environment fields**
+- [x] **Step 3: Add runtime and environment fields**
 
 Require commit ID, service/model revision, preset, seed, input duration, output
 duration, wall time, job state, worker cold/warm state, and peak VRAM when
 available.
 
-- [ ] **Step 4: Commit the scorecard**
+- [x] **Step 4: Commit the scorecard**
 
 ```bash
 git add docs/evaluations/phase-0/scorecard.md
