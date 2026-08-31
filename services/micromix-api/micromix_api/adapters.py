@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
 
-from .coordinator import UpstreamResult
+from .coordinator import UpstreamOutput, UpstreamResult
 
 
 def _error_detail(response: httpx.Response) -> str:
@@ -66,24 +66,39 @@ class ACEClient:
         self.base_url = base_url.rstrip("/")
         self.client = client or httpx.AsyncClient(timeout=1200)
 
-    async def submit(self, parameters: dict) -> str:
+    async def submit(
+        self,
+        parameters: dict,
+        *,
+        reference_audio: Path | None = None,
+        source_audio: Path | None = None,
+    ) -> str:
+        if reference_audio is not None and source_audio is not None:
+            raise ValueError("cannot submit both reference and source audio")
         preset = parameters.get("preset", "turbo")
         model, steps = self.MODELS[preset]
+        operation = parameters.get("operation", "text")
+        task_type = {
+            "text": "text2music",
+            "reference": "text2music",
+            "remix": "cover",
+            "repaint": "repaint",
+        }[operation]
         payload: dict = {
             "prompt": parameters["prompt"],
             "lyrics": parameters.get("lyrics", ""),
             "model": model,
             "inference_steps": steps,
-            "thinking": True,
+            "thinking": operation in {"text", "reference"},
             "lm_model_path": "acestep-5Hz-lm-4B",
             "audio_format": "wav",
-            "audio_duration": parameters.get("duration_seconds", 30),
+            "task_type": task_type,
+            "batch_size": parameters.get("variation_count", 1),
+            "use_random_seed": False,
+            "seed": ",".join(str(seed) for seed in parameters["seeds"]),
         }
-        if parameters.get("seed") is not None:
-            payload["use_random_seed"] = False
-            payload["seed"] = parameters["seed"]
-        else:
-            payload["use_random_seed"] = True
+        if parameters.get("duration_seconds") is not None:
+            payload["audio_duration"] = parameters["duration_seconds"]
         for source, target in (
             ("bpm", "bpm"),
             ("key", "key_scale"),
@@ -91,8 +106,47 @@ class ACEClient:
         ):
             if parameters.get(source) is not None:
                 payload[target] = parameters[source]
+        if operation == "remix":
+            payload["audio_cover_strength"] = parameters.get(
+                "source_strength",
+                0.6,
+            )
+        elif operation == "repaint":
+            payload.update(
+                repainting_start=parameters["start_seconds"],
+                repainting_end=parameters["end_seconds"],
+                repaint_mode="balanced",
+                repaint_strength=parameters.get("repaint_strength", 0.5),
+            )
 
-        response = await self.client.post(f"{self.base_url}/release_task", json=payload)
+        audio_path = reference_audio or source_audio
+        if audio_path is None:
+            response = await self.client.post(
+                f"{self.base_url}/release_task",
+                json=payload,
+            )
+        else:
+            field_name = "reference_audio" if reference_audio else "src_audio"
+            form = {
+                key: (
+                    str(value).lower()
+                    if isinstance(value, bool)
+                    else str(value)
+                )
+                for key, value in payload.items()
+            }
+            with audio_path.open("rb") as audio_stream:
+                response = await self.client.post(
+                    f"{self.base_url}/release_task",
+                    data=form,
+                    files={
+                        field_name: (
+                            audio_path.name,
+                            audio_stream,
+                            "application/octet-stream",
+                        )
+                    },
+                )
         if response.status_code >= 400:
             raise RuntimeError(_error_detail(response))
         wrapper = response.json()
@@ -120,10 +174,12 @@ class ACEClient:
             raise RuntimeError(_error_detail(response))
         wrapper = response.json()
         rows = wrapper.get("data") or []
-        if wrapper.get("code") != 200 or not rows:
+        if wrapper.get("code") != 200:
             return UpstreamResult.failed(
                 str(wrapper.get("error") or "ACE-Step task is unavailable")
             )
+        if not rows:
+            return UpstreamResult.missing()
         row = rows[0]
         status = int(row.get("status", 0))
         if status == 0:
@@ -133,17 +189,33 @@ class ACEClient:
 
         raw_result = row.get("result") or "[]"
         results = json.loads(raw_result) if isinstance(raw_result, str) else raw_result
-        if not results or not results[0].get("file"):
+        if not results:
+            return UpstreamResult.missing()
+        if any(int(result.get("status", 0)) == 0 for result in results):
+            return UpstreamResult.running("ACE-Step generation")
+        if any(not result.get("file") for result in results):
             return UpstreamResult.failed("ACE-Step produced no audio file")
-        file_url = str(results[0]["file"])
-        download = await self.client.get(f"{self.base_url}{file_url}")
-        if download.status_code >= 400:
-            raise RuntimeError(_error_detail(download))
-        parsed = urlparse(file_url)
-        source_path = unquote(parse_qs(parsed.query).get("path", ["result.wav"])[0])
-        filename = Path(source_path).name or "result.wav"
-        media_type = download.headers.get("content-type", "audio/wav").split(";", 1)[0]
-        return UpstreamResult.succeeded(download.content, filename, media_type)
+        outputs: list[UpstreamOutput] = []
+        for result in results:
+            file_url = str(result["file"])
+            download = await self.client.get(f"{self.base_url}{file_url}")
+            if download.status_code >= 400:
+                raise RuntimeError(_error_detail(download))
+            parsed = urlparse(file_url)
+            source_path = unquote(
+                parse_qs(parsed.query).get("path", ["result.wav"])[0]
+            )
+            outputs.append(
+                UpstreamOutput(
+                    data=download.content,
+                    filename=Path(source_path).name or "result.wav",
+                    media_type=download.headers.get(
+                        "content-type",
+                        "audio/wav",
+                    ).split(";", 1)[0],
+                )
+            )
+        return UpstreamResult.succeeded(tuple(outputs))
 
     async def aclose(self) -> None:
         await self.client.aclose()

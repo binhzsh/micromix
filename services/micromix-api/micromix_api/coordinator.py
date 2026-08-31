@@ -10,13 +10,30 @@ from .store import JobStore
 
 
 @dataclass(frozen=True, slots=True)
+class UpstreamOutput:
+    data: bytes
+    filename: str
+    media_type: str
+
+
+@dataclass(frozen=True, slots=True)
 class UpstreamResult:
     state: str
     progress_detail: str | None = None
-    data: bytes | None = None
-    filename: str | None = None
-    media_type: str | None = None
+    outputs: tuple[UpstreamOutput, ...] = ()
     error: str | None = None
+
+    @property
+    def data(self) -> bytes | None:
+        return self.outputs[0].data if self.outputs else None
+
+    @property
+    def filename(self) -> str | None:
+        return self.outputs[0].filename if self.outputs else None
+
+    @property
+    def media_type(self) -> str | None:
+        return self.outputs[0].media_type if self.outputs else None
 
     @classmethod
     def running(cls, detail: str | None = None) -> "UpstreamResult":
@@ -25,20 +42,25 @@ class UpstreamResult:
     @classmethod
     def succeeded(
         cls,
-        data: bytes,
-        filename: str,
-        media_type: str,
+        data: bytes | tuple[UpstreamOutput, ...],
+        filename: str | None = None,
+        media_type: str | None = None,
     ) -> "UpstreamResult":
-        return cls(
-            state="succeeded",
-            data=data,
-            filename=filename,
-            media_type=media_type,
-        )
+        if isinstance(data, tuple):
+            outputs = data
+        else:
+            if filename is None or media_type is None:
+                raise ValueError("filename and media type are required")
+            outputs = (UpstreamOutput(data, filename, media_type),)
+        return cls(state="succeeded", outputs=outputs)
 
     @classmethod
     def failed(cls, error: str) -> "UpstreamResult":
         return cls(state="failed", error=error)
+
+    @classmethod
+    def missing(cls) -> "UpstreamResult":
+        return cls(state="missing")
 
 
 class GPUAcquiring(Protocol):

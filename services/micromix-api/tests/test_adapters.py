@@ -63,7 +63,8 @@ async def test_ace_submit_maps_turbo_profile_to_official_api():
             "lyrics": "hello",
             "preset": "turbo",
             "duration_seconds": 30,
-            "seed": 7,
+            "seeds": [7, 8],
+            "variation_count": 2,
             "bpm": 92,
             "key": "D Minor",
             "time_signature": "4",
@@ -80,9 +81,11 @@ async def test_ace_submit_maps_turbo_profile_to_official_api():
             "thinking": True,
             "lm_model_path": "acestep-5Hz-lm-4B",
             "audio_format": "wav",
+            "task_type": "text2music",
             "audio_duration": 30,
+            "batch_size": 2,
             "use_random_seed": False,
-            "seed": 7,
+            "seed": "7,8",
             "bpm": 92,
             "key_scale": "D Minor",
             "time_signature": "4",
@@ -99,14 +102,22 @@ async def test_ace_poll_parses_result_and_downloads_audio():
         calls.append(request.url.path)
         if request.url.path == "/query_result":
             result = json.dumps(
-                [{"file": "/v1/audio?path=%2Ftmp%2Fresult.wav", "status": 1}]
+                [
+                    {"file": "/v1/audio?path=%2Ftmp%2Ffirst.wav", "status": 1},
+                    {"file": "/v1/audio?path=%2Ftmp%2Fsecond.wav", "status": 1},
+                ]
             )
             return httpx.Response(
                 200,
                 json={"code": 200, "data": [{"task_id": "task-1", "status": 1, "result": result}]},
             )
         if request.url.path == "/v1/audio":
-            return httpx.Response(200, content=b"RIFF-audio", headers={"content-type": "audio/wav"})
+            filename = Path(request.url.params["path"]).name
+            return httpx.Response(
+                200,
+                content=f"RIFF-{filename}".encode(),
+                headers={"content-type": "audio/wav; charset=binary"},
+            )
         raise AssertionError(request.url)
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -115,9 +126,14 @@ async def test_ace_poll_parses_result_and_downloads_audio():
     result = await ace.poll("task-1")
 
     assert result.state == "succeeded"
-    assert result.data == b"RIFF-audio"
-    assert result.filename == "result.wav"
-    assert calls == ["/query_result", "/v1/audio"]
+    assert [
+        (output.data, output.filename, output.media_type)
+        for output in result.outputs
+    ] == [
+        (b"RIFF-first.wav", "first.wav", "audio/wav"),
+        (b"RIFF-second.wav", "second.wav", "audio/wav"),
+    ]
+    assert calls == ["/query_result", "/v1/audio", "/v1/audio"]
     await client.aclose()
 
 
@@ -169,4 +185,158 @@ async def test_runtime_status_and_instrument_queries():
     assert await ace.health() == "ready"
     assert await muscriptor.health() == "cold"
     assert await muscriptor.instruments() == ["piano", "vocals"]
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation", "audio_argument", "audio_field", "extra_parameters", "expected"),
+    [
+        (
+            "reference",
+            "reference_audio",
+            "reference_audio",
+            {},
+            {"task_type": "text2music", "thinking": "true"},
+        ),
+        (
+            "remix",
+            "source_audio",
+            "src_audio",
+            {"source_strength": 0.65},
+            {
+                "task_type": "cover",
+                "thinking": "false",
+                "audio_cover_strength": "0.65",
+            },
+        ),
+        (
+            "repaint",
+            "source_audio",
+            "src_audio",
+            {
+                "start_seconds": 12.5,
+                "end_seconds": 24.0,
+                "repaint_strength": 0.4,
+            },
+            {
+                "task_type": "repaint",
+                "thinking": "false",
+                "repainting_start": "12.5",
+                "repainting_end": "24.0",
+                "repaint_mode": "balanced",
+                "repaint_strength": "0.4",
+            },
+        ),
+    ],
+)
+async def test_ace_submit_maps_audio_operations_to_multipart(
+    tmp_path: Path,
+    operation: str,
+    audio_argument: str,
+    audio_field: str,
+    extra_parameters: dict,
+    expected: dict[str, str],
+):
+    source = tmp_path / "source.wav"
+    source.write_bytes(b"RIFF-source")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.content
+        assert f'name="{audio_field}"; filename="source.wav"'.encode() in body
+        assert b"RIFF-source" in body
+        fields = {
+            "batch_size": "2",
+            "use_random_seed": "false",
+            "seed": "11,12",
+            **expected,
+        }
+        for name, value in fields.items():
+            marker = f'name="{name}"'.encode()
+            assert marker in body
+            assert f"\r\n\r\n{value}\r\n".encode() in body
+        return httpx.Response(
+            200,
+            json={"code": 200, "data": {"task_id": "task-audio"}},
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    ace = ACEClient("http://ace.test", client=client)
+
+    task_id = await ace.submit(
+        {
+            "operation": operation,
+            "prompt": "new arrangement",
+            "preset": "quality",
+            "variation_count": 2,
+            "seeds": [11, 12],
+            **extra_parameters,
+        },
+        **{audio_argument: source},
+    )
+
+    assert task_id == "task-audio"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_ace_submit_rejects_reference_and_source_together(tmp_path: Path):
+    source = tmp_path / "source.wav"
+    source.write_bytes(b"RIFF-source")
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda _: None))
+    ace = ACEClient("http://ace.test", client=client)
+
+    with pytest.raises(ValueError, match="both"):
+        await ace.submit(
+            {
+                "operation": "remix",
+                "prompt": "song",
+                "variation_count": 1,
+                "seeds": [1],
+            },
+            reference_audio=source,
+            source_audio=source,
+        )
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("raw_result", "row_status", "expected_state"),
+    [
+        ("[]", 1, "missing"),
+        (
+            '[{"file": "/v1/audio?path=%2Ftmp%2Fpending.wav", "status": 0}]',
+            1,
+            "running",
+        ),
+    ],
+)
+async def test_ace_poll_distinguishes_missing_and_running_results(
+    raw_result: str,
+    row_status: int,
+    expected_state: str,
+):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "code": 200,
+                "data": [
+                    {
+                        "task_id": "task-1",
+                        "status": row_status,
+                        "result": raw_result,
+                    }
+                ],
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    ace = ACEClient("http://ace.test", client=client)
+
+    result = await ace.poll("task-1")
+
+    assert result.state == expected_state
     await client.aclose()
