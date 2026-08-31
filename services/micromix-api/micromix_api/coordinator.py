@@ -159,11 +159,13 @@ class Coordinator:
 
             filename = Path(result.filename or f"{job.id}.wav").name
             output = self._write_output(job.id, filename, result.data)
-            await self.store.register_asset(
+            await self.store.register_output(
                 job.id,
                 output,
                 result.media_type or "audio/wav",
                 filename,
+                name="result",
+                position=0,
             )
             await self.store.update_job(
                 job.id,
@@ -199,7 +201,14 @@ class Coordinator:
                 return
             filename = f"{Path(parameters['filename']).stem}.mid"
             output = self._write_output(job.id, filename, data)
-            await self.store.register_asset(job.id, output, "audio/midi", filename)
+            await self.store.register_output(
+                job.id,
+                output,
+                "audio/midi",
+                filename,
+                name="midi",
+                position=0,
+            )
             await self.store.update_job(
                 job.id,
                 state=JobState.succeeded,

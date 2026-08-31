@@ -60,6 +60,9 @@ async def test_generation_submission_and_lookup(client: httpx.AsyncClient):
     created = response.json()
     assert created["kind"] == "generation"
     assert created["state"] == "queued"
+    assert created["inputs"] == []
+    assert created["outputs"] == []
+    assert created["asset"] is None
     fetched = (await client.get(f"/v1/jobs/{created['id']}")).json()
     assert fetched["parameters"]["prompt"] == "warm analog jazz"
     assert fetched["parameters"]["preset"] == "turbo"

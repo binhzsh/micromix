@@ -80,6 +80,8 @@ async def test_generation_acquires_gpu_polls_and_registers_wav(store: JobStore):
     assert completed.state is JobState.succeeded
     assert completed.progress == 1.0
     assert completed.asset is not None
+    assert completed.outputs[0].name == "result"
+    assert completed.asset == completed.outputs[0].asset
     assert (store.asset_root / completed.asset.relative_path).read_bytes() == b"RIFF-generated"
     assert gpu.requests == [("micromix-ace-step", 23000, 60)]
     assert gpu.releases == ["micromix-ace-step"]
@@ -155,6 +157,8 @@ async def test_transcription_acquires_gpu_and_registers_midi(store: JobStore, tm
     completed = await store.get_job(job.id)
     assert completed.state is JobState.succeeded
     assert completed.asset.filename == "voice.mid"
+    assert completed.outputs[0].name == "midi"
+    assert completed.asset == completed.outputs[0].asset
     assert muscriptor.calls == [(upload, ["vocals"], True)]
     assert gpu.requests == [("micromix-muscriptor", 4000, 60)]
     assert gpu.releases == ["micromix-muscriptor"]

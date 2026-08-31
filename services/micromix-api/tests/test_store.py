@@ -30,7 +30,7 @@ async def test_job_lifecycle_persists_result_asset(store: JobStore, tmp_path: Pa
 
     output = store.asset_root / "render.wav"
     output.write_bytes(b"RIFF-test-audio")
-    asset = await store.register_asset(job.id, output, "audio/wav", "render.wav")
+    asset = await store.register_output(job.id, output, "audio/wav", "render.wav")
     await store.update_job(job.id, state=JobState.succeeded, progress=1.0)
 
     persisted = await store.get_job(job.id)
@@ -100,7 +100,7 @@ async def test_asset_lookup_rejects_paths_outside_asset_root(store: JobStore, tm
     outside.write_bytes(b"outside")
 
     with pytest.raises(ValueError, match="asset root"):
-        await store.register_asset(job.id, outside, "audio/wav", outside.name)
+        await store.create_asset(outside, "audio/wav", outside.name)
 
 
 @pytest.mark.asyncio
@@ -111,8 +111,8 @@ async def test_prune_removes_only_expired_terminal_assets(store: JobStore, tmp_p
     recent_file = store.asset_root / "recent.wav"
     old_file.write_bytes(b"old")
     recent_file.write_bytes(b"recent")
-    await store.register_asset(old.id, old_file, "audio/wav", old_file.name)
-    await store.register_asset(recent.id, recent_file, "audio/wav", recent_file.name)
+    await store.register_output(old.id, old_file, "audio/wav", old_file.name)
+    await store.register_output(recent.id, recent_file, "audio/wav", recent_file.name)
     await store.update_job(old.id, state=JobState.succeeded)
     await store.update_job(recent.id, state=JobState.succeeded)
     old_time = datetime.now(timezone.utc) - timedelta(days=8)

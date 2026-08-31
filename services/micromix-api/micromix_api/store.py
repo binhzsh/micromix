@@ -315,15 +315,6 @@ class JobStore:
         )
         return asset
 
-    async def register_asset(
-        self,
-        job_id: str,
-        path: Path,
-        media_type: str,
-        filename: str,
-    ) -> AssetRecord:
-        return await self.register_output(job_id, path, media_type, filename)
-
     async def get_asset(self, asset_id: str) -> tuple[AssetRecord, Path] | None:
         cursor = await self.db.execute("SELECT * FROM assets WHERE id = ?", (asset_id,))
         row = await cursor.fetchone()

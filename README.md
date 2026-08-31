@@ -44,6 +44,7 @@ intentionally lazy so starting Compose does not claim the shared GPU.
 - `GET /v1/capabilities`
 - `POST /v1/jobs/generation`
 - `POST /v1/jobs/transcription`
+- `POST /v1/assets`
 - `GET /v1/jobs`
 - `GET /v1/jobs/{id}`
 - `POST /v1/jobs/{id}/cancel`
@@ -59,6 +60,15 @@ curl -X POST http://localhost:8902/v1/jobs/generation \
 
 The submit response is HTTP 202. Poll its `id` until `state` is terminal, then
 download `asset.download_url`. The macOS client performs this automatically.
+
+Jobs also expose ordered `inputs` and `outputs` arrays. Each link has a stable
+operation name, position, and asset record. The singular `asset` field remains
+as a compatibility alias for the first output while existing clients migrate.
+Upload reusable source audio with multipart field `audio_file` to
+`POST /v1/assets`; the returned asset ID can be attached by source-audio job
+contracts. Uploads and generated outputs are transient server working files and
+share the configured seven-day retention policy. The Mac library remains the
+authoritative store.
 
 ## Native development
 
