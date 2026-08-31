@@ -8,3 +8,4 @@ __pycache__/
 # code analysis artifacts (codegraph / graphify)
 .codegraph/
 graphify-out/
+.worktrees/
