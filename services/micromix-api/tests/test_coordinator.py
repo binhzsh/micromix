@@ -4,9 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from micromix_api.coordinator import Coordinator, Dispatcher, UpstreamResult
+from micromix_api.coordinator import (
+    Coordinator,
+    Dispatcher,
+    UpstreamOutput,
+    UpstreamResult,
+)
 from micromix_api.models import JobKind, JobState
-from micromix_api.store import JobStore
+from micromix_api.store import InputAssetBinding, JobStore
 
 
 class FakeGPU:
@@ -24,12 +29,18 @@ class FakeGPU:
 class FakeACE:
     def __init__(self, results: list[UpstreamResult]):
         self.results = results
-        self.submissions: list[dict] = []
+        self.submissions: list[tuple[dict, Path | None, Path | None]] = []
         self.polls: list[str] = []
 
-    async def submit(self, parameters: dict) -> str:
-        self.submissions.append(parameters)
-        return "ace-task-1"
+    async def submit(
+        self,
+        parameters: dict,
+        *,
+        reference_audio: Path | None = None,
+        source_audio: Path | None = None,
+    ) -> str:
+        self.submissions.append((parameters, reference_audio, source_audio))
+        return f"ace-task-{len(self.submissions)}"
 
     async def poll(self, upstream_id: str) -> UpstreamResult:
         self.polls.append(upstream_id)
@@ -110,7 +121,13 @@ async def test_recovered_generation_with_upstream_id_does_not_resubmit(store: Jo
 async def test_cancel_requested_discards_completed_generation(store: JobStore):
     job = await store.create_job(
         JobKind.generation,
-        {"prompt": "cancel", "preset": "turbo", "duration_seconds": 10},
+        {
+            "prompt": "cancel",
+            "preset": "turbo",
+            "duration_seconds": 10,
+            "variation_count": 2,
+            "seeds": [1, 2],
+        },
     )
     await store.update_job(
         job.id,
@@ -118,7 +135,16 @@ async def test_cancel_requested_discards_completed_generation(store: JobStore):
         upstream_id="cancel-task",
         cancel_requested=True,
     )
-    ace = FakeACE([UpstreamResult.succeeded(b"RIFF-discard", "discard.wav", "audio/wav")])
+    ace = FakeACE(
+        [
+            UpstreamResult.succeeded(
+                (
+                    UpstreamOutput(b"RIFF-a", "a.wav", "audio/wav"),
+                    UpstreamOutput(b"RIFF-b", "b.wav", "audio/wav"),
+                )
+            )
+        ]
+    )
     coordinator = Coordinator(store, FakeGPU(), ace, FakeMuScriptor(), poll_interval=0)
 
     await coordinator.run_job(job.id)
@@ -201,3 +227,190 @@ async def test_dispatcher_runs_enqueued_job_and_drains(store: JobStore):
     await dispatcher.close()
 
     assert (await store.get_job(job.id)).state is JobState.succeeded
+
+
+async def create_source_job(
+    store: JobStore,
+    *,
+    operation: str = "remix",
+    variation_count: int = 1,
+    recovery_count: int = 0,
+):
+    source = store.asset_root / "imports" / "source.wav"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"RIFF-source")
+    asset = await store.create_asset(source, "audio/wav", "source.wav")
+    input_name = "reference" if operation == "reference" else "source"
+    job = await store.create_job(
+        JobKind.generation,
+        {
+            "operation": operation,
+            "prompt": "new arrangement",
+            "preset": "quality",
+            "variation_count": variation_count,
+            "seeds": list(range(41, 41 + variation_count)),
+            "_upstream_recovery_count": recovery_count,
+        },
+        inputs=[InputAssetBinding(asset.id, input_name)],
+    )
+    return job, source
+
+
+@pytest.mark.asyncio
+async def test_source_job_submits_named_input_path(store: JobStore):
+    job, source = await create_source_job(store)
+    ace = FakeACE(
+        [UpstreamResult.succeeded(b"RIFF-result", "result.wav", "audio/wav")]
+    )
+    coordinator = Coordinator(store, FakeGPU(), ace, FakeMuScriptor(), poll_interval=0)
+
+    await coordinator.run_job(job.id)
+
+    assert ace.submissions == [((await store.get_job(job.id)).parameters, None, source)]
+    assert (await store.get_job(job.id)).state is JobState.succeeded
+
+
+@pytest.mark.asyncio
+async def test_generation_registers_ordered_output_batch(store: JobStore):
+    job = await store.create_job(
+        JobKind.generation,
+        {
+            "operation": "text",
+            "prompt": "two versions",
+            "variation_count": 2,
+            "seeds": [7, 8],
+        },
+    )
+    ace = FakeACE(
+        [
+            UpstreamResult.succeeded(
+                (
+                    UpstreamOutput(b"RIFF-first", "upstream-a.wav", "audio/wav"),
+                    UpstreamOutput(b"RIFF-second", "upstream-b.wav", "audio/wav"),
+                )
+            )
+        ]
+    )
+    coordinator = Coordinator(store, FakeGPU(), ace, FakeMuScriptor(), poll_interval=0)
+
+    await coordinator.run_job(job.id)
+
+    completed = await store.get_job(job.id)
+    assert completed.state is JobState.succeeded
+    assert [
+        (link.asset.filename, link.position)
+        for link in completed.outputs
+    ] == [("result-1.wav", 0), ("result-2.wav", 1)]
+    assert [
+        (store.asset_root / link.asset.relative_path).read_bytes()
+        for link in completed.outputs
+    ] == [b"RIFF-first", b"RIFF-second"]
+    assert completed.asset == completed.outputs[0].asset
+
+
+@pytest.mark.asyncio
+async def test_missing_upstream_resubmits_once_with_durable_input(store: JobStore):
+    job, source = await create_source_job(store)
+    await store.update_job(
+        job.id,
+        state=JobState.queued,
+        upstream_id="lost-task",
+    )
+    ace = FakeACE(
+        [
+            UpstreamResult.missing(),
+            UpstreamResult.succeeded(b"RIFF-recovered", "result.wav", "audio/wav"),
+        ]
+    )
+    coordinator = Coordinator(store, FakeGPU(), ace, FakeMuScriptor(), poll_interval=0)
+
+    await coordinator.run_job(job.id)
+
+    completed = await store.get_job(job.id)
+    assert completed.state is JobState.succeeded
+    assert completed.internal_parameters["upstream_recovery_count"] == 1
+    assert ace.submissions == [(completed.parameters, None, source)]
+    assert ace.polls == ["lost-task", "ace-task-1"]
+
+
+@pytest.mark.asyncio
+async def test_missing_upstream_after_recovery_fails_without_resubmit(store: JobStore):
+    job, _ = await create_source_job(store, recovery_count=1)
+    await store.update_job(
+        job.id,
+        state=JobState.queued,
+        upstream_id="replacement-task",
+    )
+    ace = FakeACE([UpstreamResult.missing()])
+    coordinator = Coordinator(store, FakeGPU(), ace, FakeMuScriptor(), poll_interval=0)
+
+    await coordinator.run_job(job.id)
+
+    failed = await store.get_job(job.id)
+    assert failed.state is JobState.failed
+    assert failed.error == "ACE-Step task disappeared after recovery"
+    assert ace.submissions == []
+
+
+@pytest.mark.asyncio
+async def test_output_count_mismatch_leaves_no_partial_outputs(store: JobStore):
+    job = await store.create_job(
+        JobKind.generation,
+        {
+            "operation": "text",
+            "prompt": "two versions",
+            "variation_count": 2,
+            "seeds": [7, 8],
+        },
+    )
+    ace = FakeACE(
+        [UpstreamResult.succeeded(b"RIFF-only", "only.wav", "audio/wav")]
+    )
+    coordinator = Coordinator(store, FakeGPU(), ace, FakeMuScriptor(), poll_interval=0)
+
+    await coordinator.run_job(job.id)
+
+    failed = await store.get_job(job.id)
+    assert failed.state is JobState.failed
+    assert "expected 2 ACE-Step outputs, received 1" in failed.error
+    assert failed.outputs == []
+    assert not (store.asset_root / job.id).exists()
+
+
+@pytest.mark.asyncio
+async def test_batch_registration_failure_removes_staged_files(
+    store: JobStore,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    job = await store.create_job(
+        JobKind.generation,
+        {
+            "operation": "text",
+            "prompt": "two versions",
+            "variation_count": 2,
+            "seeds": [7, 8],
+        },
+    )
+    ace = FakeACE(
+        [
+            UpstreamResult.succeeded(
+                (
+                    UpstreamOutput(b"RIFF-first", "a.wav", "audio/wav"),
+                    UpstreamOutput(b"RIFF-second", "b.wav", "audio/wav"),
+                )
+            )
+        ]
+    )
+
+    async def reject_outputs(*args, **kwargs):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(store, "register_outputs", reject_outputs)
+    coordinator = Coordinator(store, FakeGPU(), ace, FakeMuScriptor(), poll_interval=0)
+
+    await coordinator.run_job(job.id)
+
+    failed = await store.get_job(job.id)
+    assert failed.state is JobState.failed
+    assert failed.outputs == []
+    assert not (store.asset_root / job.id).exists()

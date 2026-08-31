@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .models import JobKind, JobRecord, JobState, TERMINAL_STATES
-from .store import JobStore
+from .store import JobStore, OutputAssetBinding
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +70,13 @@ class GPUAcquiring(Protocol):
 
 
 class ACEGenerating(Protocol):
-    async def submit(self, parameters: dict) -> str: ...
+    async def submit(
+        self,
+        parameters: dict,
+        *,
+        reference_audio: Path | None = None,
+        source_audio: Path | None = None,
+    ) -> str: ...
 
     async def poll(self, upstream_id: str) -> UpstreamResult: ...
 
@@ -131,10 +137,39 @@ class Coordinator:
         finally:
             await self.gpu.release("micromix-ace-step")
 
+    async def _resolve_generation_audio(
+        self,
+        job: JobRecord,
+    ) -> tuple[Path | None, Path | None]:
+        operation = job.parameters.get("operation", "text")
+        if operation == "text":
+            return None, None
+        input_name = "reference" if operation == "reference" else "source"
+        link = next(
+            (candidate for candidate in job.inputs if candidate.name == input_name),
+            None,
+        )
+        if link is None:
+            raise RuntimeError(f"{input_name} input is unavailable")
+        value = await self.store.get_asset(link.asset.id)
+        if value is None or not value[1].is_file():
+            raise RuntimeError(f"{input_name} input file is unavailable")
+        path = value[1]
+        return (path, None) if input_name == "reference" else (None, path)
+
     async def _generate_after_acquire(self, job: JobRecord) -> None:
+        reference_audio, source_audio = await self._resolve_generation_audio(job)
+
+        async def submit() -> str:
+            return await self.ace.submit(
+                job.parameters,
+                reference_audio=reference_audio,
+                source_audio=source_audio,
+            )
+
         upstream_id = job.upstream_id
         if upstream_id is None:
-            upstream_id = await self.ace.submit(job.parameters)
+            upstream_id = await submit()
             await self.store.update_job(
                 job.id,
                 state=JobState.running,
@@ -167,7 +202,34 @@ class Coordinator:
                     progress_detail=None,
                 )
                 return
-            if result.state != "succeeded" or result.data is None:
+            if result.state == "missing":
+                current = await self.store.get_job(job.id)
+                recovery_count = (
+                    int(current.internal_parameters.get("upstream_recovery_count", 0))
+                    if current is not None
+                    else 0
+                )
+                if recovery_count >= 1:
+                    await self.store.update_job(
+                        job.id,
+                        state=JobState.failed,
+                        error="ACE-Step task disappeared after recovery",
+                        progress_detail=None,
+                    )
+                    return
+                await self.store.update_internal_parameters(
+                    job.id,
+                    {"upstream_recovery_count": 1},
+                )
+                upstream_id = await submit()
+                await self.store.update_job(
+                    job.id,
+                    state=JobState.running,
+                    upstream_id=upstream_id,
+                    progress_detail="recovering ACE-Step generation",
+                )
+                continue
+            if result.state != "succeeded":
                 raise RuntimeError(f"unexpected ACE-Step state: {result.state}")
 
             current = await self.store.get_job(job.id)
@@ -179,16 +241,41 @@ class Coordinator:
                 )
                 return
 
-            filename = Path(result.filename or f"{job.id}.wav").name
-            output = self._write_output(job.id, filename, result.data)
-            await self.store.register_output(
-                job.id,
-                output,
-                result.media_type or "audio/wav",
-                filename,
-                name="result",
-                position=0,
-            )
+            expected_count = int(job.parameters.get("variation_count", 1))
+            if len(result.outputs) != expected_count:
+                raise RuntimeError(
+                    f"expected {expected_count} ACE-Step outputs, "
+                    f"received {len(result.outputs)}"
+                )
+
+            directory = self.store.asset_root / job.id
+            self._remove_output_directory(directory)
+            bindings: list[OutputAssetBinding] = []
+            try:
+                for position, upstream_output in enumerate(result.outputs):
+                    filename = (
+                        "result.wav"
+                        if expected_count == 1
+                        else f"result-{position + 1}.wav"
+                    )
+                    output = self._write_output(
+                        job.id,
+                        filename,
+                        upstream_output.data,
+                    )
+                    bindings.append(
+                        OutputAssetBinding(
+                            path=output,
+                            media_type=upstream_output.media_type or "audio/wav",
+                            filename=filename,
+                            name="result",
+                            position=position,
+                        )
+                    )
+                await self.store.register_outputs(job.id, bindings)
+            except Exception:
+                self._remove_output_directory(directory)
+                raise
             await self.store.update_job(
                 job.id,
                 state=JobState.succeeded,
@@ -239,6 +326,17 @@ class Coordinator:
             )
         finally:
             await self.gpu.release("micromix-muscriptor")
+
+    def _remove_output_directory(self, directory: Path) -> None:
+        if not directory.exists():
+            return
+        resolved = directory.resolve()
+        if not resolved.is_relative_to(self.store.asset_root.resolve()):
+            raise ValueError("output directory must remain beneath asset root")
+        for child in resolved.iterdir():
+            if child.is_file():
+                child.unlink()
+        resolved.rmdir()
 
     def _write_output(self, job_id: str, filename: str, data: bytes) -> Path:
         directory = self.store.asset_root / job_id
