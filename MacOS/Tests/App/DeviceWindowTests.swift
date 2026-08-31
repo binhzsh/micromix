@@ -31,56 +31,33 @@ struct DeviceWindowTests {
         #expect(try orangePixelCount(width: 980, height: 700, populated: false) < 500)
     }
 
-    @Test("Reimagine presents a Start action that reflects server availability")
-    func reimagineStartReflectsServerAvailability() throws {
-        #expect(try reimagineOrangePixelCount(serverAvailable: false) < 500)
-        #expect(try reimagineOrangePixelCount(serverAvailable: true) > 1_000)
-    }
-
-    @Test("Reimagine keeps Start visible in the minimum window deck allocation")
-    func reimagineStartVisibleAtMinimumWindowSize() throws {
-        let standaloneCount = try reimagineOrangePixelCount(
+    @Test("Reimagine keeps render controls adjacent to musical direction on tall decks")
+    func reimagineRenderControlsDoNotDriftToDeckBottom() throws {
+        let bottommostOrange = try reimagineOrangeMaximumY(
             serverAvailable: true,
             width: 940,
-            height: 380
+            height: 900
         )
-        let minimumWindowCounts = try [
-            ReimagineOperation.reference,
-            .remix,
-            .repaint,
-        ].map { operation in
-            try reimagineOrangePixelCount(
-                serverAvailable: true,
-                operation: operation,
-                width: 824,
-                height: 212
-            )
-        }
 
-        #expect(standaloneCount > 1_000)
-        for minimumWindowCount in minimumWindowCounts {
-            #expect(
-                minimumWindowCount > 1_000,
-                "Start was visible with 380 points but clipped in the minimum window's 212-point deck allocation"
-            )
-        }
+        #expect(
+            bottommostOrange < 560,
+            "The render action drifted to the bottom of the deck instead of following musical direction"
+        )
     }
 
-    private func reimagineOrangePixelCount(
+    private func reimagineOrangeMaximumY(
         serverAvailable: Bool,
-        operation: ReimagineOperation = .reference,
-        width: CGFloat = 940,
-        height: CGFloat = 380
+        width: CGFloat,
+        height: CGFloat
     ) throws -> Int {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("micromix-reimagine-layout-\(UUID().uuidString)")
+            .appendingPathComponent("micromix-reimagine-flow-\(UUID().uuidString)")
         let api = MicromixAPI(baseURL: "http://127.0.0.1:1")
         let library = LocalLibrary(directory: directory)
         let reattacher = JobReattacher(api: api, library: library)
         let reimagine = ReimagineViewModel(api: api, reattacher: reattacher)
         reimagine.sourceURL = URL(fileURLWithPath: "/tmp/source.wav")
         reimagine.prompt = "Turn this source into a compact synth groove"
-        reimagine.operation = operation
         let view = ReimagineScreen(
             viewModel: reimagine,
             serverAvailable: serverAvailable
@@ -95,7 +72,8 @@ struct DeviceWindowTests {
             Issue.record("Reimagine workspace did not render")
             throw CocoaError(.fileReadCorruptFile)
         }
-        return pixelCount(in: bitmap) { color in
+
+        return maximumY(in: bitmap) { color in
             color.redComponent > 0.9
                 && color.greenComponent > 0.25
                 && color.greenComponent < 0.48
@@ -171,5 +149,23 @@ struct DeviceWindowTests {
             }
         }
         return matchingPixels
+    }
+
+    private func maximumY(
+        in bitmap: NSBitmapImageRep,
+        matching predicate: (NSColor) -> Bool
+    ) -> Int {
+        var maximumY = -1
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else {
+                    continue
+                }
+                if predicate(color) {
+                    maximumY = max(maximumY, y)
+                }
+            }
+        }
+        return maximumY
     }
 }

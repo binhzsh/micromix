@@ -13,19 +13,16 @@ struct ReimagineScreen: View {
     @State private var isImporting = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 8) {
-                    sourceSection
-                    operationSection
-                    directionSection
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 8) {
+                sourceSection
+                operationSection
+                directionSection
+                renderSection
             }
-            .scrollIndicators(.visible)
-            renderSection
-                .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .scrollIndicators(.visible)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .fileImporter(
             isPresented: $isImporting,
@@ -66,6 +63,7 @@ struct ReimagineScreen: View {
                 }
                 .buttonStyle(.borderless)
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(Palette.ink.opacity(0.58))
                 .disabled(viewModel.sourceURL == nil || viewModel.isRunning || !analysisAvailable)
             }
         }
@@ -98,9 +96,11 @@ struct ReimagineScreen: View {
                     compactTextField("PROMPT", text: $viewModel.prompt)
                     compactTextField("LYRICS", text: $viewModel.lyrics)
                         .disabled(!viewModel.useLyrics)
-                    Toggle("USE LYRICS", isOn: $viewModel.useLyrics)
+                    Toggle(isOn: $viewModel.useLyrics) {
+                        Typography.monoLabel("USE LYRICS", size: 9)
+                            .foregroundColor(Palette.ink.opacity(0.72))
+                    }
                         .toggleStyle(PanelToggleStyle())
-                        .font(.system(size: 9, design: .monospaced))
                         .frame(width: 138)
                 }
 
@@ -120,7 +120,8 @@ struct ReimagineScreen: View {
     }
 
     private var renderSection: some View {
-        DeckPanel {
+        let canCancel = viewModel.isRunning
+        return DeckPanel {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
                     sectionLabel("RENDER")
@@ -128,6 +129,7 @@ struct ReimagineScreen: View {
                     compactTextField("SEED", text: $viewModel.seedText, width: 142)
                     Stepper("VARIATIONS  \(viewModel.variationCount)", value: $viewModel.variationCount, in: 1...4)
                         .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Palette.ink.opacity(0.72))
                     operationControl
                     Spacer(minLength: 0)
                 }
@@ -143,15 +145,19 @@ struct ReimagineScreen: View {
 
                     Button("CANCEL", action: viewModel.cancel)
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundColor(Palette.accentRed)
+                        .foregroundColor(canCancel ? Palette.accentRed : Palette.ink.opacity(0.52))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 11)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.accentRed, lineWidth: 1.5))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(canCancel ? Palette.accentRed : Palette.divider, lineWidth: 1.5)
+                        )
                         .buttonStyle(.plain)
-                        .disabled(!viewModel.isRunning)
+                        .disabled(!canCancel)
 
                     Button("OPEN LIBRARY", action: onOpenLibrary)
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Palette.ink.opacity(0.72))
                         .buttonStyle(.borderless)
                 }
             }
@@ -167,6 +173,7 @@ struct ReimagineScreen: View {
                     .tint(Palette.accentOrange)
                     .frame(width: 150)
             }
+            .foregroundColor(Palette.ink.opacity(0.72))
         case .remix:
             VStack(alignment: .leading, spacing: 3) {
                 Typography.monoLabel(
@@ -177,6 +184,7 @@ struct ReimagineScreen: View {
                     .tint(Palette.accentOrange)
                     .frame(width: 150)
             }
+            .foregroundColor(Palette.ink.opacity(0.72))
         case .repaint:
             HStack(spacing: 6) {
                 compactNumberField("START", value: $viewModel.startSeconds)
@@ -191,6 +199,7 @@ struct ReimagineScreen: View {
                         .frame(width: 110)
                 }
             }
+            .foregroundColor(Palette.ink.opacity(0.72))
         }
     }
 
@@ -266,6 +275,7 @@ struct ReimagineScreen: View {
         TextField(placeholder, text: text)
             .textFieldStyle(.plain)
             .font(.system(size: 10, design: .monospaced))
+            .foregroundColor(Palette.ink)
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background(Palette.deck)
@@ -278,6 +288,7 @@ struct ReimagineScreen: View {
         TextField(placeholder, value: value, format: .number.precision(.fractionLength(0...1)))
             .textFieldStyle(.plain)
             .font(.system(size: 9, design: .monospaced))
+            .foregroundColor(Palette.ink)
             .padding(.horizontal, 6)
             .padding(.vertical, 5)
             .background(Palette.deck)
