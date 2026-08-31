@@ -20,6 +20,7 @@ async def client(tmp_path: Path):
         ace_url="http://ace.test",
         muscriptor_url="http://muscriptor.test",
         gpu_router_url="http://gpu.test",
+        max_upload_mib=1,
     )
     app = create_app(settings=settings, start_dispatcher=False)
     async with app.router.lifespan_context(app):
@@ -119,6 +120,45 @@ async def test_transcription_submission_persists_upload_without_exposing_path(
         "detect_tempo": True,
     }
     assert "input_path" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_audio_asset_upload_is_downloadable_and_hides_server_path(
+    client: httpx.AsyncClient,
+):
+    response = await client.post(
+        "/v1/assets",
+        files={"audio_file": ("../source.wav", b"RIFF-input", "audio/wav")},
+    )
+
+    assert response.status_code == 201
+    asset = response.json()
+    assert asset["filename"] == "source.wav"
+    assert asset["media_type"] == "audio/wav"
+    assert "relative_path" not in asset
+    downloaded = await client.get(asset["download_url"])
+    assert downloaded.content == b"RIFF-input"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("data", "expected_status"),
+    [
+        (b"", 400),
+        (b"x" * ((1024 * 1024) + 1), 413),
+    ],
+)
+async def test_audio_asset_upload_rejects_empty_and_oversized_files(
+    client: httpx.AsyncClient,
+    data: bytes,
+    expected_status: int,
+):
+    response = await client.post(
+        "/v1/assets",
+        files={"audio_file": ("source.wav", data, "audio/wav")},
+    )
+
+    assert response.status_code == expected_status
 
 
 @pytest.mark.asyncio

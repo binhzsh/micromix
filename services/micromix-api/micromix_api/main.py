@@ -13,6 +13,7 @@ from .config import Settings
 from .adapters import ACEClient, GPUClient, MuScriptorClient
 from .coordinator import Coordinator, Dispatcher
 from .models import (
+    AssetRecord,
     CapabilitiesResponse,
     GenerationPreset,
     GenerationRequest,
@@ -36,6 +37,18 @@ PRESETS = [
         inference_steps=50,
     ),
 ]
+
+
+async def _read_audio_upload(audio_file: UploadFile, max_upload_mib: int) -> bytes:
+    data = await audio_file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="audio file is empty")
+    if len(data) > max_upload_mib * 1024 * 1024:
+        raise HTTPException(
+            status_code=413,
+            detail=f"audio file exceeds {max_upload_mib} MiB",
+        )
+    return data
 
 
 def create_app(
@@ -132,14 +145,7 @@ def create_app(
         instruments: list[str] = Form(default_factory=list),
         detect_tempo: bool = Form(True),
     ) -> JobRecord:
-        data = await audio_file.read()
-        if not data:
-            raise HTTPException(status_code=400, detail="audio file is empty")
-        if len(data) > resolved.max_upload_mib * 1024 * 1024:
-            raise HTTPException(
-                status_code=413,
-                detail=f"audio file exceeds {resolved.max_upload_mib} MiB",
-            )
+        data = await _read_audio_upload(audio_file, resolved.max_upload_mib)
         filename = Path(audio_file.filename or "input.wav").name
         upload_dir = resolved.upload_root / uuid.uuid4().hex
         upload_dir.mkdir(parents=True, exist_ok=True)
@@ -157,6 +163,29 @@ def create_app(
         if start_dispatcher:
             await dispatcher.enqueue(job.id)
         return job
+
+    @app.post(
+        "/v1/assets",
+        response_model=AssetRecord,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def upload_asset(audio_file: UploadFile = File(...)) -> AssetRecord:
+        data = await _read_audio_upload(audio_file, resolved.max_upload_mib)
+        filename = Path(audio_file.filename or "input.wav").name
+        import_dir = resolved.asset_root / "imports" / uuid.uuid4().hex
+        import_dir.mkdir(parents=True, exist_ok=True)
+        import_path = import_dir / filename
+        import_path.write_bytes(data)
+        try:
+            return await store.create_asset(
+                import_path,
+                audio_file.content_type or "application/octet-stream",
+                filename,
+            )
+        except Exception:
+            import_path.unlink(missing_ok=True)
+            import_dir.rmdir()
+            raise
 
     @app.get("/v1/jobs", response_model=list[JobRecord])
     async def list_jobs() -> list[JobRecord]:
