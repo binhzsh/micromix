@@ -12,15 +12,20 @@ from fastapi.responses import FileResponse
 from .config import Settings
 from .adapters import ACEClient, GPUClient, MuScriptorClient
 from .coordinator import Coordinator, Dispatcher
+from .generation import resolve_variation_seeds
 from .models import (
     AssetRecord,
     CapabilitiesResponse,
+    GenerationOperation,
     GenerationPreset,
     GenerationRequest,
     JobKind,
     JobRecord,
+    ReferenceGenerationRequest,
+    RemixRequest,
+    RepaintRequest,
 )
-from .store import JobStore
+from .store import InputAssetBinding, JobStore
 
 
 PRESETS = [
@@ -121,6 +126,50 @@ def create_app(
             transcription_instruments=(await muscriptor.instruments()) if start_dispatcher else [],
         )
 
+    async def resolve_audio_asset(asset_id: str) -> AssetRecord:
+        value = await store.get_asset(asset_id)
+        if value is None:
+            raise HTTPException(status_code=404, detail="asset not found")
+        record, _ = value
+        if not (
+            record.media_type.startswith("audio/")
+            or record.media_type == "application/octet-stream"
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="source asset must contain audio",
+            )
+        return record
+
+    async def submit_reimagine(
+        payload: ReferenceGenerationRequest | RemixRequest | RepaintRequest,
+        operation: GenerationOperation,
+        asset_field: str,
+        input_name: str,
+    ) -> JobRecord:
+        asset_id = getattr(payload, asset_field)
+        await resolve_audio_asset(asset_id)
+        parameters = payload.model_dump(
+            exclude_none=True,
+            exclude={asset_field},
+        )
+        parameters.update(
+            operation=operation.value,
+            seeds=resolve_variation_seeds(
+                payload.seed,
+                payload.variation_count,
+            ),
+            _upstream_recovery_count=0,
+        )
+        job = await store.create_job(
+            JobKind.generation,
+            parameters,
+            inputs=[InputAssetBinding(asset_id, input_name)],
+        )
+        if start_dispatcher:
+            await dispatcher.enqueue(job.id)
+        return job
+
     @app.post(
         "/v1/jobs/generation",
         response_model=JobRecord,
@@ -129,11 +178,60 @@ def create_app(
     async def submit_generation(payload: GenerationRequest) -> JobRecord:
         job = await store.create_job(
             JobKind.generation,
-            payload.model_dump(exclude_none=True),
+            {
+                **payload.model_dump(exclude_none=True),
+                "operation": GenerationOperation.text.value,
+                "seeds": resolve_variation_seeds(
+                    payload.seed,
+                    payload.variation_count,
+                ),
+                "_upstream_recovery_count": 0,
+            },
         )
         if start_dispatcher:
             await dispatcher.enqueue(job.id)
         return job
+
+    @app.post(
+        "/v1/jobs/reference-generation",
+        response_model=JobRecord,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def submit_reference_generation(
+        payload: ReferenceGenerationRequest,
+    ) -> JobRecord:
+        return await submit_reimagine(
+            payload,
+            GenerationOperation.reference,
+            "reference_asset_id",
+            "reference",
+        )
+
+    @app.post(
+        "/v1/jobs/remix",
+        response_model=JobRecord,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def submit_remix(payload: RemixRequest) -> JobRecord:
+        return await submit_reimagine(
+            payload,
+            GenerationOperation.remix,
+            "source_asset_id",
+            "source",
+        )
+
+    @app.post(
+        "/v1/jobs/repaint",
+        response_model=JobRecord,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def submit_repaint(payload: RepaintRequest) -> JobRecord:
+        return await submit_reimagine(
+            payload,
+            GenerationOperation.repaint,
+            "source_asset_id",
+            "source",
+        )
 
     @app.post(
         "/v1/jobs/transcription",

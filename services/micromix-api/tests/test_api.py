@@ -168,3 +168,157 @@ async def test_audio_asset_upload_rejects_empty_and_oversized_files(
 async def test_unknown_job_and_asset_return_404(client: httpx.AsyncClient):
     assert (await client.get("/v1/jobs/missing")).status_code == 404
     assert (await client.get("/v1/assets/missing")).status_code == 404
+
+
+async def upload_test_asset(
+    client: httpx.AsyncClient,
+    *,
+    media_type: str = "audio/wav",
+) -> dict:
+    response = await client.post(
+        "/v1/assets",
+        files={"audio_file": ("source.wav", b"RIFF-source", media_type)},
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("route", "payload", "operation", "input_name"),
+    [
+        (
+            "/v1/jobs/reference-generation",
+            {"prompt": "dream pop"},
+            "reference",
+            "reference",
+        ),
+        (
+            "/v1/jobs/remix",
+            {"prompt": "heavy rock", "source_strength": 0.7},
+            "remix",
+            "source",
+        ),
+        (
+            "/v1/jobs/repaint",
+            {
+                "prompt": "new bridge",
+                "start_seconds": 12,
+                "end_seconds": 20,
+                "repaint_strength": 0.4,
+            },
+            "repaint",
+            "source",
+        ),
+    ],
+)
+async def test_reimagine_submission_persists_operation_and_input(
+    client: httpx.AsyncClient,
+    route: str,
+    payload: dict,
+    operation: str,
+    input_name: str,
+):
+    asset = await upload_test_asset(client)
+    asset_key = (
+        "reference_asset_id"
+        if operation == "reference"
+        else "source_asset_id"
+    )
+
+    response = await client.post(
+        route,
+        json={
+            **payload,
+            asset_key: asset["id"],
+            "seed": 4_294_967_295,
+            "variation_count": 2,
+        },
+    )
+
+    assert response.status_code == 202
+    job = response.json()
+    assert job["parameters"]["operation"] == operation
+    assert job["parameters"]["variation_count"] == 2
+    assert job["parameters"]["seeds"] == [4_294_967_295, 0]
+    assert asset_key not in job["parameters"]
+    assert [(link["name"], link["asset"]["id"]) for link in job["inputs"]] == [
+        (input_name, asset["id"])
+    ]
+    assert "upstream_recovery_count" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_generation_submission_records_text_operation_and_seed_defaults(
+    client: httpx.AsyncClient,
+):
+    response = await client.post(
+        "/v1/jobs/generation",
+        json={"prompt": "minimal techno"},
+    )
+
+    assert response.status_code == 202
+    parameters = response.json()["parameters"]
+    assert parameters["operation"] == "text"
+    assert parameters["variation_count"] == 1
+    assert len(parameters["seeds"]) == 1
+    assert 0 <= parameters["seeds"][0] <= 4_294_967_295
+
+
+@pytest.mark.asyncio
+async def test_reimagine_submission_rejects_missing_and_non_audio_assets(
+    client: httpx.AsyncClient,
+):
+    before = (await client.get("/v1/jobs")).json()
+    missing = await client.post(
+        "/v1/jobs/remix",
+        json={"source_asset_id": "missing", "prompt": "rock"},
+    )
+    document = await upload_test_asset(client, media_type="text/plain")
+    wrong_type = await client.post(
+        "/v1/jobs/reference-generation",
+        json={
+            "reference_asset_id": document["id"],
+            "prompt": "dream pop",
+        },
+    )
+
+    assert missing.status_code == 404
+    assert wrong_type.status_code == 422
+    assert (await client.get("/v1/jobs")).json() == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("route", "payload"),
+    [
+        (
+            "/v1/jobs/reference-generation",
+            {"reference_asset_id": "unused", "prompt": "song", "variation_count": 5},
+        ),
+        (
+            "/v1/jobs/remix",
+            {"source_asset_id": "unused", "prompt": "song", "source_strength": 1.1},
+        ),
+        (
+            "/v1/jobs/repaint",
+            {
+                "source_asset_id": "unused",
+                "prompt": "song",
+                "start_seconds": 1,
+                "end_seconds": 2,
+            },
+        ),
+    ],
+)
+async def test_reimagine_validation_does_not_create_jobs(
+    client: httpx.AsyncClient,
+    route: str,
+    payload: dict,
+):
+    before = (await client.get("/v1/jobs")).json()
+
+    response = await client.post(route, json=payload)
+
+    assert response.status_code == 422
+    assert (await client.get("/v1/jobs")).json() == before
