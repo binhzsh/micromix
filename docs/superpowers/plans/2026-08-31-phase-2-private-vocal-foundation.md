@@ -34,7 +34,7 @@
 - Produces `VocalConversionRequest(source_asset_id: str, voice_profile_id: str, pitch_shift_semitones: int = 0, f0_method: Literal["rmvpe"] = "rmvpe")`.
 - Produces `Settings.voice_profile_root: Path` from `VOICE_PROFILE_ROOT`.
 
-- [ ] **Step 1: Write failing API validation tests**
+- [x] **Step 1: Write failing API validation tests**
 
 ```python
 @pytest.mark.asyncio
@@ -46,11 +46,11 @@ async def test_vocal_conversion_rejects_out_of_range_pitch(client):
     assert response.status_code == 422
 ```
 
-- [ ] **Step 2: Run the focused test and confirm it fails because the route/model is absent**
+- [x] **Step 2: Run the focused test and confirm it fails because the route/model is absent**
 
 Run: `python -m pytest tests/test_api.py -k vocal_conversion -q`
 
-- [ ] **Step 3: Add job kind, request model, and settings path**
+- [x] **Step 3: Add job kind, request model, and settings path**
 
 ```python
 class JobKind(str, Enum):
@@ -66,7 +66,7 @@ class VocalConversionRequest(BaseModel):
     f0_method: Literal["rmvpe"] = "rmvpe"
 ```
 
-- [ ] **Step 4: Run focused model tests and commit**
+- [x] **Step 4: Run focused model tests and commit**
 
 Run: `python -m pytest tests/test_api.py -k vocal_conversion -q`
 
@@ -83,7 +83,7 @@ Commit: `feat(api): define private vocal conversion contract`
 - Produces `VoiceProfileRegistry(root: Path).resolve(profile_id: str) -> VoiceProfile`.
 - Registry reads only `<root>/profiles.json` and verifies every resolved path remains beneath `root`.
 
-- [ ] **Step 1: Write failing registry tests**
+- [x] **Step 1: Write failing registry tests**
 
 ```python
 def test_registry_resolves_profile_with_immutable_revision(tmp_path):
@@ -96,11 +96,11 @@ def test_registry_resolves_profile_with_immutable_revision(tmp_path):
     assert VoiceProfileRegistry(tmp_path).resolve("private-voice").revision == "r1"
 ```
 
-- [ ] **Step 2: Run the focused test and confirm import failure**
+- [x] **Step 2: Run the focused test and confirm import failure**
 
 Run: `python -m pytest tests/test_voice_profiles.py -q`
 
-- [ ] **Step 3: Implement strict manifest parsing and containment checks**
+- [x] **Step 3: Implement strict manifest parsing and containment checks**
 
 ```python
 def _contained(root: Path, relative: str) -> Path:
@@ -112,7 +112,7 @@ def _contained(root: Path, relative: str) -> Path:
     return path
 ```
 
-- [ ] **Step 4: Run focused tests and commit**
+- [x] **Step 4: Run focused tests and commit**
 
 Run: `python -m pytest tests/test_voice_profiles.py -q`
 
@@ -133,7 +133,7 @@ Commit: `feat(api): add private voice profile registry`
 - Stores only `voice_profile_id`, `voice_profile_revision`, `pitch_shift_semitones`, and `f0_method` in public job parameters.
 - Stores resolved source/profile paths only in excluded internal parameters.
 
-- [ ] **Step 1: Write failing API test for durable submission/provenance**
+- [x] **Step 1: Write failing API test for durable submission/provenance**
 
 ```python
 response = await client.post("/v1/jobs/vocal-conversion", json={
@@ -144,11 +144,11 @@ assert response.json()["parameters"]["voice_profile_revision"] == "r1"
 assert "model_path" not in response.json()["parameters"]
 ```
 
-- [ ] **Step 2: Run focused test and confirm it fails**
+- [x] **Step 2: Run focused test and confirm it fails**
 
 Run: `python -m pytest tests/test_api.py -k vocal_conversion -q`
 
-- [ ] **Step 3: Implement submission and dispatcher routing**
+- [x] **Step 3: Implement submission and dispatcher routing**
 
 ```python
 job = await store.create_job(
@@ -160,7 +160,7 @@ job = await store.create_job(
 )
 ```
 
-- [ ] **Step 4: Run focused tests and commit**
+- [x] **Step 4: Run focused tests and commit**
 
 Run: `python -m pytest tests/test_api.py tests/test_coordinator.py -k vocal_conversion -q`
 
@@ -181,7 +181,7 @@ Commit: `feat(api): submit durable vocal conversion jobs`
 - Source, model, and output paths are validated as mounted, contained paths; output is a WAV under the gateway job directory.
 - Worker does not acquire GPU or persist job state.
 
-- [ ] **Step 1: Write failing worker route tests**
+- [x] **Step 1: Write failing worker route tests**
 
 ```python
 def test_convert_rejects_source_outside_mounted_assets(client):
@@ -189,11 +189,11 @@ def test_convert_rejects_source_outside_mounted_assets(client):
     assert response.status_code == 422
 ```
 
-- [ ] **Step 2: Run tests and confirm the worker does not exist**
+- [x] **Step 2: Run tests and confirm the worker does not exist**
 
 Run: `python -m pytest services/rvc-worker/tests/test_app.py -q`
 
-- [ ] **Step 3: Implement the contained-path FastAPI worker and pinned RVC runtime image**
+- [x] **Step 3: Implement the contained-path FastAPI worker and pinned RVC runtime image**
 
 ```dockerfile
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
@@ -201,7 +201,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
 RUN git clone --depth 1 https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI.git /opt/rvc
 ```
 
-- [ ] **Step 4: Add Compose mounts and internal networking**
+- [x] **Step 4: Add Compose mounts and internal networking**
 
 ```yaml
 rvc-worker:
@@ -232,7 +232,7 @@ Commit: `feat(rvc): add internal conversion worker`
 - Produces `RVCClient.convert(...) -> Path` and `RVCClient.health() -> str`.
 - `Coordinator._run_vocal_conversion` acquires `micromix-rvc` for 8,000 MiB, invokes the worker, validates a nonempty WAV, writes/registers `converted-vocal.wav`, and always releases the GPU.
 
-- [ ] **Step 1: Write failing client/coordinator tests**
+- [x] **Step 1: Write failing client/coordinator tests**
 
 ```python
 assert gpu.calls == [("micromix-rvc", 8_000, 60)]
@@ -241,18 +241,18 @@ assert completed.outputs[0].asset.filename == "converted-vocal.wav"
 assert gpu.releases == ["micromix-rvc"]
 ```
 
-- [ ] **Step 2: Run focused tests and confirm failure**
+- [x] **Step 2: Run focused tests and confirm failure**
 
 Run: `python -m pytest tests/test_adapters.py tests/test_coordinator.py -k vocal_conversion -q`
 
-- [ ] **Step 3: Implement the client and coordinator branch**
+- [x] **Step 3: Implement the client and coordinator branch**
 
 ```python
 if job.kind is JobKind.vocal_conversion:
     await self._run_vocal_conversion(job)
 ```
 
-- [ ] **Step 4: Run gateway suite and commit**
+- [x] **Step 4: Run gateway suite and commit**
 
 Run: `python -m pytest tests -q`
 
