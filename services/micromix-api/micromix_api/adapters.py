@@ -95,6 +95,8 @@ class ACEClient:
             "task_type": task_type,
             "batch_size": parameters.get("variation_count", 1),
         }
+        if operation in {"text", "reference"} and parameters.get("vocal_language") is not None:
+            payload["vocal_language"] = parameters["vocal_language"]
         seeds = parameters.get("seeds")
         if seeds:
             payload["use_random_seed"] = False

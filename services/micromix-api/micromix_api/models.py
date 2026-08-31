@@ -84,6 +84,7 @@ class GenerationControls(BaseModel):
     preset: Literal["turbo", "quality"] = "turbo"
     seed: int | None = Field(default=None, ge=0, le=4_294_967_295)
     variation_count: int = Field(default=2, ge=1, le=4)
+    vocal_language: Literal["en", "vi"] | None = None
 
     @field_validator("prompt")
     @classmethod
