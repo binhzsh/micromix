@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from micromix_api.models import AssetDirection, JobKind, JobState
-from micromix_api.store import JobStore
+from micromix_api.store import InputAssetBinding, JobStore, OutputAssetBinding
 
 
 @pytest.fixture
@@ -250,3 +250,105 @@ async def test_prune_retains_shared_active_input_and_removes_old_orphan(
     assert not orphan_path.exists()
     assert await store.get_asset(orphan.id) is None
     assert await store.get_asset(shared.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_create_job_attaches_inputs_in_the_same_transaction(store: JobStore):
+    source_path = store.asset_root / "source.wav"
+    source_path.write_bytes(b"RIFF-source")
+    source = await store.create_asset(source_path, "audio/wav", "source.wav")
+
+    job = await store.create_job(
+        JobKind.generation,
+        {"operation": "remix", "_upstream_recovery_count": 0},
+        inputs=[InputAssetBinding(source.id, "source")],
+    )
+
+    assert [(link.name, link.asset.id) for link in job.inputs] == [
+        ("source", source.id)
+    ]
+    assert job.parameters == {"operation": "remix"}
+    assert job.internal_parameters == {"upstream_recovery_count": 0}
+
+
+@pytest.mark.asyncio
+async def test_create_job_rolls_back_when_an_input_is_missing(store: JobStore):
+    before = await store.list_jobs()
+
+    with pytest.raises(KeyError, match="missing"):
+        await store.create_job(
+            JobKind.generation,
+            {"operation": "remix"},
+            inputs=[InputAssetBinding("missing", "source")],
+        )
+
+    assert await store.list_jobs() == before
+
+
+@pytest.mark.asyncio
+async def test_update_internal_parameters_stays_hidden(store: JobStore):
+    job = await store.create_job(
+        JobKind.generation,
+        {"operation": "reference", "_upstream_recovery_count": 0},
+    )
+
+    updated = await store.update_internal_parameters(
+        job.id,
+        {"upstream_recovery_count": 1},
+    )
+
+    assert updated.parameters == {"operation": "reference"}
+    assert updated.internal_parameters == {"upstream_recovery_count": 1}
+
+
+@pytest.mark.asyncio
+async def test_register_outputs_is_atomic_and_ordered(store: JobStore):
+    job = await store.create_job(JobKind.generation, {"operation": "remix"})
+    first = store.asset_root / "first.wav"
+    second = store.asset_root / "second.wav"
+    first.write_bytes(b"RIFF-first")
+    second.write_bytes(b"RIFF-second")
+
+    assets = await store.register_outputs(
+        job.id,
+        [
+            OutputAssetBinding(first, "audio/wav", "first.wav", position=0),
+            OutputAssetBinding(second, "audio/wav", "second.wav", position=1),
+        ],
+    )
+
+    persisted = await store.get_job(job.id)
+    assert [asset.filename for asset in assets] == ["first.wav", "second.wav"]
+    assert [(link.name, link.position) for link in persisted.outputs] == [
+        ("result", 0),
+        ("result", 1),
+    ]
+    assert persisted.asset == persisted.outputs[0].asset
+
+
+@pytest.mark.asyncio
+async def test_register_outputs_rolls_back_when_any_output_is_invalid(
+    store: JobStore,
+    tmp_path: Path,
+):
+    job = await store.create_job(JobKind.generation, {"operation": "remix"})
+    valid = store.asset_root / "valid.wav"
+    invalid = tmp_path / "outside.wav"
+    valid.write_bytes(b"RIFF-valid")
+    invalid.write_bytes(b"RIFF-outside")
+
+    with pytest.raises(ValueError, match="asset path"):
+        await store.register_outputs(
+            job.id,
+            [
+                OutputAssetBinding(valid, "audio/wav", "valid.wav", position=0),
+                OutputAssetBinding(invalid, "audio/wav", "outside.wav", position=1),
+            ],
+        )
+
+    persisted = await store.get_job(job.id)
+    assert persisted.outputs == []
+    count = await (
+        await store.db.execute("SELECT COUNT(*) FROM assets")
+    ).fetchone()
+    assert count[0] == 0

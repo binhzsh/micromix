@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -111,6 +112,22 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+@dataclass(frozen=True, slots=True)
+class InputAssetBinding:
+    asset_id: str
+    name: str
+    position: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class OutputAssetBinding:
+    path: Path
+    media_type: str
+    filename: str
+    name: str = "result"
+    position: int = 0
+
+
 class JobStore:
     def __init__(self, database_path: Path, asset_root: Path):
         self.database_path = database_path
@@ -141,25 +158,65 @@ class JobStore:
             raise RuntimeError("store is not open")
         return self._db
 
-    async def create_job(self, kind: JobKind, parameters: dict[str, Any]) -> JobRecord:
+    async def create_job(
+        self,
+        kind: JobKind,
+        parameters: dict[str, Any],
+        *,
+        inputs: list[InputAssetBinding] | tuple[InputAssetBinding, ...] = (),
+    ) -> JobRecord:
+        resolved_inputs = [
+            InputAssetBinding(binding.asset_id, binding.name.strip(), binding.position)
+            for binding in inputs
+        ]
+        if any(not binding.name for binding in resolved_inputs):
+            raise ValueError("asset link name must not be blank")
+        if any(binding.position < 0 for binding in resolved_inputs):
+            raise ValueError("asset link position must not be negative")
         job_id = uuid.uuid4().hex
         now = _now()
-        await self.db.execute(
-            """
-            INSERT INTO jobs (
-                id, kind, state, parameters_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                job_id,
-                kind.value,
-                JobState.queued.value,
-                json.dumps(parameters, separators=(",", ":"), sort_keys=True),
-                now.isoformat(),
-                now.isoformat(),
-            ),
-        )
-        await self.db.commit()
+        try:
+            await self.db.execute("BEGIN")
+            await self.db.execute(
+                """
+                INSERT INTO jobs (
+                    id, kind, state, parameters_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    job_id,
+                    kind.value,
+                    JobState.queued.value,
+                    json.dumps(parameters, separators=(",", ":"), sort_keys=True),
+                    now.isoformat(),
+                    now.isoformat(),
+                ),
+            )
+            for binding in resolved_inputs:
+                cursor = await self.db.execute(
+                    "SELECT 1 FROM assets WHERE id = ?",
+                    (binding.asset_id,),
+                )
+                if await cursor.fetchone() is None:
+                    raise KeyError(binding.asset_id)
+                await self.db.execute(
+                    """
+                    INSERT INTO job_assets (
+                        job_id, asset_id, direction, name, position
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        job_id,
+                        binding.asset_id,
+                        AssetDirection.input.value,
+                        binding.name,
+                        binding.position,
+                    ),
+                )
+            await self.db.commit()
+        except Exception:
+            await self.db.rollback()
+            raise
         value = await self.get_job(job_id)
         assert value is not None
         return value
@@ -208,6 +265,41 @@ class JobStore:
         value = await self.get_job(job_id)
         assert value is not None
         return value
+
+    async def update_internal_parameters(
+        self,
+        job_id: str,
+        values: dict[str, Any],
+    ) -> JobRecord:
+        current = await self.get_job(job_id)
+        if current is None:
+            raise KeyError(job_id)
+        parameters = {
+            **current.parameters,
+            **{
+                f"_{key}": value
+                for key, value in current.internal_parameters.items()
+            },
+            **{
+                f"_{key.removeprefix('_')}": value
+                for key, value in values.items()
+            },
+        }
+        await self.db.execute(
+            """
+            UPDATE jobs SET parameters_json = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                json.dumps(parameters, separators=(",", ":"), sort_keys=True),
+                _now().isoformat(),
+                job_id,
+            ),
+        )
+        await self.db.commit()
+        updated = await self.get_job(job_id)
+        assert updated is not None
+        return updated
 
     async def get_job(self, job_id: str) -> JobRecord | None:
         cursor = await self.db.execute(
@@ -305,15 +397,95 @@ class JobStore:
         name: str = "result",
         position: int = 0,
     ) -> AssetRecord:
-        asset = await self.create_asset(path, media_type, filename)
-        await self.attach_asset(
+        assets = await self.register_outputs(
             job_id,
-            asset.id,
-            AssetDirection.output,
-            name,
-            position,
+            [
+                OutputAssetBinding(
+                    path=path,
+                    media_type=media_type,
+                    filename=filename,
+                    name=name,
+                    position=position,
+                )
+            ],
         )
-        return asset
+        return assets[0]
+
+    async def register_outputs(
+        self,
+        job_id: str,
+        outputs: list[OutputAssetBinding] | tuple[OutputAssetBinding, ...],
+    ) -> list[AssetRecord]:
+        if await self.get_job(job_id) is None:
+            raise KeyError(job_id)
+        root = self.asset_root.resolve()
+        prepared: list[tuple[AssetRecord, str, int]] = []
+        for output in outputs:
+            resolved = output.path.resolve()
+            if not resolved.is_relative_to(root):
+                raise ValueError("asset path must remain beneath asset root")
+            if not resolved.is_file():
+                raise ValueError("asset file does not exist")
+            name = output.name.strip()
+            if not name:
+                raise ValueError("asset link name must not be blank")
+            if output.position < 0:
+                raise ValueError("asset link position must not be negative")
+            asset_id = uuid.uuid4().hex
+            prepared.append(
+                (
+                    AssetRecord(
+                        id=asset_id,
+                        relative_path=str(resolved.relative_to(root)),
+                        filename=output.filename,
+                        media_type=output.media_type,
+                        size_bytes=resolved.stat().st_size,
+                        sha256=hashlib.sha256(resolved.read_bytes()).hexdigest(),
+                        download_url=f"/v1/assets/{asset_id}",
+                    ),
+                    name,
+                    output.position,
+                )
+            )
+        try:
+            await self.db.execute("BEGIN")
+            for asset, name, position in prepared:
+                await self.db.execute(
+                    """
+                    INSERT INTO assets (
+                        id, relative_path, filename, media_type,
+                        size_bytes, sha256, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        asset.id,
+                        asset.relative_path,
+                        asset.filename,
+                        asset.media_type,
+                        asset.size_bytes,
+                        asset.sha256,
+                        _now().isoformat(),
+                    ),
+                )
+                await self.db.execute(
+                    """
+                    INSERT INTO job_assets (
+                        job_id, asset_id, direction, name, position
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        job_id,
+                        asset.id,
+                        AssetDirection.output.value,
+                        name,
+                        position,
+                    ),
+                )
+            await self.db.commit()
+        except Exception:
+            await self.db.rollback()
+            raise
+        return [asset for asset, _, _ in prepared]
 
     async def get_asset(self, asset_id: str) -> tuple[AssetRecord, Path] | None:
         cursor = await self.db.execute("SELECT * FROM assets WHERE id = ?", (asset_id,))
