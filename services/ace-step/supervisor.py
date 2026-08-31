@@ -134,7 +134,6 @@ def create_app(
         base_url="http://127.0.0.1:18001",
         timeout=1200,
     )
-    known_task_ids: set[str] = set()
 
     async def proxy(method: str, path: str, request: Request) -> Response:
         try:
@@ -165,16 +164,7 @@ def create_app(
 
     @app.post("/release_task")
     async def release_task(request: Request) -> Response:
-        response = await proxy("POST", "/release_task", request)
-        if response.status_code < 400:
-            try:
-                payload = json.loads(response.body)
-                task_id = payload.get("data", {}).get("task_id")
-                if task_id:
-                    known_task_ids.add(str(task_id))
-            except (AttributeError, TypeError, ValueError):
-                pass
-        return response
+        return await proxy("POST", "/release_task", request)
 
     @app.post("/query_result")
     async def query_result(request: Request) -> Response:
@@ -212,10 +202,8 @@ def create_app(
         try:
             payload = json.loads(response.body)
             for row in payload.get("data", []):
-                task_id = str(row.get("task_id", ""))
                 if (
-                    task_id not in known_task_ids
-                    and int(row.get("status", 0)) == 0
+                    int(row.get("status", 0)) == 0
                     and row.get("result") == "[]"
                 ):
                     row["status"] = 3
@@ -229,9 +217,7 @@ def create_app(
 
     @app.post("/api/gpu/release")
     async def release_gpu() -> dict[str, bool]:
-        released = await process_manager.stop()
-        known_task_ids.clear()
-        return {"released": released}
+        return {"released": await process_manager.stop()}
 
     return app
 

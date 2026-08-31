@@ -82,7 +82,10 @@ def test_query_preserves_running_status_for_known_task():
                         {
                             "task_id": "known-task",
                             "status": 0,
-                            "result": "[]",
+                            "result": (
+                                '[{"file":"","status":0,'
+                                '"stage":"queued","progress":0.0}]'
+                            ),
                         }
                     ],
                 },
@@ -103,7 +106,7 @@ def test_query_preserves_running_status_for_known_task():
     assert response.json()["data"][0]["status"] == 0
 
 
-def test_query_marks_unknown_task_missing_while_backend_is_running():
+def test_query_marks_purged_known_task_missing_while_backend_is_running():
     manager = FakeProcessManager()
 
     def upstream(request: httpx.Request) -> httpx.Response:
@@ -118,7 +121,7 @@ def test_query_marks_unknown_task_missing_while_backend_is_running():
                 json={
                     "code": 200,
                     "data": [
-                        {"task_id": "lost-task", "status": 0, "result": "[]"}
+                        {"task_id": "known-task", "status": 0, "result": "[]"}
                     ],
                 },
             )
@@ -132,7 +135,7 @@ def test_query_marks_unknown_task_missing_while_backend_is_running():
         client.post("/release_task", json={"prompt": "song"})
         response = client.post(
             "/query_result",
-            json={"task_id_list": ["lost-task"]},
+            json={"task_id_list": ["known-task"]},
         )
 
     assert response.json()["data"][0]["status"] == 3
