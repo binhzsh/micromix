@@ -4,8 +4,10 @@ import asyncio
 import gc
 import io
 import os
+import signal
 import subprocess
 import tempfile
+import threading
 import wave
 from collections.abc import Callable
 from pathlib import Path
@@ -198,6 +200,12 @@ class ModelManager:
         return True
 
 
+def schedule_process_restart() -> None:
+    timer = threading.Timer(0.1, os.kill, args=(os.getpid(), signal.SIGTERM))
+    timer.daemon = True
+    timer.start()
+
+
 def create_app(manager: ModelManager | None = None) -> FastAPI:
     app = FastAPI(title="Micromix MuScriptor Worker")
     model_manager = manager or ModelManager()
@@ -241,7 +249,10 @@ def create_app(manager: ModelManager | None = None) -> FastAPI:
     @app.post("/api/gpu/release")
     async def release_gpu() -> dict[str, bool]:
         async with operation_lock:
-            return {"released": await asyncio.to_thread(model_manager.release)}
+            released = await asyncio.to_thread(model_manager.release)
+        if released and os.getenv("MUSCRIPTOR_RESTART_AFTER_RELEASE") == "1":
+            schedule_process_restart()
+        return {"released": released}
 
     return app
 

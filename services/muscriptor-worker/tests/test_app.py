@@ -63,6 +63,30 @@ def test_release_drops_loaded_model_and_is_idempotent():
         assert client.get("/health").json()["loaded"] is False
 
 
+def test_release_schedules_worker_restart_to_drop_cuda_context(monkeypatch):
+    engine = FakeEngine()
+    restarts = []
+    monkeypatch.setenv("MUSCRIPTOR_RESTART_AFTER_RELEASE", "1")
+    monkeypatch.setattr(
+        main,
+        "schedule_process_restart",
+        lambda: restarts.append(True),
+        raising=False,
+    )
+
+    with TestClient(create_app(ModelManager(lambda: engine))) as client:
+        client.post(
+            "/transcribe/midi",
+            files={"audio_file": ("song.wav", b"audio", "audio/wav")},
+        )
+        first = client.post("/api/gpu/release")
+        second = client.post("/api/gpu/release")
+
+    assert first.json() == {"released": True}
+    assert second.json() == {"released": False}
+    assert restarts == [True]
+
+
 def test_instruments_do_not_force_gpu_model_load():
     engine = FakeEngine()
     manager = ModelManager(lambda: engine, instrument_provider=lambda: engine.instruments)

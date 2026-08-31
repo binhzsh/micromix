@@ -14,6 +14,8 @@ services:
       ACESTEP_CONFIG_PATH: acestep-v15-xl-turbo
       ACESTEP_CONFIG_PATH2: acestep-v15-xl-sft
       ACESTEP_LM_MODEL_PATH: acestep-5Hz-lm-4B
+      ACESTEP_OFFLOAD_TO_CPU: "true"
+      ACESTEP_OFFLOAD_DIT_TO_CPU: "true"
       ACESTEP_TURBO_REVISION: ${ACESTEP_TURBO_REVISION:-d4a0b288b83ebb7e25a8c0b32c573c22e134e8ee}
       ACESTEP_QUALITY_REVISION: ${ACESTEP_QUALITY_REVISION:-d06de46b4622f781cf07f4a013a67d591ca52819}
       ACESTEP_LM_REVISION: ${ACESTEP_LM_REVISION:-0a3ec94b557aea7d508da38b31cfe7341f6ff737}
@@ -43,6 +45,7 @@ services:
       HF_HOME: /models/huggingface
       MUSCRIPTOR_MODEL: ${MUSCRIPTOR_MODEL:-medium}
       MUSCRIPTOR_DEVICE: ${MUSCRIPTOR_DEVICE:-cuda}
+      MUSCRIPTOR_RESTART_AFTER_RELEASE: "1"
       PYTHONUNBUFFERED: "1"
     volumes:
       - ${MUSCRIPTOR_CACHE_ROOT:-/mnt/fast_pool/fast_models/micromix/muscriptor}:/models
