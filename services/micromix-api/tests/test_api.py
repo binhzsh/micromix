@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import httpx
@@ -12,6 +13,13 @@ from micromix_api.models import JobState
 
 @pytest.fixture
 async def client(tmp_path: Path):
+    voice_root = tmp_path / "voices"
+    (voice_root / "models").mkdir(parents=True)
+    (voice_root / "models" / "private.pth").write_bytes(b"private-model")
+    (voice_root / "profiles.json").write_text(json.dumps({"profiles": [{
+        "id": "private-voice", "display_name": "Private Voice", "revision": "r1",
+        "model": "models/private.pth",
+    }]}))
     settings = Settings(
         database_path=tmp_path / "gateway.db",
         asset_root=tmp_path / "assets",
@@ -21,6 +29,7 @@ async def client(tmp_path: Path):
         muscriptor_url="http://muscriptor.test",
         gpu_router_url="http://gpu.test",
         max_upload_mib=1,
+        voice_profile_root=voice_root,
     )
     app = create_app(settings=settings, start_dispatcher=False)
     async with app.router.lifespan_context(app):
@@ -99,6 +108,53 @@ async def test_vocal_conversion_validation_rejects_unsupported_input(
 ):
     response = await client.post("/v1/jobs/vocal-conversion", json=payload)
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_vocal_conversion_submission_persists_profile_revision_without_path(
+    client: httpx.AsyncClient,
+):
+    source = await client.post(
+        "/v1/assets",
+        files={"audio_file": ("performance.wav", b"RIFF-source", "audio/wav")},
+    )
+
+    response = await client.post(
+        "/v1/jobs/vocal-conversion",
+        json={
+            "source_asset_id": source.json()["id"],
+            "voice_profile_id": "private-voice",
+            "pitch_shift_semitones": 2,
+        },
+    )
+
+    assert response.status_code == 202
+    job = response.json()
+    assert job["kind"] == "vocal_conversion"
+    assert job["parameters"] == {
+        "voice_profile_id": "private-voice",
+        "voice_profile_revision": "r1",
+        "pitch_shift_semitones": 2,
+        "f0_method": "rmvpe",
+    }
+    assert [link["name"] for link in job["inputs"]] == ["source"]
+    assert "model_path" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_vocal_conversion_rejects_an_unknown_private_profile(client: httpx.AsyncClient):
+    source = await client.post(
+        "/v1/assets",
+        files={"audio_file": ("performance.wav", b"RIFF-source", "audio/wav")},
+    )
+
+    response = await client.post(
+        "/v1/jobs/vocal-conversion",
+        json={"source_asset_id": source.json()["id"], "voice_profile_id": "missing-voice"},
+    )
+
+    assert response.status_code == 422
+    assert "profile" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
