@@ -405,7 +405,7 @@ force or reset.
 On `lts1`:
 
 ```bash
-docker compose up -d --build --no-deps micromix-api
+docker compose up -d --build ace-step micromix-api
 curl http://localhost:8902/v1/health
 ```
 
