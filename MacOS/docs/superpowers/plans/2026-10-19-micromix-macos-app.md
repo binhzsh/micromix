@@ -1,5 +1,19 @@
 # Micromix macOS App Implementation Plan
 
+> **Status (2026-08-30): Completed and superseded.** The native macOS MVP is
+> implemented under the durable architecture documented in the repository root
+> and `MacOS/README.md`. This plan remains as historical implementation and
+> visual-design context; its original backend and persistence contracts are no
+> longer authoritative.
+>
+> Major deviations from this plan are intentional: generation now uses
+> ACE-Step durable jobs rather than MiniMax/direct long-running responses;
+> library metadata is authoritative in SwiftData rather than `library.json`;
+> Analyze is a fourth mode backed by on-device Music Understanding with an
+> AVFoundation fallback; and the gateway contract is now `/v1/health`,
+> `/v1/capabilities`, `/v1/jobs/...`, and `/v1/assets/...` (including job
+> cancellation and result polling).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a native macOS (SwiftUI) desktop app that fronts the Micromix inference stack over the `micromix-api` shim on port 8902, delivering three user flows (GENERATE / TRANSCRIBE / LIBRARY) in a Teenage-Engineering-styled single-window device panel.

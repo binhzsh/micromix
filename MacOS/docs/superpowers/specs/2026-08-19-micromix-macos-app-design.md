@@ -1,7 +1,15 @@
 # Micromix — Native macOS App Design
 
 **Date:** 2026-08-19
-**Status:** approved-in-chat, pending spec review
+**Status:** historical — implemented design direction; backend and persistence contracts superseded
+
+> The durable MVP architecture in the repository root and `MacOS/README.md` is
+> authoritative. This document remains useful for product scope and visual
+> direction, but its MiniMax/direct-response backend, three-mode navigation, and
+> JSON-manifest persistence were replaced by ACE-Step durable jobs, a fourth
+> on-device Analyze mode, and a SwiftData metadata catalog. Current gateway
+> endpoints live under `/v1/health`, `/v1/capabilities`, `/v1/jobs/...`, and
+> `/v1/assets/...`.
 
 ## 1. Purpose
 

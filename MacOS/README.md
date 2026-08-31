@@ -20,6 +20,16 @@ The app talks to the `micromix-api` gateway on `lts1` over WireGuard.
 
 See root `README.md` for the full contract and `docker compose` instructions.
 
-Generate, Transcribe, Library, playback, and MIDI preview are implemented. The
-durable job API, SwiftData catalog, and Music Understanding analysis are the
-next MVP layer.
+The current app implements all four modes: Generate, Analyze, Transcribe, and
+Library. Generate and Transcribe submit durable jobs and poll them to a terminal
+state before downloading the resulting asset. Analyze uses Apple's Music
+Understanding framework on macOS 27 with an AVFoundation metadata fallback on
+macOS 26. SwiftData is authoritative for library metadata, while generated WAV
+and MIDI assets remain ordinary files under Application Support for playback
+and use in other music tools.
+
+The original macOS design specification and implementation plan under
+`docs/superpowers/` are retained as historical design context. Their direct,
+long-running HTTP contracts and JSON-manifest persistence model are superseded
+by the durable gateway and SwiftData architecture described here and in the
+root README.
