@@ -73,7 +73,7 @@ The default server URL is stored by `SettingsStore`; use the WireGuard-reachable
 
 ## GPU-router registry
 
-The shared router must register `micromix-ace-step` (23,800 MiB) and
+The shared router must register `micromix-ace-step` (23,000 MiB) and
 `micromix-muscriptor` (4,000 MiB) as `http-post` workers targeting their
 `/api/gpu/release` endpoints on `shared_net`. Deployment verification checks
 that both names appear in the router's `/status` response.

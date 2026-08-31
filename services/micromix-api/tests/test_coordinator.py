@@ -81,7 +81,7 @@ async def test_generation_acquires_gpu_polls_and_registers_wav(store: JobStore):
     assert completed.progress == 1.0
     assert completed.asset is not None
     assert (store.asset_root / completed.asset.relative_path).read_bytes() == b"RIFF-generated"
-    assert gpu.requests == [("micromix-ace-step", 23800, 60)]
+    assert gpu.requests == [("micromix-ace-step", 23000, 60)]
     assert gpu.releases == ["micromix-ace-step"]
     assert len(ace.submissions) == 1
     assert ace.polls == ["ace-task-1", "ace-task-1"]

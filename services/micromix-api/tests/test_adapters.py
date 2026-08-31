@@ -21,10 +21,10 @@ async def test_gpu_acquire_sends_wait_and_raises_on_backpressure():
     gpu = GPUClient("http://gpu.test", client=client)
 
     with pytest.raises(RuntimeError, match="GPU busy"):
-        await gpu.acquire("micromix-ace-step", 23_800, 60)
+        await gpu.acquire("micromix-ace-step", 23_000, 60)
 
     assert requests == [
-        {"app": "micromix-ace-step", "required_mib": 23_800, "wait_seconds": 60}
+        {"app": "micromix-ace-step", "required_mib": 23_000, "wait_seconds": 60}
     ]
     await client.aclose()
 

@@ -103,7 +103,7 @@ class Coordinator:
             state=JobState.acquiring_gpu,
             progress_detail="waiting for RTX 3090",
         )
-        await self.gpu.acquire("micromix-ace-step", 23_800, 60)
+        await self.gpu.acquire("micromix-ace-step", 23_000, 60)
         try:
             await self._generate_after_acquire(job)
         finally:
