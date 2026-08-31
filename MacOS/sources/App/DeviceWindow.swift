@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The three user flows. Mode buttons on the deck switch between them.
+/// The four MVP flows. Mode buttons on the deck switch between them.
 enum DeviceMode: String, CaseIterable, Identifiable {
     case generate = "GENERATE"
+    case analyze = "ANALYZE"
     case transcribe = "TRANSCRIBE"
     case library = "LIBRARY"
 
@@ -21,6 +22,7 @@ struct DeviceWindow: View {
 
     @ObservedObject var generate: GenerateViewModel
     @ObservedObject var transcribe: TranscribeViewModel
+    @ObservedObject var analyze: AnalyzeViewModel
     @ObservedObject var library: LocalLibrary
     @ObservedObject var player: AudioPlayer
     @ObservedObject var midiPreview: MidiPreview
@@ -32,12 +34,14 @@ struct DeviceWindow: View {
                 mode: selectedMode,
                 generate: generate,
                 transcribe: transcribe,
+                analyze: analyze,
                 connection: connection
             )
             DeckRegion(
                 mode: $selectedMode,
                 generate: generate,
                 transcribe: transcribe,
+                analyze: analyze,
                 library: library,
                 player: player,
                 midiPreview: midiPreview,
@@ -65,6 +69,7 @@ private struct ScreenRegion: View {
     let mode: DeviceMode
     @ObservedObject var generate: GenerateViewModel
     @ObservedObject var transcribe: TranscribeViewModel
+    @ObservedObject var analyze: AnalyzeViewModel
     @ObservedObject var connection: ConnectionMonitor
 
     var body: some View {
@@ -84,13 +89,15 @@ private struct ScreenRegion: View {
     }
 
     private var readoutColor: Color {
-        connection.isConnected ? Palette.screenText : Palette.accentRed
+        if mode == .analyze || mode == .library { return Palette.screenText }
+        return connection.isConnected ? Palette.screenText : Palette.accentRed
     }
 
     /// Live big readout: elapsed time while a job runs, result/error text after.
     private var readout: String {
         if generate.isRunning { return format(elapsed: generate.elapsed) }
         if transcribe.isRunning { return format(elapsed: transcribe.elapsed) }
+        if analyze.isRunning { return "ANALYZING" }
         if case .error(let msg) = generate.phase {
             return shorten(msg)
         }
@@ -101,15 +108,20 @@ private struct ScreenRegion: View {
         if generate.phase == .cancelled { return "CANCELLED" }
         if transcribe.phase == .done { return "TRANSCRIBED" }
         if transcribe.phase == .cancelled { return "CANCELLED" }
+        if analyze.analysis != nil { return "UNDERSTOOD" }
+        if let error = analyze.error { return shorten(error) }
         return "00:00"
     }
 
     private var statusLine: String {
-        guard connection.isConnected else { return "SERVER UNREACHABLE — CHECK WIREGUARD" }
         switch mode {
         case .generate:
+            guard connection.isConnected else { return "SERVER UNREACHABLE — CHECK WIREGUARD" }
             return generate.isRunning ? "GENERATING…" : "READY — ENTER PROMPT"
+        case .analyze:
+            return analyze.isRunning ? "ANALYZING LOCALLY…" : "READY — SELECT AUDIO"
         case .transcribe:
+            guard connection.isConnected else { return "SERVER UNREACHABLE — CHECK WIREGUARD" }
             return transcribe.isRunning ? "TRANSCRIBING…" : "READY — SELECT AUDIO"
         case .library: return "LIBRARY"
         }
@@ -132,6 +144,7 @@ private struct DeckRegion: View {
     @Binding var mode: DeviceMode
     @ObservedObject var generate: GenerateViewModel
     @ObservedObject var transcribe: TranscribeViewModel
+    @ObservedObject var analyze: AnalyzeViewModel
     @ObservedObject var library: LocalLibrary
     @ObservedObject var player: AudioPlayer
     @ObservedObject var midiPreview: MidiPreview
@@ -143,12 +156,13 @@ private struct DeckRegion: View {
         GridItem(.flexible()),
         GridItem(.flexible()),
         GridItem(.flexible()),
+        GridItem(.flexible()),
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Typography.monoLabel("1. GENERATE   2. TRANSCRIBE   3. LIBRARY", size: 11)
+                Typography.monoLabel("1. GENERATE   2. ANALYZE   3. TRANSCRIBE   4. LIBRARY", size: 11)
                     .foregroundColor(Palette.ink.opacity(0.6))
                 Spacer()
                 connectionRow
@@ -180,6 +194,8 @@ private struct DeckRegion: View {
         switch mode {
         case .generate:
             GenerateScreen(viewModel: generate, serverAvailable: connection.isConnected)
+        case .analyze:
+            AnalyzeScreen(viewModel: analyze)
         case .transcribe:
             TranscribeScreen(
                 viewModel: transcribe,

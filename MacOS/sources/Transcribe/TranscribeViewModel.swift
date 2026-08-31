@@ -23,6 +23,7 @@ final class TranscribeViewModel: ObservableObject {
     struct Selection: Sendable {
         let name: String
         let bytes: Data
+        let analysis: LocalMusicAnalysis?
     }
 
     // Selection state
@@ -61,9 +62,9 @@ final class TranscribeViewModel: ObservableObject {
 
     /// Set the source audio file. Ignored while a job is running.
     @discardableResult
-    func select(name: String, bytes: Data) -> Bool {
+    func select(name: String, bytes: Data, analysis: LocalMusicAnalysis? = nil) -> Bool {
         guard !isRunning else { return false }
-        selection = Selection(name: name, bytes: bytes)
+        selection = Selection(name: name, bytes: bytes, analysis: analysis)
         return true
     }
 

@@ -51,11 +51,27 @@ struct GenerateScreen: View {
                 }
             }
 
-            // Fixed presets
-            HStack(spacing: 16) {
-                preset("MODEL", value: viewModel.model)
+            HStack(spacing: 18) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Typography.monoLabel("ENGINE", size: 10)
+                        .foregroundColor(Palette.ink.opacity(0.5))
+                    Picker("ENGINE", selection: $viewModel.preset) {
+                        Text("XL TURBO").tag("turbo")
+                        Text("XL QUALITY").tag("quality")
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 210)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Typography.monoLabel("DURATION  \(Int(viewModel.durationSeconds)) SEC", size: 10)
+                        .foregroundColor(Palette.ink.opacity(0.5))
+                    Slider(value: $viewModel.durationSeconds, in: 10...120, step: 5)
+                        .frame(width: 180)
+                }
                 preset("FORMAT", value: viewModel.format.uppercased())
             }
+            .disabled(viewModel.isBlocked)
 
             // Primary action (+ cancel while running)
             HStack(spacing: 8) {

@@ -21,14 +21,14 @@ final class GenerateViewModel: ObservableObject {
     @Published var prompt: String = ""
     @Published var lyrics: String = ""
     @Published var useLyrics: Bool = false
+    @Published var preset: String = "turbo"
+    @Published var durationSeconds: Double = 30
 
     // Flow state
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var lastItem: LibraryItem?
 
-    /// Fixed v1 presets.
-    let model = "MiniMaxAI/MiniMax-Music3"
     let format = "wav"
 
     private let api: any GenerateServicing
@@ -72,13 +72,20 @@ final class GenerateViewModel: ObservableObject {
         let api = self.api
         let library = self.library
         let lyricsArg = useLyrics ? lyrics : nil
+        let preset = self.preset
+        let durationSeconds = self.durationSeconds
         let title = Self.title(from: input)
         phase = .running
         lastItem = nil
 
         runner.start(JobRunner.Job(name: "generate") {
             do {
-                let data = try await api.generate(input: input, lyrics: lyricsArg)
+                let data = try await api.generate(
+                    input: input,
+                    lyrics: lyricsArg,
+                    preset: preset,
+                    durationSeconds: durationSeconds
+                )
                 let item = LibraryItem(
                     id: UUID(),
                     kind: .audio,

@@ -1,0 +1,19 @@
+[project]
+name = "micromix-muscriptor-worker"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.136.3",
+    "muscriptor==0.3.0",
+    "python-multipart==0.0.29",
+    "uvicorn[standard]==0.48.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx==0.28.1",
+    "pytest==8.4.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

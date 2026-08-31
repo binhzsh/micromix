@@ -1,11 +1,55 @@
 import Foundation
 
-/// Health snapshot of the `micromix-api` shim and its two upstreams.
+/// Health snapshot of the durable gateway and its local workers.
 struct HealthStatus: Codable, Equatable, Sendable {
+    struct Worker: Codable, Equatable, Sendable {
+        let status: String
+    }
+
+    struct Workers: Codable, Equatable, Sendable {
+        let aceStep: Worker
+        let muscriptor: Worker
+    }
+
     let service: String
     let status: String
-    let minimax: String
-    let muscriptor: String
+    let database: String
+    let workers: Workers
+}
+
+struct GenerationPreset: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let label: String
+    let model: String
+    let inferenceSteps: Int
+}
+
+struct Capabilities: Codable, Equatable, Sendable {
+    let generationPresets: [GenerationPreset]
+    let transcriptionInstruments: [String]
+}
+
+struct RemoteAsset: Codable, Equatable, Sendable {
+    let id: String
+    let filename: String
+    let mediaType: String
+    let sizeBytes: Int
+    let sha256: String
+    let downloadUrl: String
+}
+
+struct RemoteJob: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let kind: String
+    let state: String
+    let progress: Double?
+    let progressDetail: String?
+    let error: String?
+    let asset: RemoteAsset?
+
+    var isTerminal: Bool {
+        ["succeeded", "failed", "cancelled"].contains(state)
+    }
 }
 
 /// The kind of content a stored library item holds.

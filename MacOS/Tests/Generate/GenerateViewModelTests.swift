@@ -8,11 +8,18 @@ private final class FakeGenerator: GenerateServicing, @unchecked Sendable {
     var result: Result<Data, Error> = .success(Data("fake-audio".utf8))
     var capturedInput: String?
     var capturedLyrics: String?
+    var capturedPreset: String?
+    var capturedDuration: Double?
     var delay: Duration = .zero
 
-    func generate(input: String, lyrics: String?) async throws -> Data {
+    func generate(input: String,
+                  lyrics: String?,
+                  preset: String,
+                  durationSeconds: Double) async throws -> Data {
         self.capturedInput = input
         self.capturedLyrics = lyrics
+        self.capturedPreset = preset
+        self.capturedDuration = durationSeconds
         if delay > .zero {
             try await Task.sleep(for: delay)
         }
@@ -39,6 +46,8 @@ struct GenerateViewModelTests {
         let library = FakeLibrary()
         let vm = GenerateViewModel(api: api, library: library)
         vm.prompt = "a chill lo-fi beat"
+        vm.preset = "quality"
+        vm.durationSeconds = 45
         #expect(vm.phase == .idle)
 
         let started = vm.start()
@@ -48,6 +57,8 @@ struct GenerateViewModelTests {
         await waitUntil { vm.phase == .done }
         #expect(vm.phase == .done)
         #expect(api.capturedInput == "a chill lo-fi beat")
+        #expect(api.capturedPreset == "quality")
+        #expect(api.capturedDuration == 45)
         #expect(library.saved.count == 1)
         #expect(library.saved[0].0.kind == .audio)
         #expect(library.saved[0].0.relativePath.hasSuffix(".wav"))

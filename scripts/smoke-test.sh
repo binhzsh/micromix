@@ -1,20 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MUSIC_ENGINE_URL=${MUSIC_ENGINE_URL:-http://localhost:8902}
+MICROMIX_URL=${MICROMIX_URL:-http://localhost:8902}
 
-echo "==> API health"
-curl -sS "$MUSIC_ENGINE_URL/health" | sed 's/.*/&/'
-
+echo "==> Gateway health"
+curl --fail --silent --show-error "$MICROMIX_URL/v1/health"
 echo
-echo "==> Quick MiniMax smoke call (text only, 8-12 seconds response expected on a warm cache)"
-curl -X POST "$MUSIC_ENGINE_URL/v1/audio/speech" \
-  -H "Content-Type: application/json" \
-  -d '{"input":"Lo-fi warm 4/4 groove, electric bass and drums, no vocals."}' \
-  --output /tmp/minimax-smoke.wav \
-  --silent --show-error --fail
-echo "saved /tmp/minimax-smoke.wav"
-
+echo "==> Capabilities"
+curl --fail --silent --show-error "$MICROMIX_URL/v1/capabilities"
 echo
-echo "Smoke complete. Set MUSIC_ENGINE_URL=http://host:port to target a different endpoint."
+
+if [ "${RUN_GENERATION:-0}" != "1" ]; then
+  echo "Cold smoke complete. Set RUN_GENERATION=1 for a real 10-second ACE-Step job."
+  exit 0
+fi
+
+response=$(curl --fail --silent --show-error \
+  -X POST "$MICROMIX_URL/v1/jobs/generation" \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"warm lo-fi drums and electric piano, instrumental","preset":"turbo","duration_seconds":10}')
+job_id=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$response")
+echo "submitted $job_id"
+
+while true; do
+  response=$(curl --fail --silent --show-error "$MICROMIX_URL/v1/jobs/$job_id")
+  state=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["state"])' <<<"$response")
+  echo "state=$state"
+  case "$state" in
+    succeeded)
+      asset_url=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["asset"]["download_url"])' <<<"$response")
+      curl --fail --silent --show-error "$MICROMIX_URL$asset_url" --output /tmp/micromix-smoke.wav
+      echo "saved /tmp/micromix-smoke.wav"
+      break
+      ;;
+    failed|cancelled)
+      echo "$response" >&2
+      exit 1
+      ;;
+  esac
+  sleep 2
+done
 

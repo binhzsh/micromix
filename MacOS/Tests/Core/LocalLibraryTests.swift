@@ -13,7 +13,7 @@ struct LocalLibraryTests {
         return (lib, dir)
     }
 
-    @Test("add writes file BEFORE manifest entry, atomically")
+    @Test("add writes file and commits SwiftData metadata")
     func addOrdering() throws {
         let (lib, dir) = makeLibrary()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -33,14 +33,9 @@ struct LocalLibraryTests {
         #expect(FileManager.default.fileExists(atPath: lib.resolvedURL(for: item).path))
         #expect(lib.items.count == 1)
 
-        // Manifest must be valid JSON on disk.
-        let manifestURL = dir.appendingPathComponent("library.json")
-        let manifestData = try Data(contentsOf: manifestURL)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let decoded = try decoder.decode([LibraryItem].self, from: manifestData)
-        #expect(decoded.count == 1)
-        #expect(decoded[0].title == "Sunset")
+        let reloaded = LocalLibrary(directory: dir)
+        #expect(reloaded.items.count == 1)
+        #expect(reloaded.items[0].title == "Sunset")
     }
 
     @Test("remove deletes file then manifest entry")
@@ -64,7 +59,7 @@ struct LocalLibraryTests {
         #expect(!FileManager.default.fileExists(atPath: lib.resolvedURL(for: item).path))
     }
 
-    @Test("manifest with a missing file still loads (crash-safe load)")
+    @Test("metadata with a missing file still loads")
     func missingFileTolerated() throws {
         let (lib, dir) = makeLibrary()
         defer { try? FileManager.default.removeItem(at: dir) }

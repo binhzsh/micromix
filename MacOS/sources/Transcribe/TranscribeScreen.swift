@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// TRANSCRIBE mode: drop zone / "SELECT AUDIO", instrument picker, tempo
 /// detect toggle, and the orange TRANSCRIBE action. Screen readouts (elapsed,
@@ -104,6 +105,11 @@ struct TranscribeScreen: View {
                 RoundedRectangle(cornerRadius: 6)
                     .stroke(selected ? Palette.accentBlue : Palette.divider, lineWidth: 1.5)
             )
+            if let analysis = viewModel.selection?.analysis {
+                Typography.monoLabel(analysis.compactDescription, size: 10)
+                    .foregroundColor(Palette.ink.opacity(0.55))
+                    .lineLimit(1)
+            }
         }
     }
 
@@ -113,7 +119,7 @@ struct TranscribeScreen: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.allowedFileTypes = ["wav", "mp3", "m4a", "aif", "aiff"]
+        panel.allowedContentTypes = [.audio]
         guard panel.runModal() == .OK else { return }
         guard let url = panel.url else { return }
         handleDrop([url])
@@ -122,16 +128,14 @@ struct TranscribeScreen: View {
     /// Read and register any dropped / selected audio file (<= 200 MiB).
     private func handleDrop(_ urls: [URL]) {
         guard let url = urls.first else { return }
-        guard let data = try? Data(contentsOf: url) else {
-            viewModel.selection = nil
-            return
+        Task {
+            guard let data = try? Data(contentsOf: url), data.count <= 200 * 1024 * 1024 else {
+                viewModel.selection = nil
+                return
+            }
+            let analysis = try? await LocalMusicAnalyzer.analyze(url: url)
+            let name = url.lastPathComponent
+            viewModel.select(name: name, bytes: data, analysis: analysis)
         }
-        // Enforce the shim's 200 MiB upload cap.
-        if data.count > 200 * 1024 * 1024 {
-            viewModel.selection = nil
-            return
-        }
-        let name = url.lastPathComponent ?? "input.wav"
-        viewModel.select(name: name, bytes: data)
     }
 }

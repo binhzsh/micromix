@@ -1,103 +1,136 @@
-import Foundation
 import Combine
+import Foundation
+import SwiftData
 
-/// Manages persistence of generated audio / transcribed MIDI plus a JSON
-/// manifest. Runs on the main actor; mutations are serialized.
-///
-/// Directory layout under the library root:
-///   library.json   — array of `LibraryItem`
-///   audio/<uuid>.wav
-///   midi/<uuid>.mid
-///
-/// Crash-safety ordering: the data file is written first, then the manifest
-/// entry is committed atomically (temp write + rename). Deletion removes the
-/// file first, then rewrites the manifest.
+@Model
+final class LibraryRecord {
+    @Attribute(.unique) var id: UUID
+    var kindRawValue: String
+    var title: String
+    var createdAt: Date
+    var promptOrSource: String
+    var durationSeconds: Double?
+    var relativePath: String
+
+    init(item: LibraryItem) {
+        id = item.id
+        kindRawValue = item.kind.rawValue
+        title = item.title
+        createdAt = item.createdAt
+        promptOrSource = item.promptOrSource
+        durationSeconds = item.durationSeconds
+        relativePath = item.relativePath
+    }
+
+    var item: LibraryItem {
+        LibraryItem(
+            id: id,
+            kind: LibraryItemKind(rawValue: kindRawValue) ?? .audio,
+            title: title,
+            createdAt: createdAt,
+            promptOrSource: promptOrSource,
+            durationSeconds: durationSeconds,
+            relativePath: relativePath
+        )
+    }
+}
+
+/// SwiftData is authoritative for metadata; generated audio and MIDI remain as
+/// ordinary files so Logic Pro and AVFoundation can consume them directly.
 @MainActor
 final class LocalLibrary: ObservableObject {
     @Published private(set) var items: [LibraryItem] = []
 
     let rootDirectory: URL
-    private let manifestURL: URL
+    private let container: ModelContainer
+    private let context: ModelContext
+    private let legacyManifestURL: URL
 
-    /// Create a library rooted at `directory` (defaults to App Support/Micromix).
-    /// Tests inject a temp dir.
     init(directory: URL? = nil) {
         let root = directory
             ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
                 .appendingPathComponent("Micromix", isDirectory: true)
-        self.rootDirectory = root
-        self.manifestURL = root.appendingPathComponent("library.json")
+        rootDirectory = root
+        legacyManifestURL = root.appendingPathComponent("library.json")
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        load()
+
+        let schema = Schema([LibraryRecord.self])
+        let configuration = ModelConfiguration(
+            "MicromixLibrary",
+            schema: schema,
+            url: root.appendingPathComponent("library.store")
+        )
+        do {
+            container = try ModelContainer(for: schema, configurations: [configuration])
+        } catch {
+            fatalError("Unable to open the Micromix library: \(error)")
+        }
+        context = container.mainContext
+        migrateLegacyManifestIfNeeded()
+        reload()
     }
 
-    // MARK: - Reading
-
-    private func load() {
-        guard let data = try? Data(contentsOf: manifestURL),
-              let decoded = try? Self.decoder.decode([LibraryItem].self, from: data)
-        else { return }
-        items = decoded
-    }
-
-    /// Absolute URL for a stored item's data file.
     func resolvedURL(for item: LibraryItem) -> URL {
         rootDirectory.appendingPathComponent(item.relativePath)
     }
 
-    // MARK: - Mutating
-
-    /// Writes `bytes` to disk first, then appends the manifest entry atomically.
     func add(_ item: LibraryItem, bytes: Data) throws {
-        // 1. Write the data file.
         let fileURL = resolvedURL(for: item)
-        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try bytes.write(to: fileURL)
-
-        // 2. Append the manifest entry and commit atomically.
-        items.append(item)
-        try persistManifest()
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try bytes.write(to: fileURL, options: .atomic)
+        context.insert(LibraryRecord(item: item))
+        do {
+            try context.save()
+            reload()
+        } catch {
+            try? FileManager.default.removeItem(at: fileURL)
+            throw error
+        }
     }
 
-    /// Removes the data file, then rewrites the manifest without the entry.
     func remove(id: UUID) throws {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        let item = items[index]
-        // 1. Delete the file first (best-effort: tolerate a missing file).
+        let targetID = id
+        var descriptor = FetchDescriptor<LibraryRecord>(
+            predicate: #Predicate { $0.id == targetID }
+        )
+        descriptor.fetchLimit = 1
+        guard let record = try context.fetch(descriptor).first else { return }
+        let item = record.item
         let fileURL = resolvedURL(for: item)
         if FileManager.default.fileExists(atPath: fileURL.path) {
             try FileManager.default.removeItem(at: fileURL)
         }
-        // 2. Remove the manifest entry and commit atomically.
-        items.remove(at: index)
-        try persistManifest()
+        context.delete(record)
+        try context.save()
+        reload()
     }
 
-    /// Replaces library.json via a temp file + atomic rename.
-    private func persistManifest() throws {
-        let data = try Self.encoder.encode(items)
-        let tempURL = rootDirectory.appendingPathComponent("library.json.tmp")
-        try data.write(to: tempURL, options: .atomic)
-        try FileManager.default.replaceItemAt(manifestURL, withItemAt: tempURL)
+    private func reload() {
+        let descriptor = FetchDescriptor<LibraryRecord>(
+            sortBy: [SortDescriptor(\LibraryRecord.createdAt, order: .reverse)]
+        )
+        items = (try? context.fetch(descriptor).map(\.item)) ?? []
     }
 
-    private static let encoder: JSONEncoder = {
-        let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
-        return e
-    }()
-
-    private static let decoder: JSONDecoder = {
-        let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
-        return d
-    }()
+    private func migrateLegacyManifestIfNeeded() {
+        guard (try? context.fetchCount(FetchDescriptor<LibraryRecord>())) == 0,
+              let data = try? Data(contentsOf: legacyManifestURL)
+        else { return }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let legacyItems = try? decoder.decode([LibraryItem].self, from: data) else { return }
+        for item in legacyItems {
+            context.insert(LibraryRecord(item: item))
+        }
+        try? context.save()
+        try? FileManager.default.moveItem(
+            at: legacyManifestURL,
+            to: rootDirectory.appendingPathComponent("library.json.migrated")
+        )
+    }
 }
 
-/// `LocalLibrary` is a `@MainActor` class, so the compiler can verify its
-/// `LibraryStoring` conformance is thread-safe without an `@unchecked Sendable`
-/// assertion: every mutating path (`add`/`remove`) and all other mutable state
-/// (`items`, the manifest) are isolated to the main actor. Declaring the
-/// conformance in this file (rather than retroactively in `ServiceProtocols`)
-/// lets the compiler infer `Sendable` from the `@MainActor` declaration.
 extension LocalLibrary: LibraryStoring {}

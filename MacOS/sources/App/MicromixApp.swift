@@ -13,6 +13,7 @@ struct MicromixApp: App {
 
         let generate = GenerateViewModel(api: api, library: library)
         let transcribe = TranscribeViewModel(api: api, library: library)
+        let analyze = AnalyzeViewModel()
 
         // Kick off a connection health check; the monitor polls every 15 s.
         monitor.start()
@@ -22,6 +23,7 @@ struct MicromixApp: App {
         return AppRoot(
             generate: generate,
             transcribe: transcribe,
+            analyze: analyze,
             library: library,
             player: AudioPlayer(),
             midiPreview: MidiPreview(),
@@ -34,6 +36,7 @@ struct MicromixApp: App {
             DeviceWindow(
                 generate: root.generate,
                 transcribe: root.transcribe,
+                analyze: root.analyze,
                 library: root.library,
                 player: root.player,
                 midiPreview: root.midiPreview,
@@ -49,6 +52,7 @@ struct MicromixApp: App {
 struct AppRoot: Sendable {
     let generate: GenerateViewModel
     let transcribe: TranscribeViewModel
+    let analyze: AnalyzeViewModel
     let library: LocalLibrary
     let player: AudioPlayer
     let midiPreview: MidiPreview

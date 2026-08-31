@@ -7,7 +7,7 @@ import Combine
 @MainActor
 final class ConnectionMonitor: ObservableObject {
     @Published var connected: Bool = false
-    @Published private(set) var minimaxOK: Bool = false
+    @Published private(set) var aceStepOK: Bool = false
     @Published private(set) var muscriptorOK: Bool = false
     @Published var lastError: String?
     /// Instruments for the transcribe picker, fetched at launch / refresh.
@@ -31,10 +31,10 @@ final class ConnectionMonitor: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(Self.pollInterval))
                 guard let self else { return }
-                try? await refresh()
+                await refresh()
             }
         }
-        Task { [weak self] in try? await self?.refresh() }
+        Task { [weak self] in await self?.refresh() }
     }
 
     /// Load the instrument list from `/instruments` (best-effort; the picker
@@ -52,12 +52,12 @@ final class ConnectionMonitor: ObservableObject {
         do {
             let health = try await api.health()
             connected = true
-            minimaxOK = health.minimax == "ok"
-            muscriptorOK = health.muscriptor == "ok"
+            aceStepOK = health.workers.aceStep.status != "unreachable"
+            muscriptorOK = health.workers.muscriptor.status != "unreachable"
             lastError = nil
         } catch {
             connected = false
-            minimaxOK = false
+            aceStepOK = false
             muscriptorOK = false
             let message = (error as? MicromixAPIError)?.errorDescription
                 ?? error.localizedDescription

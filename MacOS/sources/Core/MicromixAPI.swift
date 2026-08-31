@@ -21,10 +21,7 @@ struct MicromixAPIError: LocalizedError, Equatable, Sendable {
 /// responses. Request building is separated so tests can assert exact request
 /// shapes via a stubbed `URLProtocol`.
 actor MicromixAPI {
-    /// Client timeout (1260 s) strictly greater than the server's 1200 s so
-    /// the server's 408/503 error wins and we never return a client timeout
-    /// that masks a server error.
-    static let clientTimeout: TimeInterval = 1260
+    static let clientTimeout: TimeInterval = 120
 
     private let baseURL: URL
     private let session: URLSession
@@ -42,29 +39,37 @@ actor MicromixAPI {
     // MARK: - Endpoints
 
     func health() async throws -> HealthStatus {
-        let (data, response) = try await send(path: "/health", method: "GET")
+        let (data, response) = try await send(path: "/v1/health", method: "GET")
         try Self.validate(response, data: data)
-        return try JSONDecoder().decode(HealthStatus.self, from: data)
+        return try Self.decoder.decode(HealthStatus.self, from: data)
     }
 
-    /// Text/lyrics -> music generation. Returns raw audio bytes on success.
+    func capabilities() async throws -> Capabilities {
+        let (data, response) = try await send(path: "/v1/capabilities", method: "GET")
+        try Self.validate(response, data: data)
+        return try Self.decoder.decode(Capabilities.self, from: data)
+    }
+
+    /// Submit a durable ACE-Step job, poll it, and download its resulting asset.
     func generate(input: String,
                   lyrics: String? = nil,
-                  model: String = "MiniMaxAI/MiniMax-Music3",
-                  responseFormat: String = "wav") async throws -> Data {
-        var body: [String: Any] = ["input": input, "model": model, "response_format": responseFormat]
+                  preset: String = "turbo",
+                  durationSeconds: Double = 30) async throws -> Data {
+        var body: [String: Any] = [
+            "prompt": input,
+            "preset": preset,
+            "duration_seconds": durationSeconds,
+        ]
         if let lyrics, !lyrics.isEmpty {
             body["lyrics"] = lyrics
         }
-        // Note: no `stream` key — the shim rejects stream:true.
         let payload = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await send(path: "/v1/audio/speech", method: "POST", body: payload)
-        try Self.validate(response, data: data)
-        return data
+        let job = try await submitJob(path: "/v1/jobs/generation", body: payload)
+        return try await awaitAsset(for: job)
     }
 
     /// Audio -> MIDI transcription. File field is `audio_file`; instruments
-    /// are repeated form fields. Returns raw MIDI bytes (return_file=false).
+    /// are repeated form fields. Returns the downloaded MIDI asset bytes.
     func transcribe(audio: Data,
                     filename: String,
                     instruments: [String],
@@ -77,22 +82,63 @@ actor MicromixAPI {
             instruments: instruments,
             detectTempo: detectTempo
         )
-        let (data, response) = try await send(
-            path: "/transcribe/midi",
-            method: "POST",
+        let job = try await submitJob(
+            path: "/v1/jobs/transcription",
             body: payload,
             contentType: "multipart/form-data; boundary=\(boundary)"
         )
+        return try await awaitAsset(for: job)
+    }
+
+    func jobs() async throws -> [RemoteJob] {
+        let (data, response) = try await send(path: "/v1/jobs", method: "GET")
         try Self.validate(response, data: data)
-        return data
+        return try Self.decoder.decode([RemoteJob].self, from: data)
+    }
+
+    private func submitJob(path: String,
+                           body: Data,
+                           contentType: String = "application/json") async throws -> RemoteJob {
+        let (data, response) = try await send(
+            path: path,
+            method: "POST",
+            body: body,
+            contentType: contentType
+        )
+        try Self.validate(response, data: data)
+        return try Self.decoder.decode(RemoteJob.self, from: data)
+    }
+
+    private func awaitAsset(for submitted: RemoteJob) async throws -> Data {
+        do {
+            var job = submitted
+            while !job.isTerminal {
+                try await Task.sleep(for: .seconds(1))
+                let (data, response) = try await send(path: "/v1/jobs/\(job.id)", method: "GET")
+                try Self.validate(response, data: data)
+                job = try Self.decoder.decode(RemoteJob.self, from: data)
+            }
+            guard job.state == "succeeded", let asset = job.asset else {
+                throw MicromixAPIError(
+                    statusCode: job.state == "cancelled" ? 499 : 500,
+                    detail: job.error ?? "job \(job.state)"
+                )
+            }
+            return try await fetchBytes(path: asset.downloadUrl)
+        } catch is CancellationError {
+            try? await cancel(jobID: submitted.id)
+            throw CancellationError()
+        }
+    }
+
+    private func cancel(jobID: String) async throws {
+        let (data, response) = try await send(path: "/v1/jobs/\(jobID)/cancel", method: "POST")
+        try Self.validate(response, data: data)
     }
 
     /// Instrument groups from the shim, flattened for the picker.
     func instruments() async throws -> [String] {
-        let (data, response) = try await send(path: "/instruments", method: "GET")
-        try Self.validate(response, data: data)
-        let grouped = try JSONDecoder().decode([String: [String]].self, from: data)
-        return grouped.values.flatMap { $0 }
+        try await capabilities().transcriptionInstruments
     }
 
     /// Fetch arbitrary bytes by URL path (e.g. `/files/{filename}`).
@@ -160,14 +206,16 @@ actor MicromixAPI {
         for instrument in instruments {
             appendPart(name: "instruments", value: Data(instrument.utf8))
         }
-        appendPart(
-            name: "detect_tempo",
-            value: Data((detectTempo ? "best-effort" : "false").utf8)
-        )
-        appendPart(name: "return_file", value: Data("false".utf8))
+        appendPart(name: "detect_tempo", value: Data((detectTempo ? "true" : "false").utf8))
         body.appendString("--\(boundary)--\r\n")
         return body
     }
+
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return decoder
+    }()
 }
 
 extension Data {

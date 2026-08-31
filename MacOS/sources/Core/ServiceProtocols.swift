@@ -9,7 +9,10 @@ import Foundation
 
 /// Generates audio from a text/lyrics prompt.
 protocol GenerateServicing: Sendable {
-    func generate(input: String, lyrics: String?) async throws -> Data
+    func generate(input: String,
+                  lyrics: String?,
+                  preset: String,
+                  durationSeconds: Double) async throws -> Data
 }
 
 /// Transcribes audio into MIDI.
@@ -28,14 +31,6 @@ protocol LibraryStoring: Sendable {
 // MARK: - Production conformances
 
 extension MicromixAPI: GenerateServicing {
-    func generate(input: String, lyrics: String?) async throws -> Data {
-        try await generate(
-            input: input,
-            lyrics: lyrics,
-            model: "MiniMaxAI/MiniMax-Music3",
-            responseFormat: "wav"
-        )
-    }
 }
 
 extension MicromixAPI: TranscribeServicing {}
