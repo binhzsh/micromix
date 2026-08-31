@@ -12,6 +12,45 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 
+INSTRUMENTS = (
+    "acoustic_bass",
+    "acoustic_guitar",
+    "acoustic_piano",
+    "baritone_sax",
+    "bassoon",
+    "brass_section",
+    "cello",
+    "chromatic_percussion",
+    "clarinet",
+    "clean_electric_guitar",
+    "contrabass",
+    "distorted_electric_guitar",
+    "drums",
+    "electric_bass",
+    "electric_piano",
+    "english_horn",
+    "flutes",
+    "french_horn",
+    "oboe",
+    "orchestra_hit",
+    "orchestral_harp",
+    "organ",
+    "soprano_and_alto_sax",
+    "string_ensemble",
+    "synth_lead",
+    "synth_pad",
+    "synth_strings",
+    "tenor_sax",
+    "timpani",
+    "trombone",
+    "trumpet",
+    "tuba",
+    "viola",
+    "violin",
+    "voice",
+)
+
+
 class TranscriptionEngine(Protocol):
     def transcribe(self, data: bytes, instruments: list[str], detect_tempo: str) -> bytes: ...
 
@@ -76,9 +115,10 @@ class MuScriptorEngine:
 
 
 def available_instruments() -> list[str]:
-    from muscriptor.tokenizer.mt3 import MT3_FULL_PLUS_GROUP_NAMES
-
-    return list(MT3_FULL_PLUS_GROUP_NAMES.keys())
+    # MuScriptor 0.3.0's public MT3 vocabulary. Importing its tokenizer also
+    # imports torch and creates a CUDA context, so capability discovery must
+    # use this version-pinned copy while the worker is cold.
+    return list(INSTRUMENTS)
 
 
 class ModelManager:

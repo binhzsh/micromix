@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from muscriptor_worker.main import ModelManager, create_app
+from muscriptor_worker.main import ModelManager, available_instruments, create_app
 
 
 class FakeEngine:
@@ -67,3 +67,20 @@ def test_instruments_do_not_force_gpu_model_load():
     with TestClient(create_app(manager)) as client:
         assert client.get("/instruments").json() == {"instruments": ["Piano", "Drums"]}
         assert client.get("/health").json()["loaded"] is False
+
+
+def test_default_instruments_do_not_import_muscriptor(monkeypatch):
+    original_import = __import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name == "muscriptor" or name.startswith("muscriptor."):
+            raise AssertionError("capability discovery must not initialize MuScriptor")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", guarded_import)
+
+    instruments = available_instruments()
+
+    assert instruments[0] == "acoustic_bass"
+    assert instruments[-1] == "voice"
+    assert len(instruments) == 35
