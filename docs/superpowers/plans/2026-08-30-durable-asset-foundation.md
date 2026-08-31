@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make Micromix jobs support reusable input assets, multiple named output
 assets, and backward-compatible provenance without changing either inference
@@ -19,6 +19,9 @@ upload endpoint creates reusable transient inputs under the existing asset root.
 Docker/uv on `lts1`.
 
 **Spec:** `docs/superpowers/specs/2026-08-30-micromix-inference-roadmap-design.md`
+
+**Status:** implementation and isolated verification complete; live deployment
+awaiting review.
 
 ## Global Constraints
 
@@ -70,7 +73,7 @@ Docker/uv on `lts1`.
   `asset: AssetRecord`.
 - `JobRecord.asset` equals the first output asset or `None`.
 
-- [ ] **Step 1: Add a failing response-model test**
+- [x] **Step 1: Add a failing response-model test**
 
 Append this test to `tests/test_store.py` after importing `AssetDirection`:
 
@@ -80,7 +83,7 @@ def test_asset_direction_uses_stable_wire_values():
     assert AssetDirection.output.value == "output"
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run from `services/micromix-api` on `lts1`:
 
@@ -95,7 +98,7 @@ docker run --rm --user "$(id -u):$(id -g)" \
 
 Expected: collection fails because `AssetDirection` does not exist.
 
-- [ ] **Step 3: Add the minimal public models**
+- [x] **Step 3: Add the minimal public models**
 
 In `models.py`, define:
 
@@ -121,11 +124,11 @@ Change the end of `JobRecord` to:
     asset: AssetRecord | None = None
 ```
 
-- [ ] **Step 4: Run the focused test and verify GREEN**
+- [x] **Step 4: Run the focused test and verify GREEN**
 
 Run the command from Step 2. Expected: one test passes.
 
-- [ ] **Step 5: Commit the model contract**
+- [x] **Step 5: Commit the model contract**
 
 ```bash
 git add services/micromix-api/micromix_api/models.py \
@@ -152,7 +155,7 @@ git commit -m "feat(api): define job asset links"
 - Existing databases migrate atomically from `assets.job_id UNIQUE` to
   standalone `assets` plus `job_assets`.
 
-- [ ] **Step 1: Add a failing multiple-output and reusable-input test**
+- [x] **Step 1: Add a failing multiple-output and reusable-input test**
 
 Replace the existing single-asset lifecycle assertions with explicit link
 assertions and add:
@@ -186,12 +189,12 @@ async def test_asset_can_feed_two_jobs_and_each_job_can_have_multiple_outputs(st
     assert [link.asset.id for link in persisted_second.inputs] == [source.id]
 ```
 
-- [ ] **Step 2: Run the new test and verify RED**
+- [x] **Step 2: Run the new test and verify RED**
 
 Run the containerized focused test. Expected: `create_asset` or `attach_asset`
 is missing.
 
-- [ ] **Step 3: Implement the normalized schema**
+- [x] **Step 3: Implement the normalized schema**
 
 Define `assets` without `job_id` and add:
 
@@ -219,14 +222,14 @@ Implement the store methods in the Interfaces block. Validate that the
 physical path stays below `asset_root`, the file exists, both job and asset
 exist before association, names are nonblank, and positions are nonnegative.
 
-- [ ] **Step 4: Hydrate links without row multiplication**
+- [x] **Step 4: Hydrate links without row multiplication**
 
 Load the job row independently, then query links ordered by
 `direction, position, name`. Construct `inputs` and `outputs`, and set `asset`
 to `outputs[0].asset` when present. Keep internal underscore-prefixed parameters
 excluded from public JSON.
 
-- [ ] **Step 5: Add and pass a legacy migration test**
+- [x] **Step 5: Add and pass a legacy migration test**
 
 Create a SQLite database in the test with the old `jobs` and `assets` schema,
 one succeeded job, and one output row. Open it with `JobStore`, then assert the
@@ -235,12 +238,12 @@ downloadable, and `PRAGMA user_version` is `1`. Run the focused migration test
 first to observe its expected RED, implement only migration fixes, then rerun it
 to GREEN.
 
-- [ ] **Step 6: Run all store tests, then the complete backend suite**
+- [x] **Step 6: Run all store tests, then the complete backend suite**
 
 Run `python -m pytest tests/test_store.py -q`, then `python -m pytest -q`
 through the container. Expected: both commands pass.
 
-- [ ] **Step 7: Commit persistence and migration**
+- [x] **Step 7: Commit persistence and migration**
 
 ```bash
 git add services/micromix-api/micromix_api/store.py \
@@ -261,30 +264,30 @@ git commit -m "feat(api): persist reusable job assets"
   or recent associated job still needs it.
 - Unassociated uploads use asset `created_at` for expiration.
 
-- [ ] **Step 1: Add failing shared-retention tests**
+- [x] **Step 1: Add failing shared-retention tests**
 
 Add one test in which an old terminal job and a recent queued job share an input;
 assert pruning retains that input. Add another old, unassociated uploaded asset
 and assert pruning deletes its file and row.
 
-- [ ] **Step 2: Run both tests and verify RED**
+- [x] **Step 2: Run both tests and verify RED**
 
 Expected: the old shared input is deleted or the unassociated upload is not
 deleted under the legacy pruning query.
 
-- [ ] **Step 3: Implement reference-aware pruning**
+- [x] **Step 3: Implement reference-aware pruning**
 
 Select asset rows older than the cutoff that have no association to a job whose
 state is nonterminal or whose `updated_at` is at/after the cutoff. Delete the
 physical file only after verifying it remains inside `asset_root`, then delete
 the asset row so foreign-key cascades remove associations.
 
-- [ ] **Step 4: Run all store tests and the complete suite; verify GREEN**
+- [x] **Step 4: Run all store tests and the complete suite; verify GREEN**
 
 Run `python -m pytest tests/test_store.py -q`, then `python -m pytest -q`
 through the container.
 
-- [ ] **Step 5: Commit retention behavior**
+- [x] **Step 5: Commit retention behavior**
 
 ```bash
 git add services/micromix-api/micromix_api/store.py \
@@ -307,7 +310,7 @@ git commit -m "fix(api): retain shared active assets"
 - Enforces the existing `MAX_UPLOAD_MIB`, rejects empty uploads, strips path
   components, and never returns a filesystem path.
 
-- [ ] **Step 1: Add a failing successful-upload test**
+- [x] **Step 1: Add a failing successful-upload test**
 
 ```python
 @pytest.mark.asyncio
@@ -325,30 +328,30 @@ async def test_audio_asset_upload_is_downloadable_and_hides_server_path(client):
     assert downloaded.content == b"RIFF-input"
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Expected: HTTP 404 because `POST /v1/assets` does not exist.
 
-- [ ] **Step 3: Implement the minimal upload endpoint**
+- [x] **Step 3: Implement the minimal upload endpoint**
 
 Read and validate bytes using the same empty/maximum-size rules as transcription.
 Create an unpredictable import directory under `asset_root/imports`, write the
 basename-only filename, call `create_asset`, and return `AssetRecord` with
 HTTP 201. Remove the just-created directory if registration fails.
 
-- [ ] **Step 4: Add failing validation tests, then implement GREEN behavior**
+- [x] **Step 4: Add failing validation tests, then implement GREEN behavior**
 
 Set `max_upload_mib=1` in the API test fixture. Add tests for an empty upload
 (HTTP 400) and a payload of `(1024 * 1024) + 1` bytes (HTTP 413). Observe each
 fail before updating shared upload validation. Keep the full body out of public
 parameters and errors.
 
-- [ ] **Step 5: Run all API tests, then the complete backend suite**
+- [x] **Step 5: Run all API tests, then the complete backend suite**
 
 Run `python -m pytest tests/test_api.py -q`, then `python -m pytest -q`
 through the container.
 
-- [ ] **Step 6: Commit the upload endpoint**
+- [x] **Step 6: Commit the upload endpoint**
 
 ```bash
 git add services/micromix-api/micromix_api/main.py \
@@ -372,27 +375,27 @@ git commit -m "feat(api): accept reusable audio assets"
 - Existing `asset` response remains identical to the first output asset.
 - New `inputs` and `outputs` arrays are additive.
 
-- [ ] **Step 1: Update coordinator tests first**
+- [x] **Step 1: Update coordinator tests first**
 
 Change assertions to require `completed.outputs[0].name == "result"` for
 generation and `completed.outputs[0].name == "midi"` for transcription. Assert
 `completed.asset == completed.outputs[0].asset`. Run both focused tests and
 observe RED because the current coordinator calls the old registration method.
 
-- [ ] **Step 2: Migrate producer calls**
+- [x] **Step 2: Migrate producer calls**
 
 Replace `register_asset(job.id, ...)` with `register_output(...)`, using the
 stable names and positions from Interfaces. Remove the internal compatibility
 wrapper after `rg 'register_asset' services/micromix-api` confirms it has no
 remaining production callers. Make no worker or inference changes.
 
-- [ ] **Step 3: Add API compatibility assertions**
+- [x] **Step 3: Add API compatibility assertions**
 
 For a store-populated completed job, assert GET `/v1/jobs/{id}` contains
 `inputs: []`, one item in `outputs`, and an `asset` object equal to
 `outputs[0].asset`. Also assert queued jobs still return `asset: null`.
 
-- [ ] **Step 4: Run all backend tests**
+- [x] **Step 4: Run all backend tests**
 
 Run:
 
@@ -406,13 +409,13 @@ docker run --rm --user "$(id -u):$(id -g)" \
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Document the additive API**
+- [x] **Step 5: Document the additive API**
 
 In `README.md`, add `POST /v1/assets`, explain `inputs`/`outputs`, mark `asset`
 as the compatibility alias for the first output, and state that uploads and
 outputs share seven-day transient retention.
 
-- [ ] **Step 6: Commit compatibility and docs**
+- [x] **Step 6: Commit compatibility and docs**
 
 ```bash
 git add services/micromix-api/micromix_api/coordinator.py \
@@ -432,7 +435,7 @@ git commit -m "refactor(api): emit named job outputs"
 - The migration must open a copy of the deployed database without data loss.
 - Existing generation/transcription clients continue to decode `asset`.
 
-- [ ] **Step 1: Run migration rehearsal against a database copy**
+- [x] **Step 1: Run migration rehearsal against a database copy**
 
 Stop no services. Locate the live `/data` mount without reading `.env`, use
 SQLite's online backup API from a temporary Python container, and place the copy
@@ -452,18 +455,18 @@ then verify the counts are unchanged and every legacy asset has one
 `output/result/0` association. Delete the temporary rehearsal directory after
 the counts have been recorded in the checkpoint report.
 
-- [ ] **Step 2: Run the complete backend suite again**
+- [x] **Step 2: Run the complete backend suite again**
 
 Use the Task 5 container command. Expected: all tests pass with no warnings or
 collection errors.
 
-- [ ] **Step 3: Push and fast-forward the local feature worktree**
+- [x] **Step 3: Push and fast-forward the local feature worktree**
 
 Push `feat/phase1-reimagine` from `lts1`, then in the Mac worktree run
 `git pull --ff-only`. Confirm both worktrees and `origin/feat/phase1-reimagine`
 resolve to the same commit.
 
-- [ ] **Step 4: Check the macOS compatibility suite**
+- [x] **Step 4: Check the macOS compatibility suite**
 
 From `MacOS` in the local feature worktree, regenerate the ignored project and
 run:
@@ -476,8 +479,18 @@ xcodebuild test -project Micromix.xcodeproj -scheme Micromix \
 
 Expected: all 42 existing tests pass because the legacy `asset` field remains.
 
-- [ ] **Step 5: Stop for review before deployment**
+- [x] **Step 5: Stop for review before deployment**
 
 Report migration counts, backend test count, macOS test count, exact commit,
 and any API differences. Do not run `docker compose up -d --build` until this
 checkpoint is reviewed.
+
+Checkpoint recorded 2026-08-30:
+
+- Migration rehearsal preserved 18 jobs and 12 assets.
+- All 12 legacy assets received one `output/result/0` association; zero were
+  orphaned; schema version advanced to 1.
+- Backend verification: 33 tests passed.
+- macOS compatibility verification: 42 tests passed.
+- Feature code checkpoint: `d70d4eb`.
+- Live service was not rebuilt or restarted.
