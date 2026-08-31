@@ -27,6 +27,7 @@ from .models import (
     VocalConversionRequest,
 )
 from .store import InputAssetBinding, JobStore
+from .voice_profiles import VoiceProfileError, VoiceProfileRegistry
 
 
 PRESETS = [
@@ -67,6 +68,7 @@ def create_app(
     gpu = GPUClient(resolved.gpu_router_url)
     ace = ACEClient(resolved.ace_url)
     muscriptor = MuScriptorClient(resolved.muscriptor_url)
+    voice_profiles = VoiceProfileRegistry(resolved.voice_profile_root)
     coordinator = Coordinator(store, gpu, ace, muscriptor)
     dispatcher = Dispatcher(coordinator)
 
@@ -240,10 +242,32 @@ def create_app(
         status_code=status.HTTP_202_ACCEPTED,
     )
     async def submit_vocal_conversion(payload: VocalConversionRequest) -> JobRecord:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="private voice profiles are not configured",
+        try:
+            profile = voice_profiles.resolve(payload.voice_profile_id)
+        except VoiceProfileError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        await resolve_audio_asset(payload.source_asset_id)
+        source = await store.get_asset(payload.source_asset_id)
+        assert source is not None
+        _, source_path = source
+        parameters = {
+            "voice_profile_id": profile.id,
+            "voice_profile_revision": profile.revision,
+            "pitch_shift_semitones": payload.pitch_shift_semitones,
+            "f0_method": payload.f0_method,
+            "_source_path": str(source_path),
+            "_model_path": str(profile.model_path),
+        }
+        if profile.index_path is not None:
+            parameters["_index_path"] = str(profile.index_path)
+        job = await store.create_job(
+            JobKind.vocal_conversion,
+            parameters,
+            inputs=[InputAssetBinding(payload.source_asset_id, "source")],
         )
+        if start_dispatcher:
+            await dispatcher.enqueue(job.id)
+        return job
 
     @app.post(
         "/v1/jobs/transcription",
