@@ -208,6 +208,22 @@ struct LibraryScreen: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Typography.monoLabel("PROVENANCE", size: 10)
                         .foregroundColor(Palette.ink.opacity(0.64))
+                    if alternatives(for: item).count > 1 {
+                        HStack(spacing: 5) {
+                            Typography.monoLabel("ALTERNATIVES", size: 9)
+                                .foregroundColor(Palette.ink.opacity(0.64))
+                            ForEach(alternatives(for: item)) { alternative in
+                                Button("ALT \((alternative.provenance?.output.position ?? 0) + 1)") {
+                                    player.stop()
+                                    midiPreview.stop()
+                                    selectedID = alternative.id
+                                }
+                                .buttonStyle(.borderless)
+                                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                .foregroundColor(alternative.id == item.id ? Palette.accentOrange : Palette.ink.opacity(0.68))
+                            }
+                        }
+                    }
                     if let provenance = item.provenance {
                         Text("OPERATION: \(provenance.operation ?? item.kind.rawValue.uppercased()) · JOB \(provenance.jobID.suffix(8)) · OUTPUT #\(provenance.output.position + 1)")
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -231,6 +247,10 @@ struct LibraryScreen: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private func alternatives(for item: LibraryItem) -> [LibraryItem] {
+        library.items.alternatives(for: item)
     }
 
     static func formatDuration(_ seconds: Double) -> String {

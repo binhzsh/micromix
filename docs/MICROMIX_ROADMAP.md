@@ -133,8 +133,6 @@ asset-creation system.
       detection.
 - [ ] Add Complete only if it consistently returns arrangement assets worth
       continuing in Logic.
-- [ ] Make sending an existing library asset into another Micromix tool a
-      deliberate one-action handoff.
 - [ ] Improve alternative comparison and source/result relationships without
       adding a multitrack editor.
 - [ ] Add production audio output choices only when the chosen format materially
@@ -262,8 +260,6 @@ separate technical product.
       confidence only where a creative operation consumes them.
 - [ ] Suggest useful Repaint regions from detected song structure.
 - [ ] Prefill creative metadata while preserving explicit user overrides.
-- [ ] Add one-action handoffs among Library, Reimagine, Vocal Swap, Vocal
-      Improve, Mashup, and Transcribe.
 - [ ] Add lightweight song grouping only if real asset branching has become hard
       to navigate.
 - [ ] Keep analysis details compact and secondary to creating the next asset.

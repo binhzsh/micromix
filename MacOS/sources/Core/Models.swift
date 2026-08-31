@@ -283,3 +283,14 @@ struct LibraryItem: Codable, Identifiable, Equatable, Sendable {
         self.remoteOutputAssetID = remoteOutputAssetID
     }
 }
+
+extension Collection where Element == LibraryItem {
+    /// Outputs from the same durable render, ordered as the model returned them.
+    func alternatives(for item: LibraryItem) -> [LibraryItem] {
+        guard let jobID = item.provenance?.jobID else { return [item] }
+        return filter { $0.provenance?.jobID == jobID }
+            .sorted {
+                ($0.provenance?.output.position ?? 0) < ($1.provenance?.output.position ?? 0)
+            }
+    }
+}
