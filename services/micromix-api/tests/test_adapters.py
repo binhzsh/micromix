@@ -138,6 +138,44 @@ async def test_ace_poll_parses_result_and_downloads_audio():
 
 
 @pytest.mark.asyncio
+async def test_ace_poll_accepts_audio_route_in_file_field():
+    audio_route = "/v1/audio?path=%2Fapp%2F.cache%2Facestep%2Ftmp%2Fapi_audio%2Fresult.wav"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/query_result":
+            result = json.dumps([{"file": audio_route, "status": 1}])
+            return httpx.Response(
+                200,
+                json={
+                    "code": 200,
+                    "data": [
+                        {
+                            "task_id": "task-1",
+                            "status": 1,
+                            "result": result,
+                        }
+                    ],
+                },
+            )
+        assert str(request.url).endswith(audio_route)
+        return httpx.Response(
+            200,
+            content=b"RIFF-result",
+            headers={"content-type": "audio/wav"},
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    ace = ACEClient("http://ace.test", client=client)
+
+    result = await ace.poll("task-1")
+
+    assert result.state == "succeeded"
+    assert result.outputs[0].filename == "result.wav"
+    assert result.outputs[0].data == b"RIFF-result"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_muscriptor_posts_expected_multipart_fields(tmp_path: Path):
     source = tmp_path / "voice.wav"
     source.write_bytes(b"RIFF-input")

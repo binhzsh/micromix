@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
 
@@ -205,17 +205,24 @@ class ACEClient:
         outputs: list[UpstreamOutput] = []
         for result in results:
             source_path = str(result["file"])
-            file_url = str(
-                result.get("url")
-                or f"/v1/audio?{urlencode({'path': source_path})}"
-            )
+            if result.get("url"):
+                file_url = str(result["url"])
+            elif source_path.startswith("/v1/audio?"):
+                file_url = source_path
+            else:
+                file_url = f"/v1/audio?{urlencode({'path': source_path})}"
+            filename_path = source_path
+            if source_path.startswith("/v1/audio?"):
+                query_path = parse_qs(urlsplit(source_path).query).get("path")
+                if query_path:
+                    filename_path = query_path[0]
             download = await self.client.get(f"{self.base_url}{file_url}")
             if download.status_code >= 400:
                 raise RuntimeError(_error_detail(download))
             outputs.append(
                 UpstreamOutput(
                     data=download.content,
-                    filename=Path(source_path).name or "result.wav",
+                    filename=Path(filename_path).name or "result.wav",
                     media_type=download.headers.get(
                         "content-type",
                         "audio/wav",
