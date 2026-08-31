@@ -43,6 +43,9 @@ intentionally lazy so starting Compose does not claim the shared GPU.
 - `GET /v1/health`
 - `GET /v1/capabilities`
 - `POST /v1/jobs/generation`
+- `POST /v1/jobs/reference-generation`
+- `POST /v1/jobs/remix`
+- `POST /v1/jobs/repaint`
 - `POST /v1/jobs/transcription`
 - `POST /v1/assets`
 - `GET /v1/jobs`
@@ -50,25 +53,62 @@ intentionally lazy so starting Compose does not claim the shared GPU.
 - `POST /v1/jobs/{id}/cancel`
 - `GET /v1/assets/{id}`
 
-Generation example:
+Text generation remains source-free:
 
 ```bash
 curl -X POST http://localhost:8902/v1/jobs/generation \
   -H 'Content-Type: application/json' \
-  -d '{"prompt":"warm analog jazz trio","preset":"turbo","duration_seconds":20}'
+  -d '{"prompt":"warm analog jazz trio","preset":"turbo","duration_seconds":20,"variation_count":1}'
+```
+
+Reference generation, Remix, and Repaint first upload reusable source audio:
+
+```bash
+curl -X POST http://localhost:8902/v1/assets \
+  -F 'audio_file=@source.wav;type=audio/wav'
+```
+
+Use the returned asset `id` in one of the source operations:
+
+```bash
+curl -X POST http://localhost:8902/v1/jobs/reference-generation \
+  -H 'Content-Type: application/json' \
+  -d '{"reference_asset_id":"<asset-id>","prompt":"dream pop production","preset":"quality","seed":42,"variation_count":2}'
+
+curl -X POST http://localhost:8902/v1/jobs/remix \
+  -H 'Content-Type: application/json' \
+  -d '{"source_asset_id":"<asset-id>","prompt":"heavy psychedelic rock","source_strength":0.6,"variation_count":2}'
+
+curl -X POST http://localhost:8902/v1/jobs/repaint \
+  -H 'Content-Type: application/json' \
+  -d '{"source_asset_id":"<asset-id>","prompt":"restrained piano bridge","start_seconds":32,"end_seconds":44,"repaint_strength":0.5,"variation_count":2}'
 ```
 
 The submit response is HTTP 202. Poll its `id` until `state` is terminal, then
-download `asset.download_url`. The macOS client performs this automatically.
+download every `outputs[].asset.download_url`. The singular
+`asset.download_url` remains a compatibility alias for the first output.
+The macOS client performs polling and downloads automatically.
 
 Jobs also expose ordered `inputs` and `outputs` arrays. Each link has a stable
-operation name, position, and asset record. The singular `asset` field remains
-as a compatibility alias for the first output while existing clients migrate.
-Upload reusable source audio with multipart field `audio_file` to
-`POST /v1/assets`; the returned asset ID can be attached by source-audio job
-contracts. Uploads and generated outputs are transient server working files and
-share the configured seven-day retention policy. The Mac library remains the
-authoritative store.
+operation name, zero-based position, and asset record. Source jobs retain a
+`reference` or `source` input link for provenance. Public job parameters
+record the operation, requested variation count, and every effective 32-bit
+seed. An explicit seed produces consecutive values with unsigned wraparound;
+omitting it generates independent secure random seeds.
+
+Shared controls are `prompt`, optional `lyrics`, `turbo` or `quality`
+`preset`, optional `seed`, and `variation_count` from one through four.
+Reference generation also accepts duration, tempo, key, and time signature.
+Remix derives duration from its source and accepts `source_strength` from zero
+through one. Repaint accepts a three-to-ninety-second interval and
+`repaint_strength` from zero through one.
+
+Uploads and generated outputs are transient server working files and share the
+configured seven-day retention policy. The Mac library remains authoritative:
+it downloads completed assets and records their server asset IDs and input
+lineage. Logic Pro remains the finishing environment for separation, tuning,
+mixing, mastering, and arrangement; Micromix does not duplicate those DAW
+workflows.
 
 ## Native development
 

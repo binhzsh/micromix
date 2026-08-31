@@ -61,7 +61,7 @@ immediately before `-q` in the final line.
 - Existing `GenerationRequest` gains `variation_count: int = Field(1, ge=1,
   le=4)` and constrains `seed` to unsigned 32-bit range.
 
-- [ ] **Step 1: Write failing request and seed tests**
+- [x] **Step 1: Write failing request and seed tests**
 
 Add literal assertions covering:
 
@@ -89,22 +89,22 @@ def test_repaint_rejects_interval_shorter_than_three_seconds():
 Also assert valid defaults and the 90-second maximum for the three new request
 models.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run the service's frozen containerized pytest command for
 `tests/test_generation.py`. Expected: import failure because the new models and
 helper do not exist.
 
-- [ ] **Step 3: Implement the minimal models and helper**
+- [x] **Step 3: Implement the minimal models and helper**
 
 Use a shared base request for prompt, lyrics, preset, seed, and
 `variation_count`. Validate repaint interval duration in an
 `@model_validator(mode="after")`. Implement seed wrapping with modulus
 `2**32`; use `secrets.randbelow(2**32)` when no seed is supplied.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/micromix-api/micromix_api/models.py \
@@ -130,41 +130,41 @@ git commit -m "feat(api): define reimagine requests"
   output contains path, media type, filename, name, and position.
 - Keeps `register_output` as a one-item wrapper.
 
-- [ ] **Step 1: Write failing atomic input tests**
+- [x] **Step 1: Write failing atomic input tests**
 
 Test that one source asset is attached during job creation and that a missing
 asset rolls back the job row. Assert public parameters omit
 `_upstream_recovery_count` while `internal_parameters` includes it.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Expected: `create_job` rejects the `inputs` keyword.
 
-- [ ] **Step 3: Implement transactional create-with-inputs**
+- [x] **Step 3: Implement transactional create-with-inputs**
 
 Validate names and positions before `BEGIN`; insert the job and links; commit
 only after all inserts succeed; rollback on every exception. Do not call
 `get_job` from inside the transaction.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
-- [ ] **Step 5: Write failing internal-update and batch-output tests**
+- [x] **Step 5: Write failing internal-update and batch-output tests**
 
 Assert underscore-prefixed state persists without changing public parameters.
 Assert two outputs appear in position order, and an invalid second output rolls
 back both asset records and links.
 
-- [ ] **Step 6: Run tests and verify RED**
+- [x] **Step 6: Run tests and verify RED**
 
-- [ ] **Step 7: Implement internal updates and atomic batch registration**
+- [x] **Step 7: Implement internal updates and atomic batch registration**
 
 Merge hidden values into `parameters_json`. Pre-validate every output path under
 `asset_root`, calculate metadata, then insert all records and links in one
 transaction. Preserve the current compatibility wrapper.
 
-- [ ] **Step 8: Run focused and full store tests and verify GREEN**
+- [x] **Step 8: Run focused and full store tests and verify GREEN**
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add services/micromix-api/micromix_api/store.py \
@@ -187,17 +187,17 @@ git commit -m "feat(api): create source jobs atomically"
 - Stores `operation`, `variation_count`, `seeds`, and
   `_upstream_recovery_count=0`.
 
-- [ ] **Step 1: Write failing endpoint contract tests**
+- [x] **Step 1: Write failing endpoint contract tests**
 
 Upload an audio asset, submit each new route, and assert HTTP 202, the expected
 public operation/seed values, and the `reference` or `source` input link. Submit
 an explicit maximum seed with two variations and assert wraparound literally.
 
-- [ ] **Step 2: Run endpoint tests and verify RED**
+- [x] **Step 2: Run endpoint tests and verify RED**
 
 Expected: HTTP 404 for the new routes.
 
-- [ ] **Step 3: Implement shared asset validation and route submission**
+- [x] **Step 3: Implement shared asset validation and route submission**
 
 Resolve the asset before creating a job. Return 404 for an unknown asset and 422
 unless its media type starts with `audio/` or equals
@@ -205,22 +205,22 @@ unless its media type starts with `audio/` or equals
 `model_dump(exclude_none=True, exclude={...asset id...})`, add operation/seeds,
 and create the job with one `InputAssetBinding`.
 
-- [ ] **Step 4: Run endpoint tests and verify GREEN**
+- [x] **Step 4: Run endpoint tests and verify GREEN**
 
-- [ ] **Step 5: Write and pass negative contract tests**
+- [x] **Step 5: Write and pass negative contract tests**
 
 Cover missing assets, non-audio assets, invalid variation counts, strengths, and
 repaint intervals. Assert job listing remains unchanged after each rejected
 request.
 
-- [ ] **Step 6: Update existing generation submission behavior**
+- [x] **Step 6: Update existing generation submission behavior**
 
 Add `operation="text"`, persisted seeds, recovery count, and explicit default
 variation count while preserving all previous accepted payloads.
 
-- [ ] **Step 7: Run the complete API tests and verify GREEN**
+- [x] **Step 7: Run the complete API tests and verify GREEN**
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add services/micromix-api/micromix_api/main.py \
@@ -243,49 +243,49 @@ git commit -m "feat(api): accept reimagine jobs"
 - `ACEClient.poll` returns running, missing, failed, or succeeded with an ordered
   tuple of outputs.
 
-- [ ] **Step 1: Write a failing text submission regression**
+- [x] **Step 1: Write a failing text submission regression**
 
 Assert existing generation now sends `batch_size=1`,
 `use_random_seed=false`, and the exact comma-separated seed payload derived from
 the recorded seed list.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
-- [ ] **Step 3: Implement explicit text batch and seed mapping**
+- [x] **Step 3: Implement explicit text batch and seed mapping**
 
 Keep JSON submission when there is no audio file. Map all existing metadata and
 presets unchanged.
 
-- [ ] **Step 4: Run and verify GREEN**
+- [x] **Step 4: Run and verify GREEN**
 
-- [ ] **Step 5: Write failing multipart operation tests**
+- [x] **Step 5: Write failing multipart operation tests**
 
 For each operation, inspect the real httpx request body and assert the correct
 file field (`reference_audio` or `src_audio`), task type, strength/range fields,
 batch size, and seed string. Use complete temporary audio fixtures.
 
-- [ ] **Step 6: Implement multipart submission**
+- [x] **Step 6: Implement multipart submission**
 
 Open files only for the duration of `client.post`. Form values are strings;
 filenames use `Path.name`; media type is `application/octet-stream`. Reject a
 call that provides both reference and source paths.
 
-- [ ] **Step 7: Run and verify GREEN**
+- [x] **Step 7: Run and verify GREEN**
 
-- [ ] **Step 8: Write failing ordered polling tests**
+- [x] **Step 8: Write failing ordered polling tests**
 
 Return two upstream audio paths and assert both downloads, order, filenames, and
 media types. Separately assert `result="[]"` becomes `missing`, while a result
 list containing a status-zero item remains `running`.
 
-- [ ] **Step 9: Implement batch polling and missing-state detection**
+- [x] **Step 9: Implement batch polling and missing-state detection**
 
 Require every success row to contain a file. Download all rows in order. A
 nonempty status-zero result remains running.
 
-- [ ] **Step 10: Run all adapter tests and verify GREEN**
+- [x] **Step 10: Run all adapter tests and verify GREEN**
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add services/micromix-api/micromix_api/adapters.py \
@@ -307,53 +307,53 @@ git commit -m "feat(api): submit ACE source audio"
 - Registers exactly `variation_count` outputs atomically.
 - Resubmits an unknown upstream task once and persists the recovery count.
 
-- [ ] **Step 1: Write a failing named-input submission test**
+- [x] **Step 1: Write a failing named-input submission test**
 
 Create a durable input asset and source-linked Remix job. Assert the fake ACE
 client receives the source path and no reference path.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
-- [ ] **Step 3: Implement operation-specific input resolution**
+- [x] **Step 3: Implement operation-specific input resolution**
 
 Use the named job input links and `store.get_asset`; fail explicitly if the link
 or physical file is unavailable. Pass keyword paths to `ACEClient.submit`.
 
-- [ ] **Step 4: Run and verify GREEN**
+- [x] **Step 4: Run and verify GREEN**
 
-- [ ] **Step 5: Write a failing multiple-output test**
+- [x] **Step 5: Write a failing multiple-output test**
 
 Return two literal output payloads. Assert stable `result-1.wav` and
 `result-2.wav` names, positions zero and one, distinct bytes, and first-output
 compatibility alias.
 
-- [ ] **Step 6: Implement exact-count batch output registration**
+- [x] **Step 6: Implement exact-count batch output registration**
 
 Reject count mismatch. Stage all files, call `register_outputs` once, and clean
 the staging directory if registration or a write fails.
 
-- [ ] **Step 7: Run and verify GREEN**
+- [x] **Step 7: Run and verify GREEN**
 
-- [ ] **Step 8: Write failing bounded-recovery tests**
+- [x] **Step 8: Write failing bounded-recovery tests**
 
 Test `missing -> succeeded` causes one resubmission using identical inputs and
 seeds and persists count one. Test a job beginning with count one and returning
 `missing` becomes failed without another submission.
 
-- [ ] **Step 9: Implement durable one-time recovery**
+- [x] **Step 9: Implement durable one-time recovery**
 
 Increment the hidden counter before resubmission, replace `upstream_id`, and
 continue polling. Emit `ACE-Step task disappeared after recovery` on the bounded
 failure path.
 
-- [ ] **Step 10: Extend cancellation and partial-failure tests**
+- [x] **Step 10: Extend cancellation and partial-failure tests**
 
 Assert cancellation registers no batch outputs. Assert count mismatch and batch
 registration failure leave no output files or asset links.
 
-- [ ] **Step 11: Run coordinator tests and the complete backend suite**
+- [x] **Step 11: Run coordinator tests and the complete backend suite**
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add services/micromix-api/micromix_api/coordinator.py \
@@ -371,23 +371,23 @@ git commit -m "feat(api): persist reimagine output batches"
 **Interfaces:** Documents exact routes, parameters, asset links, retention, and
 the Logic handoff boundary.
 
-- [ ] **Step 1: Update the README**
+- [x] **Step 1: Update the README**
 
 Add all three routes and concise `curl` examples that first upload an asset and
 then reference its ID. Document ordered outputs and effective seeds.
 
-- [ ] **Step 2: Run documentation and repository checks**
+- [x] **Step 2: Run documentation and repository checks**
 
 ```bash
 git diff --check
 ```
 
-- [ ] **Step 3: Run the full backend suite fresh**
+- [x] **Step 3: Run the full backend suite fresh**
 
 Use the frozen `uv` container command from the repository workflow. Require zero
 failures.
 
-- [ ] **Step 4: Commit documentation and checked plan state**
+- [x] **Step 4: Commit documentation and checked plan state**
 
 ```bash
 git add README.md docs/superpowers/plans/2026-08-31-ace-reimagine-operations.md
