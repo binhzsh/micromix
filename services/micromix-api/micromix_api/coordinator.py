@@ -90,6 +90,18 @@ class MIDITranscribing(Protocol):
     ) -> bytes: ...
 
 
+class VoiceConverting(Protocol):
+    async def convert(
+        self,
+        source_path: Path,
+        model_path: Path,
+        index_path: Path | None,
+        output_path: Path,
+        pitch_shift_semitones: int,
+        f0_method: str,
+    ) -> Path: ...
+
+
 class Coordinator:
     def __init__(
         self,
@@ -97,6 +109,7 @@ class Coordinator:
         gpu: GPUAcquiring,
         ace: ACEGenerating,
         muscriptor: MIDITranscribing,
+        rvc: VoiceConverting | None = None,
         *,
         poll_interval: float = 2.0,
     ):
@@ -104,6 +117,7 @@ class Coordinator:
         self.gpu = gpu
         self.ace = ace
         self.muscriptor = muscriptor
+        self.rvc = rvc
         self.poll_interval = poll_interval
 
     async def run_job(self, job_id: str) -> None:
@@ -113,8 +127,10 @@ class Coordinator:
         try:
             if job.kind is JobKind.generation:
                 await self._run_generation(job)
-            else:
+            elif job.kind is JobKind.transcription:
                 await self._run_transcription(job)
+            else:
+                await self._run_vocal_conversion(job)
         except Exception as exc:  # noqa: BLE001 - terminal boundary for durable jobs
             current = await self.store.get_job(job_id)
             if current is not None and current.state not in TERMINAL_STATES:
@@ -332,6 +348,61 @@ class Coordinator:
             )
         finally:
             await self.gpu.release("micromix-muscriptor")
+
+    async def _run_vocal_conversion(self, job: JobRecord) -> None:
+        if self.rvc is None:
+            raise RuntimeError("private voice conversion worker is unavailable")
+        source_path = Path(job.internal_parameters["source_path"])
+        model_path = Path(job.internal_parameters["model_path"])
+        index_value = job.internal_parameters.get("index_path")
+        index_path = Path(index_value) if index_value else None
+        temporary_output = self.store.asset_root / job.id / "rvc-output.wav"
+        await self.store.update_job(
+            job.id,
+            state=JobState.acquiring_gpu,
+            progress_detail="waiting for RTX 3090",
+        )
+        await self.gpu.acquire("micromix-rvc", 8_000, 60)
+        try:
+            await self.store.update_job(
+                job.id,
+                state=JobState.running,
+                progress_detail="converting private vocal",
+            )
+            output_path = await self.rvc.convert(
+                source_path,
+                model_path,
+                index_path,
+                temporary_output,
+                int(job.parameters["pitch_shift_semitones"]),
+                str(job.parameters["f0_method"]),
+            )
+            if not output_path.is_file() or output_path.stat().st_size == 0:
+                raise RuntimeError("private voice conversion produced no audio")
+            current = await self.store.get_job(job.id)
+            if current is not None and current.cancel_requested:
+                output_path.unlink(missing_ok=True)
+                await self.store.update_job(job.id, state=JobState.cancelled, progress_detail=None)
+                return
+            output = self._write_output(job.id, "converted-vocal.wav", output_path.read_bytes())
+            if output_path != output:
+                output_path.unlink(missing_ok=True)
+            await self.store.register_output(
+                job.id,
+                output,
+                "audio/wav",
+                "converted-vocal.wav",
+                name="converted-vocal",
+                position=0,
+            )
+            await self.store.update_job(
+                job.id,
+                state=JobState.succeeded,
+                progress=1.0,
+                progress_detail=None,
+            )
+        finally:
+            await self.gpu.release("micromix-rvc")
 
     def _remove_output_directory(self, directory: Path) -> None:
         if not directory.exists():
