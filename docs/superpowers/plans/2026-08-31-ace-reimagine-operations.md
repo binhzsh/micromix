@@ -394,13 +394,13 @@ git add README.md docs/superpowers/plans/2026-08-31-ace-reimagine-operations.md
 git commit -m "docs: describe reimagine job contracts"
 ```
 
-- [ ] **Step 5: Merge with fast-forward and push**
+- [x] **Step 5: Merge with fast-forward and push**
 
 Verify both checkouts are clean and current. Fast-forward `main` to the feature
 branch, push `origin/main`, and pull `--ff-only` into the other checkout. Never
 force or reset.
 
-- [ ] **Step 6: Deploy the gateway**
+- [x] **Step 6: Deploy the gateway**
 
 On `lts1`:
 
@@ -409,20 +409,28 @@ docker compose up -d --build ace-step micromix-api
 curl http://localhost:8902/v1/health
 ```
 
-- [ ] **Step 7: Run live non-inference smoke tests**
+- [x] **Step 7: Run live non-inference smoke tests**
 
 Confirm the three new paths appear in `/openapi.json`. Upload and download a
 small valid audio fixture. Send deliberately invalid bodies to each new route
 and require HTTP 422 without creating jobs. This validates routing and deployed
 models without claiming the GPU.
 
-- [ ] **Step 8: Run one approved short inference smoke**
+- [x] **Step 8: Run one approved short inference smoke**
 
 Submit one 10-second, one-variation reference generation using a disposable
 fixture. Poll to a terminal state, download the output, verify nonzero size and
 hash metadata, and leave listening quality for the user.
 
-- [ ] **Step 9: Verify final synchronization**
+- [x] **Step 9: Verify final synchronization**
 
 Require local, GitHub, and `lts1` `main` hashes to match and preserve the
 untracked root `AGENTS.md`.
+
+Completion evidence: the merged gateway suite passed 78 tests and the ACE
+supervisor suite passed 4 tests. The deployed API exposed all three new routes;
+invalid payloads returned 422 without changing the job count. Reference job
+`9b60d3457bb04cafb287f721b59209bc` completed with one 10-second stereo 48 kHz
+WAV whose downloaded size and SHA-256 matched its durable asset metadata. The
+live smoke also found and covered ACE's routed `file` result contract in
+`2639d7d` before final synchronization.
