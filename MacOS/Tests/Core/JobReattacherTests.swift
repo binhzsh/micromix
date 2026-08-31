@@ -112,6 +112,28 @@ struct JobReattacherTests {
         #expect(library.items.first?.provenance?.output.position == 3)
     }
 
+    @Test("imported remix keeps the named source link and submitted parameters")
+    func importedRemixKeepsSourceAndParameters() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = LocalLibrary(directory: directory)
+        try library.trackPendingJob(id: "job-remix")
+        let job = try JSONDecoder().decode(RemoteJob.self, from: Data("""
+        {"id":"job-remix","kind":"generation","state":"succeeded","parameters":{"operation":"remix","seed":123,"variation_count":2},"progress":1,"error":null,
+         "inputs":[{"name":"source","position":0,"asset":{"id":"source-1","filename":"source.wav","mediaType":"audio/wav","sizeBytes":4,"sha256":"source-hash","downloadUrl":"/v1/assets/source-1"}}],
+         "outputs":[{"name":"variation","position":0,"asset":{"id":"output-1","filename":"variation.wav","mediaType":"audio/wav","sizeBytes":3,"sha256":"7692c3ad3540bb803c020b3aee66cd8887123234ea0c6e7143c0add73ff431ed","downloadUrl":"/v1/assets/output-1"}}]}
+        """.utf8))
+        let output = DownloadedRemoteAsset(asset: job.outputs[0].asset, data: Data("one".utf8))
+
+        await JobReattacher(api: StubDurableJobs(job: job, outputs: [output]), library: library).recoverPendingJobs()
+
+        let provenance = try #require(library.items.first?.provenance)
+        #expect(provenance.operation == "remix")
+        #expect(provenance.inputs == job.inputs)
+        #expect(provenance.inputs.first?.name == "source")
+        #expect(provenance.parameters["seed"] == .number(123))
+        #expect(provenance.parameters["variation_count"] == .number(2))
+    }
+
     private static func asset(id: String, filename: String, bytes: Int, sha256: String) -> RemoteAsset {
         RemoteAsset(id: id, filename: filename, mediaType: "audio/wav", sizeBytes: bytes, sha256: sha256, downloadUrl: "/v1/assets/\(id)")
     }
