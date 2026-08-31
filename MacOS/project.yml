@@ -23,8 +23,8 @@ targets:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "-"
         INFOPLIST_FILE: sources/App/Info.plist
-        ENABLE_HARDENED_RUNTIME: NO
-        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: Micromix
     scheme:
       testTargets:
         - MicromixTests
