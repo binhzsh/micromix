@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -42,6 +43,38 @@ async def test_job_lifecycle_persists_result_asset(store: JobStore, tmp_path: Pa
     assert len(persisted.asset.sha256) == 64
 
 
+@pytest.mark.asyncio
+async def test_asset_can_feed_two_jobs_and_each_job_can_have_multiple_outputs(
+    store: JobStore,
+):
+    source_path = store.asset_root / "source.wav"
+    source_path.write_bytes(b"RIFF-source")
+    source = await store.create_asset(source_path, "audio/wav", "source.wav")
+    first = await store.create_job(JobKind.generation, {"prompt": "first"})
+    second = await store.create_job(JobKind.generation, {"prompt": "second"})
+
+    await store.attach_asset(first.id, source.id, AssetDirection.input, "source")
+    await store.attach_asset(second.id, source.id, AssetDirection.input, "reference")
+    for position, name in enumerate(("take-1.wav", "take-2.wav")):
+        path = store.asset_root / name
+        path.write_bytes(f"RIFF-{position}".encode())
+        await store.register_output(
+            first.id,
+            path,
+            "audio/wav",
+            name,
+            name="variation",
+            position=position,
+        )
+
+    persisted_first = await store.get_job(first.id)
+    persisted_second = await store.get_job(second.id)
+    assert [link.asset.id for link in persisted_first.inputs] == [source.id]
+    assert [link.asset.filename for link in persisted_first.outputs] == [
+        "take-1.wav",
+        "take-2.wav",
+    ]
+    assert persisted_first.asset == persisted_first.outputs[0].asset
 @pytest.mark.asyncio
 async def test_recovery_requeues_generation_and_interrupts_transcription(store: JobStore):
     queued = await store.create_job(JobKind.generation, {"prompt": "queued"})
@@ -91,3 +124,83 @@ async def test_prune_removes_only_expired_terminal_assets(store: JobStore, tmp_p
     assert not old_file.exists()
     assert recent_file.exists()
     assert (await store.get_job(old.id)).asset is None
+
+
+@pytest.mark.asyncio
+async def test_open_migrates_legacy_single_asset_schema(tmp_path: Path):
+    database_path = tmp_path / "gateway.db"
+    asset_root = tmp_path / "assets"
+    asset_root.mkdir()
+    output = asset_root / "legacy.wav"
+    output.write_bytes(b"RIFF-legacy")
+    now = datetime.now(timezone.utc).isoformat()
+    connection = sqlite3.connect(database_path)
+    connection.executescript(
+        """
+        CREATE TABLE jobs (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            state TEXT NOT NULL,
+            parameters_json TEXT NOT NULL,
+            progress REAL,
+            progress_detail TEXT,
+            upstream_id TEXT,
+            cancel_requested INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE assets (
+            id TEXT PRIMARY KEY,
+            job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id) ON DELETE CASCADE,
+            relative_path TEXT NOT NULL UNIQUE,
+            filename TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO jobs (
+            id, kind, state, parameters_json, progress, cancel_requested,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("legacy-job", "generation", "succeeded", '{"prompt":"legacy"}', 1.0, 0, now, now),
+    )
+    connection.execute(
+        """
+        INSERT INTO assets (
+            id, job_id, relative_path, filename, media_type, size_bytes,
+            sha256, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "legacy-asset",
+            "legacy-job",
+            "legacy.wav",
+            "legacy.wav",
+            "audio/wav",
+            output.stat().st_size,
+            "0" * 64,
+            now,
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    store = JobStore(database_path, asset_root)
+    await store.open()
+    migrated = await store.get_job("legacy-job")
+    asset_value = await store.get_asset("legacy-asset")
+    version = await (await store.db.execute("PRAGMA user_version")).fetchone()
+    await store.close()
+
+    assert migrated is not None
+    assert [(link.name, link.position) for link in migrated.outputs] == [("result", 0)]
+    assert migrated.asset == migrated.outputs[0].asset
+    assert asset_value is not None and asset_value[1].read_bytes() == b"RIFF-legacy"
+    assert version[0] == 1

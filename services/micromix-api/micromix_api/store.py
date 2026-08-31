@@ -9,7 +9,15 @@ from typing import Any
 
 import aiosqlite
 
-from .models import AssetRecord, JobKind, JobRecord, JobState, TERMINAL_STATES
+from .models import (
+    AssetDirection,
+    AssetRecord,
+    JobAssetLink,
+    JobKind,
+    JobRecord,
+    JobState,
+    TERMINAL_STATES,
+)
 
 
 _SCHEMA = """
@@ -32,7 +40,6 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 CREATE TABLE IF NOT EXISTS assets (
     id TEXT PRIMARY KEY,
-    job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id) ON DELETE CASCADE,
     relative_path TEXT NOT NULL UNIQUE,
     filename TEXT NOT NULL,
     media_type TEXT NOT NULL,
@@ -41,7 +48,62 @@ CREATE TABLE IF NOT EXISTS assets (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS job_assets (
+    job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    direction TEXT NOT NULL CHECK(direction IN ('input', 'output')),
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0 CHECK(position >= 0),
+    PRIMARY KEY (job_id, direction, name, position),
+    UNIQUE (job_id, asset_id, direction)
+);
+
 CREATE INDEX IF NOT EXISTS jobs_state_created_idx ON jobs(state, created_at);
+CREATE INDEX IF NOT EXISTS job_assets_asset_idx ON job_assets(asset_id);
+PRAGMA user_version=1;
+"""
+
+_LEGACY_ASSET_MIGRATION = """
+PRAGMA foreign_keys=OFF;
+BEGIN IMMEDIATE;
+
+ALTER TABLE assets RENAME TO assets_legacy;
+
+CREATE TABLE assets (
+    id TEXT PRIMARY KEY,
+    relative_path TEXT NOT NULL UNIQUE,
+    filename TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE job_assets (
+    job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    direction TEXT NOT NULL CHECK(direction IN ('input', 'output')),
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0 CHECK(position >= 0),
+    PRIMARY KEY (job_id, direction, name, position),
+    UNIQUE (job_id, asset_id, direction)
+);
+
+INSERT INTO assets (
+    id, relative_path, filename, media_type, size_bytes, sha256, created_at
+)
+SELECT id, relative_path, filename, media_type, size_bytes, sha256, created_at
+FROM assets_legacy;
+
+INSERT INTO job_assets (job_id, asset_id, direction, name, position)
+SELECT job_id, id, 'output', 'result', 0 FROM assets_legacy;
+
+DROP TABLE assets_legacy;
+CREATE INDEX IF NOT EXISTS jobs_state_created_idx ON jobs(state, created_at);
+CREATE INDEX job_assets_asset_idx ON job_assets(asset_id);
+PRAGMA user_version=1;
+COMMIT;
+PRAGMA foreign_keys=ON;
 """
 
 
@@ -60,7 +122,12 @@ class JobStore:
         self.asset_root.mkdir(parents=True, exist_ok=True)
         self._db = await aiosqlite.connect(self.database_path)
         self._db.row_factory = aiosqlite.Row
-        await self._db.executescript(_SCHEMA)
+        cursor = await self._db.execute("PRAGMA table_info(assets)")
+        asset_columns = {row["name"] for row in await cursor.fetchall()}
+        if "job_id" in asset_columns:
+            await self._db.executescript(_LEGACY_ASSET_MIGRATION)
+        else:
+            await self._db.executescript(_SCHEMA)
         await self._db.commit()
 
     async def close(self) -> None:
@@ -144,33 +211,20 @@ class JobStore:
 
     async def get_job(self, job_id: str) -> JobRecord | None:
         cursor = await self.db.execute(
-            """
-            SELECT jobs.*, assets.id AS asset_id, assets.relative_path,
-                   assets.filename, assets.media_type, assets.size_bytes,
-                   assets.sha256
-            FROM jobs LEFT JOIN assets ON assets.job_id = jobs.id
-            WHERE jobs.id = ?
-            """,
+            "SELECT * FROM jobs WHERE id = ?",
             (job_id,),
         )
         row = await cursor.fetchone()
-        return self._job_from_row(row) if row is not None else None
+        return await self._job_from_row(row) if row is not None else None
 
     async def list_jobs(self) -> list[JobRecord]:
         cursor = await self.db.execute(
-            """
-            SELECT jobs.*, assets.id AS asset_id, assets.relative_path,
-                   assets.filename, assets.media_type, assets.size_bytes,
-                   assets.sha256
-            FROM jobs LEFT JOIN assets ON assets.job_id = jobs.id
-            ORDER BY jobs.created_at DESC
-            """
+            "SELECT * FROM jobs ORDER BY created_at DESC"
         )
-        return [self._job_from_row(row) for row in await cursor.fetchall()]
+        return [await self._job_from_row(row) for row in await cursor.fetchall()]
 
-    async def register_asset(
+    async def create_asset(
         self,
-        job_id: str,
         path: Path,
         media_type: str,
         filename: str,
@@ -187,13 +241,12 @@ class JobStore:
         await self.db.execute(
             """
             INSERT INTO assets (
-                id, job_id, relative_path, filename, media_type,
+                id, relative_path, filename, media_type,
                 size_bytes, sha256, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 asset_id,
-                job_id,
                 relative_path,
                 filename,
                 media_type,
@@ -212,6 +265,64 @@ class JobStore:
             sha256=digest,
             download_url=f"/v1/assets/{asset_id}",
         )
+
+    async def attach_asset(
+        self,
+        job_id: str,
+        asset_id: str,
+        direction: AssetDirection,
+        name: str,
+        position: int = 0,
+    ) -> JobRecord:
+        if await self.get_job(job_id) is None:
+            raise KeyError(job_id)
+        if await self.get_asset(asset_id) is None:
+            raise KeyError(asset_id)
+        resolved_name = name.strip()
+        if not resolved_name:
+            raise ValueError("asset link name must not be blank")
+        if position < 0:
+            raise ValueError("asset link position must not be negative")
+        await self.db.execute(
+            """
+            INSERT INTO job_assets (job_id, asset_id, direction, name, position)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (job_id, asset_id, direction.value, resolved_name, position),
+        )
+        await self.db.commit()
+        value = await self.get_job(job_id)
+        assert value is not None
+        return value
+
+    async def register_output(
+        self,
+        job_id: str,
+        path: Path,
+        media_type: str,
+        filename: str,
+        *,
+        name: str = "result",
+        position: int = 0,
+    ) -> AssetRecord:
+        asset = await self.create_asset(path, media_type, filename)
+        await self.attach_asset(
+            job_id,
+            asset.id,
+            AssetDirection.output,
+            name,
+            position,
+        )
+        return asset
+
+    async def register_asset(
+        self,
+        job_id: str,
+        path: Path,
+        media_type: str,
+        filename: str,
+    ) -> AssetRecord:
+        return await self.register_output(job_id, path, media_type, filename)
 
     async def get_asset(self, asset_id: str) -> tuple[AssetRecord, Path] | None:
         cursor = await self.db.execute("SELECT * FROM assets WHERE id = ?", (asset_id,))
@@ -257,8 +368,9 @@ class JobStore:
     async def prune_assets(self, *, older_than: datetime) -> int:
         cursor = await self.db.execute(
             """
-            SELECT assets.id, assets.relative_path FROM assets
-            JOIN jobs ON jobs.id = assets.job_id
+            SELECT DISTINCT assets.id, assets.relative_path FROM assets
+            JOIN job_assets ON job_assets.asset_id = assets.id
+            JOIN jobs ON jobs.id = job_assets.job_id
             WHERE jobs.state IN (?, ?, ?) AND jobs.updated_at < ?
             """,
             (
@@ -277,18 +389,29 @@ class JobStore:
         await self.db.commit()
         return len(rows)
 
-    def _job_from_row(self, row: aiosqlite.Row) -> JobRecord:
-        asset = None
-        if row["asset_id"] is not None:
-            asset = AssetRecord(
-                id=row["asset_id"],
-                relative_path=row["relative_path"],
-                filename=row["filename"],
-                media_type=row["media_type"],
-                size_bytes=row["size_bytes"],
-                sha256=row["sha256"],
-                download_url=f"/v1/assets/{row['asset_id']}",
+    async def _job_from_row(self, row: aiosqlite.Row) -> JobRecord:
+        cursor = await self.db.execute(
+            """
+            SELECT job_assets.direction, job_assets.name AS link_name,
+                   job_assets.position, assets.*
+            FROM job_assets JOIN assets ON assets.id = job_assets.asset_id
+            WHERE job_assets.job_id = ?
+            ORDER BY job_assets.direction, job_assets.position, job_assets.name
+            """,
+            (row["id"],),
+        )
+        inputs: list[JobAssetLink] = []
+        outputs: list[JobAssetLink] = []
+        for link_row in await cursor.fetchall():
+            link = JobAssetLink(
+                name=link_row["link_name"],
+                position=link_row["position"],
+                asset=self._asset_from_row(link_row),
             )
+            if link_row["direction"] == AssetDirection.input.value:
+                inputs.append(link)
+            else:
+                outputs.append(link)
         raw_parameters = json.loads(row["parameters_json"])
         return JobRecord(
             id=row["id"],
@@ -307,7 +430,9 @@ class JobStore:
             error=row["error"],
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
-            asset=asset,
+            inputs=inputs,
+            outputs=outputs,
+            asset=outputs[0].asset if outputs else None,
         )
 
     def _asset_from_row(self, row: aiosqlite.Row) -> AssetRecord:
