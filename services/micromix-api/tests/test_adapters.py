@@ -121,7 +121,10 @@ async def test_ace_submit_omits_vocal_language_for_source_transformations(operat
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     ace = ACEClient("http://ace.test", client=client)
-    await ace.submit({"prompt": "transform", "operation": operation, "vocal_language": "vi"})
+    parameters = {"prompt": "transform", "operation": operation, "vocal_language": "vi"}
+    if operation == "repaint":
+        parameters.update(start_seconds=5, end_seconds=12)
+    await ace.submit(parameters)
     assert "vocal_language" not in captured[0]
     await client.aclose()
 
