@@ -35,6 +35,7 @@ struct DeviceWindow: View {
     @State private var selectedID: UUID?
 
     @ObservedObject var generate: GenerateViewModel
+    @ObservedObject var reimagine: ReimagineViewModel
     @ObservedObject var transcribe: TranscribeViewModel
     @ObservedObject var analyze: AnalyzeViewModel
     @ObservedObject var library: LocalLibrary
@@ -48,6 +49,7 @@ struct DeviceWindow: View {
             ScreenRegion(
                 mode: selectedMode,
                 generate: generate,
+                reimagine: reimagine,
                 transcribe: transcribe,
                 analyze: analyze,
                 library: library,
@@ -57,6 +59,7 @@ struct DeviceWindow: View {
             DeckRegion(
                 mode: $selectedMode,
                 generate: generate,
+                reimagine: reimagine,
                 transcribe: transcribe,
                 analyze: analyze,
                 library: library,
@@ -85,6 +88,7 @@ struct DeviceWindow: View {
 private struct ScreenRegion: View {
     let mode: DeviceMode
     @ObservedObject var generate: GenerateViewModel
+    @ObservedObject var reimagine: ReimagineViewModel
     @ObservedObject var transcribe: TranscribeViewModel
     @ObservedObject var analyze: AnalyzeViewModel
     @ObservedObject var library: LocalLibrary
@@ -121,7 +125,10 @@ private struct ScreenRegion: View {
             if generate.phase == .done { return "GENERATED" }
             if generate.phase == .cancelled { return "CANCELLED" }
         case .reimagine:
-            return "READY"
+            if reimagine.isRunning { return "REIMAGINING" }
+            if let message = reimagine.errorMessage { return shorten(message) }
+            if reimagine.phase == .done { return "REIMAGINED" }
+            if reimagine.phase == .cancelled { return "CANCELLED" }
         case .analyze:
             if analyze.isRunning { return "ANALYZING" }
             if analyze.analysis != nil { return "UNDERSTOOD" }
@@ -154,7 +161,8 @@ private struct ScreenRegion: View {
             return generate.isRunning ? "GENERATING…" : "READY — ENTER PROMPT"
         case .reimagine:
             guard connection.isConnected else { return "SERVER UNREACHABLE — CHECK WIREGUARD" }
-            return "READY — SELECT A SOURCE"
+            if reimagine.isRunning { return "RENDERING VARIATIONS…" }
+            return reimagine.sourceURL == nil ? "READY — SELECT A SOURCE" : "READY — SET DIRECTION"
         case .analyze:
             return analyze.isRunning ? "ANALYZING LOCALLY…" : "READY — SELECT AUDIO"
         case .transcribe:
@@ -180,6 +188,7 @@ private struct ScreenRegion: View {
 private struct DeckRegion: View {
     @Binding var mode: DeviceMode
     @ObservedObject var generate: GenerateViewModel
+    @ObservedObject var reimagine: ReimagineViewModel
     @ObservedObject var transcribe: TranscribeViewModel
     @ObservedObject var analyze: AnalyzeViewModel
     @ObservedObject var library: LocalLibrary
@@ -235,9 +244,15 @@ private struct DeckRegion: View {
         case .generate:
             GenerateScreen(viewModel: generate, serverAvailable: connection.isConnected)
         case .reimagine:
-            // Task 4 owns the screen implementation; keep this contract-only task
-            // independently compileable while the workspace remains selectable.
-            EmptyView()
+            ReimagineScreen(
+                viewModel: reimagine,
+                serverAvailable: connection.isConnected,
+                onAnalyzeSource: { url in
+                    analyze.analyze(url: url)
+                    mode = .analyze
+                },
+                onOpenLibrary: { mode = .library }
+            )
         case .analyze:
             AnalyzeScreen(viewModel: analyze)
         case .transcribe:

@@ -13,6 +13,7 @@ struct MicromixApp: App {
         let monitor = ConnectionMonitor(api: api)
 
         let generate = GenerateViewModel(api: api, library: library, reattacher: reattacher)
+        let reimagine = ReimagineViewModel(api: api, reattacher: reattacher)
         let transcribe = TranscribeViewModel(api: api, library: library, reattacher: reattacher)
         let analyze = AnalyzeViewModel()
 
@@ -24,6 +25,7 @@ struct MicromixApp: App {
 
         return AppRoot(
             generate: generate,
+            reimagine: reimagine,
             transcribe: transcribe,
             analyze: analyze,
             library: library,
@@ -38,6 +40,7 @@ struct MicromixApp: App {
         WindowGroup {
             DeviceWindow(
                 generate: root.generate,
+                reimagine: root.reimagine,
                 transcribe: root.transcribe,
                 analyze: root.analyze,
                 library: root.library,
@@ -55,6 +58,7 @@ struct MicromixApp: App {
 /// Composition root holding long-lived shared dependencies.
 struct AppRoot: Sendable {
     let generate: GenerateViewModel
+    let reimagine: ReimagineViewModel
     let transcribe: TranscribeViewModel
     let analyze: AnalyzeViewModel
     let library: LocalLibrary
