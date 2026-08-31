@@ -154,8 +154,8 @@ Run: `python -m pytest tests/test_api.py -k vocal_conversion -q`
 job = await store.create_job(
     JobKind.vocal_conversion,
     {"voice_profile_id": profile.id, "voice_profile_revision": profile.revision,
-     "pitch_shift_semitones": payload.pitch_shift_semitones, "f0_method": payload.f0_method},
-    internal_parameters={"source_path": str(source_path), "model_path": str(profile.model_path)},
+     "pitch_shift_semitones": payload.pitch_shift_semitones, "f0_method": payload.f0_method,
+     "_source_path": str(source_path), "_model_path": str(profile.model_path)},
     inputs=[InputAssetBinding(payload.source_asset_id, "source")],
 )
 ```
