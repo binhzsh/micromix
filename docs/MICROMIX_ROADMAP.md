@@ -118,7 +118,7 @@ adding another model workflow.
 gateway is healthy, and every existing creative operation has a recorded manual
 quality result.
 
-## Phase 1 — Finish the creative core
+## Phase 1 — Finish the creative core `[~]`
 
 **Goal:** make Generate and Reimagine feel like one coherent, fast
 asset-creation system.
@@ -145,6 +145,10 @@ create useful alternatives; understand their lineage; and move chosen assets to
 Logic without manual file hunting or parameter re-entry.
 
 **Stop condition:** omit Complete if its evaluated output is not reliably useful.
+
+**Implementation note:** Phase 1A has added reproducible creative controls and
+English/Vietnamese language intent. Phase 0 listening evaluation remains a
+pre-release quality gate; it does not block scoped feature development.
 
 ## Phase 2 — Vocal Swap
 
@@ -301,5 +305,5 @@ review passes.
 
 ## Next action
 
-Design and execute **Phase 0 — Product-quality baseline**. Do not begin Phase 1
-feature implementation until the baseline exit gate is recorded.
+Continue the scoped implementation plans for **Phase 1 — Finish the creative
+core**, while keeping Phase 0 manual listening evaluation as the release gate.
