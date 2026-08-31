@@ -95,6 +95,38 @@ async def test_ace_submit_maps_turbo_profile_to_official_api():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["text", "reference"])
+async def test_ace_submit_forwards_vocal_language_for_supported_operations(operation: str):
+    captured: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content))
+        return httpx.Response(200, json={"code": 200, "data": {"task_id": "task-1"}})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    ace = ACEClient("http://ace.test", client=client)
+    await ace.submit({"prompt": "Vietnamese vocals", "operation": operation, "vocal_language": "vi"})
+    assert captured[0]["vocal_language"] == "vi"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["remix", "repaint"])
+async def test_ace_submit_omits_vocal_language_for_source_transformations(operation: str):
+    captured: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content))
+        return httpx.Response(200, json={"code": 200, "data": {"task_id": "task-1"}})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    ace = ACEClient("http://ace.test", client=client)
+    await ace.submit({"prompt": "transform", "operation": operation, "vocal_language": "vi"})
+    assert "vocal_language" not in captured[0]
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_ace_poll_parses_result_and_downloads_audio():
     calls: list[str] = []
 

@@ -69,6 +69,21 @@ async def test_generation_submission_and_lookup(client: httpx.AsyncClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("language", ["en", "vi"])
+async def test_generation_submission_persists_supported_vocal_language(
+    client: httpx.AsyncClient, language: str
+):
+    response = await client.post(
+        "/v1/jobs/generation",
+        json={"prompt": "bilingual vocal", "vocal_language": language},
+    )
+
+    assert response.status_code == 202
+    job = (await client.get(f"/v1/jobs/{response.json()['id']}")).json()
+    assert job["parameters"]["vocal_language"] == language
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "payload",
     [
@@ -77,6 +92,7 @@ async def test_generation_submission_and_lookup(client: httpx.AsyncClient):
         {"prompt": "song", "preset": "turbo", "duration_seconds": 9},
         {"prompt": "song", "preset": "turbo", "duration_seconds": 601},
         {"prompt": "song", "preset": "turbo", "duration_seconds": 30, "bpm": 301},
+        {"prompt": "song", "vocal_language": "fr"},
     ],
 )
 async def test_generation_validation_rejects_invalid_input(client: httpx.AsyncClient, payload: dict):
