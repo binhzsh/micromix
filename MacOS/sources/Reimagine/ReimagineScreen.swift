@@ -272,10 +272,19 @@ struct ReimagineScreen: View {
         text: Binding<String>,
         width: CGFloat? = nil
     ) -> some View {
-        TextField(placeholder, text: text)
-            .textFieldStyle(.plain)
-            .font(.system(size: 10, design: .monospaced))
-            .foregroundColor(Palette.ink)
+        ZStack(alignment: .leading) {
+            if text.wrappedValue.isEmpty {
+                Text(placeholder)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(Palette.ink.opacity(0.46))
+                    .allowsHitTesting(false)
+            }
+
+            TextField("", text: text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(Palette.ink)
+        }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background(Palette.deck)
