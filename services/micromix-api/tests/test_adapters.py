@@ -155,7 +155,7 @@ async def test_runtime_status_and_instrument_queries():
         if request.url.host == "ace.test":
             return httpx.Response(200, json={"status": "ok", "loaded": True})
         if request.url.path == "/health":
-            return httpx.Response(200, json={"status": "ok"})
+            return httpx.Response(200, json={"status": "ok", "loaded": False})
         if request.url.path == "/instruments":
             return httpx.Response(200, json={"instruments": ["vocals", "piano"]})
         raise AssertionError(request.url)
@@ -167,6 +167,6 @@ async def test_runtime_status_and_instrument_queries():
 
     assert (await gpu.status())["free_mib"] == 12_345
     assert await ace.health() == "ready"
-    assert await muscriptor.health() == "ready"
+    assert await muscriptor.health() == "cold"
     assert await muscriptor.instruments() == ["piano", "vocals"]
     await client.aclose()

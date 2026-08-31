@@ -181,7 +181,9 @@ class MuScriptorClient:
     async def health(self) -> str:
         try:
             response = await self.client.get(f"{self.base_url}/health")
-            return "ready" if response.status_code == 200 else "unreachable"
+            if response.status_code != 200:
+                return "unreachable"
+            return "ready" if response.json().get("loaded") else "cold"
         except Exception:  # noqa: BLE001 - health aggregation is best effort
             return "unreachable"
 
