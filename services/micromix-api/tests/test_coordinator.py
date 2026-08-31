@@ -442,3 +442,48 @@ async def test_cancel_requested_prevents_missing_task_resubmission(store: JobSto
     assert ace.submissions == []
     assert ace.polls == []
     assert not (store.asset_root / job.id).exists()
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_final_poll_cannot_publish_outputs(store: JobStore):
+    job = await store.create_job(
+        JobKind.generation,
+        {
+            "operation": "text",
+            "prompt": "cancel race",
+            "variation_count": 1,
+            "seeds": [5],
+        },
+    )
+    await store.update_job(
+        job.id,
+        state=JobState.queued,
+        upstream_id="finishing-task",
+    )
+
+    class CancelDuringPollACE(FakeACE):
+        async def poll(self, upstream_id: str) -> UpstreamResult:
+            self.polls.append(upstream_id)
+            await store.update_job(job.id, cancel_requested=True)
+            return UpstreamResult.succeeded(
+                b"RIFF-too-late",
+                "result.wav",
+                "audio/wav",
+            )
+
+    ace = CancelDuringPollACE([])
+    coordinator = Coordinator(
+        store,
+        FakeGPU(),
+        ace,
+        FakeMuScriptor(),
+        poll_interval=0,
+    )
+
+    await coordinator.run_job(job.id)
+
+    cancelled = await store.get_job(job.id)
+    assert cancelled.state is JobState.cancelled
+    assert cancelled.cancel_requested is True
+    assert cancelled.outputs == []
+    assert not (store.asset_root / job.id).exists()

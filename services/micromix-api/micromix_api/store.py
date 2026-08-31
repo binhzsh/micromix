@@ -137,6 +137,10 @@ class OutputAssetBinding:
     position: int = 0
 
 
+class JobCancellationRequested(RuntimeError):
+    pass
+
+
 class JobStore:
     def __init__(self, database_path: Path, asset_root: Path):
         self.database_path = database_path
@@ -500,11 +504,11 @@ class JobStore:
                     ),
                 )
             if complete_job:
-                await self.db.execute(
+                cursor = await self.db.execute(
                     """
                     UPDATE jobs SET state = ?, progress = ?,
                         progress_detail = NULL, updated_at = ?
-                    WHERE id = ?
+                    WHERE id = ? AND cancel_requested = 0
                     """,
                     (
                         JobState.succeeded.value,
@@ -513,6 +517,8 @@ class JobStore:
                         job_id,
                     ),
                 )
+                if cursor.rowcount != 1:
+                    raise JobCancellationRequested("job completion blocked by cancellation")
             await self.db.commit()
         except Exception:
             await self.db.rollback()

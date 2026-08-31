@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .models import JobKind, JobRecord, JobState, TERMINAL_STATES
-from .store import JobStore, OutputAssetBinding
+from .store import JobCancellationRequested, JobStore, OutputAssetBinding
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,6 +277,14 @@ class Coordinator:
                     bindings,
                     complete_job=True,
                 )
+            except JobCancellationRequested:
+                self._remove_output_directory(directory)
+                await self.store.update_job(
+                    job.id,
+                    state=JobState.cancelled,
+                    progress_detail=None,
+                )
+                return
             except Exception:
                 self._remove_output_directory(directory)
                 raise

@@ -436,3 +436,31 @@ async def test_complete_with_outputs_rolls_back_links_when_state_update_fails(
         await store.db.execute("SELECT COUNT(*) FROM assets")
     ).fetchone()
     assert count[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_complete_with_outputs_refuses_cancel_requested_job(
+    store: JobStore,
+):
+    job = await store.create_job(JobKind.generation, {"prompt": "song"})
+    await store.update_job(job.id, cancel_requested=True)
+    output = store.asset_root / "cancelled-result.wav"
+    output.write_bytes(b"RIFF-result")
+
+    with pytest.raises(RuntimeError, match="cancellation"):
+        await store.register_outputs(
+            job.id,
+            [
+                OutputAssetBinding(
+                    output,
+                    "audio/wav",
+                    "cancelled-result.wav",
+                )
+            ],
+            complete_job=True,
+        )
+
+    persisted = await store.get_job(job.id)
+    assert persisted.state is JobState.queued
+    assert persisted.cancel_requested is True
+    assert persisted.outputs == []
