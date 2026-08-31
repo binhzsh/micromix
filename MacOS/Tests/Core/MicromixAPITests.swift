@@ -125,6 +125,33 @@ struct MicromixAPITests {
         #expect(Set(instruments) == ["Piano", "Organ", "Kit"])
     }
 
+    @Test("Phase 1B job decodes provenance and downloads every ordered output")
+    func phase1BJobProvenanceAndOutputs() async throws {
+        let body = #"{"id":"job-ref","kind":"generation","state":"succeeded","parameters":{"operation":"reference","seed":42,"seeds":[42,43]},"progress":1,"progress_detail":null,"upstream_id":"ace-1","cancel_requested":false,"error":null,"inputs":[{"name":"reference","position":0,"asset":{"id":"source-1","filename":"source.wav","media_type":"audio/wav","size_bytes":4,"sha256":"source-hash","download_url":"/v1/assets/source-1"}}],"outputs":[{"name":"result","position":0,"asset":{"id":"output-1","filename":"result-1.wav","media_type":"audio/wav","size_bytes":3,"sha256":"one","download_url":"/v1/assets/output-1"}},{"name":"result","position":1,"asset":{"id":"output-2","filename":"result-2.wav","media_type":"audio/wav","size_bytes":3,"sha256":"two","download_url":"/v1/assets/output-2"}}],"asset":{"id":"output-1","filename":"result-1.wav","media_type":"audio/wav","size_bytes":3,"sha256":"one","download_url":"/v1/assets/output-1"}}"#
+        MockURLProtocol.handler = { request in
+            switch request.url?.path {
+            case "/v1/jobs/job-ref":
+                return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+            case "/v1/assets/output-1":
+                return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data("one".utf8))
+            case "/v1/assets/output-2":
+                return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data("two".utf8))
+            default:
+                Issue.record("unexpected request \(request)")
+                return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!, Data())
+            }
+        }
+
+        let api = makeAPI()
+        let job = try await api.job(id: "job-ref")
+        #expect(job.operation == "reference")
+        #expect(job.inputs.map(\.asset.filename) == ["source.wav"])
+        #expect(job.outputs.map(\.asset.filename) == ["result-1.wav", "result-2.wav"])
+        #expect(job.parameters["seed"] == .number(42))
+        let outputs = try await api.fetchOutputs(for: job)
+        #expect(outputs.map(\.data) == [Data("one".utf8), Data("two".utf8)])
+    }
+
     @Test("non-2xx surfaces MicromixAPIError with the body detail")
     func errorSurfacing() async throws {
         MockURLProtocol.handler = { request in

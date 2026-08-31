@@ -96,6 +96,22 @@ actor MicromixAPI {
         return try Self.decoder.decode([RemoteJob].self, from: data)
     }
 
+    func job(id: String) async throws -> RemoteJob {
+        let (data, response) = try await send(path: "/v1/jobs/\(id)", method: "GET")
+        try Self.validate(response, data: data)
+        return try Self.decoder.decode(RemoteJob.self, from: data)
+    }
+
+    func fetchOutputs(for job: RemoteJob) async throws -> [DownloadedRemoteAsset] {
+        guard job.state == "succeeded" else {
+            throw MicromixAPIError(statusCode: 500, detail: job.error ?? "job \(job.state)")
+        }
+        let assets = job.outputs.isEmpty ? (job.asset.map { [$0] } ?? []) : job.outputs.map(\.asset)
+        return try await assets.asyncMap { asset in
+            DownloadedRemoteAsset(asset: asset, data: try await fetchBytes(path: asset.downloadUrl))
+        }
+    }
+
     private func submitJob(path: String,
                            body: Data,
                            contentType: String = "application/json") async throws -> RemoteJob {
@@ -114,9 +130,7 @@ actor MicromixAPI {
             var job = submitted
             while !job.isTerminal {
                 try await Task.sleep(for: .seconds(1))
-                let (data, response) = try await send(path: "/v1/jobs/\(job.id)", method: "GET")
-                try Self.validate(response, data: data)
-                job = try Self.decoder.decode(RemoteJob.self, from: data)
+                job = try await self.job(id: job.id)
             }
             guard job.state == "succeeded", let asset = job.asset else {
                 throw MicromixAPIError(
@@ -216,6 +230,14 @@ actor MicromixAPI {
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return decoder
     }()
+}
+
+private extension Array {
+    func asyncMap<T: Sendable>(_ transform: @Sendable (Element) async throws -> T) async throws -> [T] {
+        var results: [T] = []
+        for element in self { results.append(try await transform(element)) }
+        return results
+    }
 }
 
 extension Data {
