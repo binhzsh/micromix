@@ -162,7 +162,7 @@ git push origin main
 - Consumes: user-owned audio placed under `evaluations/private/sources/`.
 - Produces: stable anonymized case IDs used by every scorecard and result entry.
 
-- [ ] **Step 1: Add private evaluation paths to `.gitignore`**
+- [x] **Step 1: Add private evaluation paths to `.gitignore`**
 
 Append:
 
@@ -172,7 +172,7 @@ Append:
 evaluations/private/
 ```
 
-- [ ] **Step 2: Create the corpus manifest schema**
+- [x] **Step 2: Create the corpus manifest schema**
 
 Create `docs/evaluations/phase-0/corpus-manifest.example.json` with:
 
@@ -238,7 +238,7 @@ Create `docs/evaluations/phase-0/corpus-manifest.example.json` with:
 }
 ```
 
-- [ ] **Step 3: Write the evaluation procedure**
+- [x] **Step 3: Write the evaluation procedure**
 
 Create `docs/evaluations/phase-0/README.md` specifying:
 
@@ -253,7 +253,7 @@ Create `docs/evaluations/phase-0/README.md` specifying:
 - Record failed jobs as results rather than silently rerunning them.
 - Run Logic import and listening checks manually.
 
-- [ ] **Step 4: Verify ignored media cannot be staged accidentally**
+- [x] **Step 4: Verify ignored media cannot be staged accidentally**
 
 Run:
 
@@ -265,7 +265,7 @@ git status --short --ignored evaluations/private/sources/ignore-check.wav
 
 Expected: `!! evaluations/private/` or its child path.
 
-- [ ] **Step 5: Commit the workspace contract**
+- [x] **Step 5: Commit the workspace contract**
 
 ```bash
 git add .gitignore docs/evaluations/phase-0/README.md docs/evaluations/phase-0/corpus-manifest.example.json

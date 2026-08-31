@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "clean-studio",
+      "category": "clean_studio",
+      "source_path": "evaluations/private/sources/clean-studio.wav",
+      "duration_class": "medium",
+      "has_vocals": true,
+      "is_polyphonic": true,
+      "operations": ["reference", "remix", "repaint", "transcribe"]
+    },
+    {
+      "id": "dense-mix",
+      "category": "dense_mastered_mix",
+      "source_path": "evaluations/private/sources/dense-mix.wav",
+      "duration_class": "medium",
+      "has_vocals": true,
+      "is_polyphonic": true,
+      "operations": ["reference", "remix", "repaint", "transcribe"]
+    },
+    {
+      "id": "live-noisy",
+      "category": "live_or_noisy",
+      "source_path": "evaluations/private/sources/live-noisy.wav",
+      "duration_class": "medium",
+      "has_vocals": true,
+      "is_polyphonic": true,
+      "operations": ["reference", "remix", "repaint", "transcribe"]
+    },
+    {
+      "id": "expressive-vocal",
+      "category": "expressive_vocal",
+      "source_path": "evaluations/private/sources/expressive-vocal.wav",
+      "duration_class": "short",
+      "has_vocals": true,
+      "is_polyphonic": false,
+      "operations": ["reference", "repaint"]
+    },
+    {
+      "id": "instrumental",
+      "category": "instrumental",
+      "source_path": "evaluations/private/sources/instrumental.wav",
+      "duration_class": "medium",
+      "has_vocals": false,
+      "is_polyphonic": true,
+      "operations": ["reference", "remix", "repaint", "transcribe"]
+    },
+    {
+      "id": "long-source",
+      "category": "long_source",
+      "source_path": "evaluations/private/sources/long-source.wav",
+      "duration_class": "long",
+      "has_vocals": true,
+      "is_polyphonic": true,
+      "operations": ["reference", "remix", "repaint", "transcribe"]
+    }
+  ]
+}

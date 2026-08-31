@@ -9,3 +9,6 @@ __pycache__/
 .codegraph/
 graphify-out/
 .worktrees/
+
+# Private model-evaluation inputs and generated media
+evaluations/private/
