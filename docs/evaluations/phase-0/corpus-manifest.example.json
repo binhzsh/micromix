@@ -7,6 +7,7 @@
       "source_path": "evaluations/private/sources/clean-studio.wav",
       "duration_class": "medium",
       "has_vocals": true,
+      "vocal_language": "en",
       "is_polyphonic": true,
       "operations": ["reference", "remix", "repaint", "transcribe"]
     },
@@ -16,6 +17,7 @@
       "source_path": "evaluations/private/sources/dense-mix.wav",
       "duration_class": "medium",
       "has_vocals": true,
+      "vocal_language": "vi",
       "is_polyphonic": true,
       "operations": ["reference", "remix", "repaint", "transcribe"]
     },
@@ -25,6 +27,7 @@
       "source_path": "evaluations/private/sources/live-noisy.wav",
       "duration_class": "medium",
       "has_vocals": true,
+      "vocal_language": "mixed",
       "is_polyphonic": true,
       "operations": ["reference", "remix", "repaint", "transcribe"]
     },
@@ -34,6 +37,7 @@
       "source_path": "evaluations/private/sources/expressive-vocal.wav",
       "duration_class": "short",
       "has_vocals": true,
+      "vocal_language": "vi",
       "is_polyphonic": false,
       "operations": ["reference", "repaint"]
     },
@@ -43,6 +47,7 @@
       "source_path": "evaluations/private/sources/instrumental.wav",
       "duration_class": "medium",
       "has_vocals": false,
+      "vocal_language": null,
       "is_polyphonic": true,
       "operations": ["reference", "remix", "repaint", "transcribe"]
     },
@@ -52,6 +57,7 @@
       "source_path": "evaluations/private/sources/long-source.wav",
       "duration_class": "long",
       "has_vocals": true,
+      "vocal_language": "en",
       "is_polyphonic": true,
       "operations": ["reference", "remix", "repaint", "transcribe"]
     }

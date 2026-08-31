@@ -8,6 +8,8 @@
 
 **Finishing environment:** Logic Pro
 
+**Music languages:** English and Vietnamese are first-class requirements
+
 ## Purpose
 
 Micromix is a small collection of high-leverage creative audio tools and the
@@ -37,6 +39,8 @@ A feature belongs in Micromix only when it meets all applicable rules:
 6. It preserves source, model, settings, and output provenance.
 7. It gets the result as close to the finish line as safe automation allows,
    while leaving detailed, project-aware decisions to Logic.
+8. Vocal workflows preserve intelligibility, phrasing, and tonal meaning in
+   both English and Vietnamese.
 
 Do not expose inference steps, sampling internals, arbitrary model selection,
 LoRA controls, prompt-engineering machinery, waveform editing, mixer channels,
@@ -124,6 +128,9 @@ asset-creation system.
 - [ ] Add missing high-value Generate controls only where they improve
       reproducibility or creative direction.
 - [ ] Evaluate ACE-Step Complete using vocals and partial arrangements.
+- [ ] Evaluate explicit English (`en`) and Vietnamese (`vi`) vocal-language
+      handling; expose language only when it improves reliability over automatic
+      detection.
 - [ ] Add Complete only if it consistently returns arrangement assets worth
       continuing in Logic.
 - [ ] Make sending an existing library asset into another Micromix tool a
@@ -150,7 +157,8 @@ place them into enough musical context to judge and use immediately.
 - [ ] Evaluate the existing RVC and Applio capabilities on the private vocal
       corpus.
 - [ ] Compare identity transfer, lyric intelligibility, pitch/expression
-      preservation, artifacts, runtime, VRAM, and operational reliability.
+      preservation, Vietnamese tone preservation, artifacts, runtime, VRAM, and
+      operational reliability using both English and Vietnamese vocals.
 - [ ] Select one production backend; do not expose backend selection in the app.
 - [ ] Define a durable vocal-conversion job with source, target voice, model
       revision, parameters, alternatives, and output provenance.
@@ -179,7 +187,7 @@ use.
 - [ ] Evaluate candidate enhancement models on clean, noisy, reverberant, and
       expressive vocals.
 - [ ] Measure denoise, dereverberation, intelligibility, identity retention,
-      transient damage, and musical artifacts.
+      transient damage, Vietnamese tone preservation, and musical artifacts.
 - [ ] Select only improvements that are reliably better than the input.
 - [ ] Build a minimal Improve Vocal operation returning an improved stem and an
       in-context reference when accompaniment is available.

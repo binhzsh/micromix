@@ -11,6 +11,7 @@ running a comparison or retry.
 | Date and timezone | |
 | Evaluator | |
 | Corpus case ID | |
+| Vocal language | English / Vietnamese / mixed / instrumental |
 | Operation | Generate / Reference / Remix / Repaint / Transcribe |
 | Git commit (40 characters) | |
 | Service image ID | |
@@ -51,6 +52,8 @@ higher means fewer or less damaging artifacts.
 | --- | ---: | --- |
 | Creative usefulness | | Does this create an idea or asset worth keeping? |
 | Source/intent preservation | | Does it retain the intended source identity or requested direction? |
+| Language intelligibility | | Are English or Vietnamese words understandable and phrased naturally? |
+| Vietnamese tone preservation | | For Vietnamese only: are lexical tones preserved well enough to retain meaning? |
 | Musical coherence | | Are structure, harmony, rhythm, phrasing, and transitions convincing? |
 | Artifact quality | | Are audible glitches, smearing, pumping, discontinuities, and synthetic artifacts acceptably low? |
 | Edit burden | | How close is it to the 70–80% Micromix target before detailed Logic work? |
@@ -105,6 +108,9 @@ An operation passes the baseline when all of these conditions hold:
 - Median edit-burden score is at least 3.
 - No case receives an artifact score of 1 without a documented limitation or
   completed fix.
+- The English and Vietnamese vocal subsets each have median language
+  intelligibility of at least 3.
+- The Vietnamese vocal subset has median tone preservation of at least 3.
 
 Transcribe additionally requires median note accuracy, timing accuracy, and
 correction burden of at least 3 for the cases Micromix claims to support.

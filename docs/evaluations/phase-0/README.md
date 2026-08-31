@@ -18,7 +18,9 @@ generated media.
 
 Required categories are clean studio audio, a dense mastered mix, live or
 noisy audio, expressive vocals, instrumental/polyphonic material, and a long
-source.
+source. The vocal subset must include at least one English performance and one
+Vietnamese performance. Mixed-language material may supplement but does not
+replace those two cases.
 
 The entire `evaluations/private/` tree is ignored by Git. Never force-add audio,
 MIDI, generated output, lyrics, artist names, or identifying descriptions.
@@ -54,6 +56,8 @@ phase-gate decision.
 - Import selected WAV and MIDI outputs into Logic Pro and record whether they
   open, align, audition, and remain editable as expected.
 - Listening and Logic checks are manual. Do not automate the active desktop.
+- For vocal material, record language as `en`, `vi`, or `mixed`; score lyric
+  intelligibility and preservation of Vietnamese lexical tones where applicable.
 
 ## Standard directions
 
