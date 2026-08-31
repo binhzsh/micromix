@@ -108,9 +108,12 @@ struct LibraryScreen: View {
                 guard let item = selectedItem else { return }
                 let url = library.resolvedURL(for: item)
                 if item.kind == .audio {
-                    player.load(url: url, item: item)
-                    player.play()
+                    midiPreview.stop()
+                    if player.load(url: url, item: item) != nil {
+                        player.play()
+                    }
                 } else {
+                    player.stop()
                     if midiPreview.load(url: url, item: item) {
                         midiPreview.play()
                     }

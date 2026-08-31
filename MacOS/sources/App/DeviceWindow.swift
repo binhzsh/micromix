@@ -8,10 +8,14 @@ enum DeviceMode: String, CaseIterable, Identifiable {
     case library = "LIBRARY"
 
     var id: String { rawValue }
+
+    var displayIndex: Int {
+        (Self.allCases.firstIndex(of: self) ?? 0) + 1
+    }
 }
 
-/// Single-window device-panel chassis: a recessed dark screen panel (~60%)
-/// on top and a light control deck (~40%) below, inside a rounded frame.
+/// Single-window device-panel chassis with a compact recessed status screen
+/// above the light control deck, inside a rounded frame.
 ///
 /// Owns the three flows' view models and shared infra (audio/MIDI playback,
 /// connection health), renders the active mode's screen + deck, and drives the
@@ -29,25 +33,28 @@ struct DeviceWindow: View {
     @ObservedObject var connection: ConnectionMonitor
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScreenRegion(
-                mode: selectedMode,
-                generate: generate,
-                transcribe: transcribe,
-                analyze: analyze,
-                connection: connection
-            )
-            DeckRegion(
-                mode: $selectedMode,
-                generate: generate,
-                transcribe: transcribe,
-                analyze: analyze,
-                library: library,
-                player: player,
-                midiPreview: midiPreview,
-                connection: connection,
-                selectedID: $selectedID
-            )
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                ScreenRegion(
+                    mode: selectedMode,
+                    generate: generate,
+                    transcribe: transcribe,
+                    analyze: analyze,
+                    connection: connection,
+                    height: min(220, max(110, geometry.size.height * 0.22))
+                )
+                DeckRegion(
+                    mode: $selectedMode,
+                    generate: generate,
+                    transcribe: transcribe,
+                    analyze: analyze,
+                    library: library,
+                    player: player,
+                    midiPreview: midiPreview,
+                    connection: connection,
+                    selectedID: $selectedID
+                )
+            }
         }
         .background(Palette.deck)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -71,6 +78,7 @@ private struct ScreenRegion: View {
     @ObservedObject var transcribe: TranscribeViewModel
     @ObservedObject var analyze: AnalyzeViewModel
     @ObservedObject var connection: ConnectionMonitor
+    let height: CGFloat
 
     var body: some View {
         ZStack {
@@ -85,7 +93,7 @@ private struct ScreenRegion: View {
         .overlay(ScanlinesOverlay())
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(14)
-        .frame(height: 400)
+        .frame(height: height)
     }
 
     private var readoutColor: Color {
@@ -95,21 +103,24 @@ private struct ScreenRegion: View {
 
     /// Live big readout: elapsed time while a job runs, result/error text after.
     private var readout: String {
-        if generate.isRunning { return format(elapsed: generate.elapsed) }
-        if transcribe.isRunning { return format(elapsed: transcribe.elapsed) }
-        if analyze.isRunning { return "ANALYZING" }
-        if case .error(let msg) = generate.phase {
-            return shorten(msg)
+        switch mode {
+        case .generate:
+            if generate.isRunning { return format(elapsed: generate.elapsed) }
+            if case .error(let message) = generate.phase { return shorten(message) }
+            if generate.phase == .done { return "GENERATED" }
+            if generate.phase == .cancelled { return "CANCELLED" }
+        case .analyze:
+            if analyze.isRunning { return "ANALYZING" }
+            if analyze.analysis != nil { return "UNDERSTOOD" }
+            if let error = analyze.error { return shorten(error) }
+        case .transcribe:
+            if transcribe.isRunning { return format(elapsed: transcribe.elapsed) }
+            if case .error(let message) = transcribe.phase { return shorten(message) }
+            if transcribe.phase == .done { return "TRANSCRIBED" }
+            if transcribe.phase == .cancelled { return "CANCELLED" }
+        case .library:
+            break
         }
-        if case .error(let msg) = transcribe.phase {
-            return shorten(msg)
-        }
-        if generate.phase == .done { return "GENERATED" }
-        if generate.phase == .cancelled { return "CANCELLED" }
-        if transcribe.phase == .done { return "TRANSCRIBED" }
-        if transcribe.phase == .cancelled { return "CANCELLED" }
-        if analyze.analysis != nil { return "UNDERSTOOD" }
-        if let error = analyze.error { return shorten(error) }
         return "00:00"
     }
 
@@ -134,7 +145,7 @@ private struct ScreenRegion: View {
     }
 
     private func shorten(_ s: String) -> String {
-        s.count > 22 ? String(s.prefix(22)) : s
+        s.count > 42 ? String(s.prefix(41)) + "…" : s
     }
 }
 
@@ -172,7 +183,7 @@ private struct DeckRegion: View {
                 ForEach(DeviceMode.allCases) { m in
                     PanelButton(
                         title: m.rawValue,
-                        index: index(of: m),
+                        index: m.displayIndex,
                         isActive: m == mode,
                         action: { mode = m }
                     )
@@ -225,7 +236,4 @@ private struct DeckRegion: View {
         }
     }
 
-    private func index(of mode: DeviceMode) -> Int {
-        DeviceMode.allCases.firstIndex(of: mode) ?? 0
-    }
 }

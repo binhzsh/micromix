@@ -107,6 +107,64 @@ struct TranscribeViewModelTests {
         #expect(vm.instruments == ["Piano"])
     }
 
+    @Test("unsupported source type surfaces an error without selecting it")
+    func unsupportedSource() throws {
+        let vm = TranscribeViewModel(api: FakeTranscriber(), library: FakeLibrary())
+
+        let selected = vm.select(name: "notes.txt", bytes: Data("not audio".utf8))
+
+        #expect(!selected)
+        #expect(!vm.hasSelection)
+        #expect("\(vm.phase)".contains("UNSUPPORTED"))
+    }
+
+    @Test("empty source surfaces a readable error without selecting it")
+    func emptySource() throws {
+        let vm = TranscribeViewModel(api: FakeTranscriber(), library: FakeLibrary())
+
+        let selected = vm.select(name: "empty.wav", bytes: Data())
+
+        #expect(!selected)
+        #expect(!vm.hasSelection)
+        #expect("\(vm.phase)".contains("READ"))
+    }
+
+    @Test("M4A source is accepted for server-side FFmpeg decoding")
+    func m4aSource() throws {
+        let vm = TranscribeViewModel(api: FakeTranscriber(), library: FakeLibrary())
+
+        #expect(vm.select(name: "voice.m4a", bytes: Data([0x01])))
+        #expect(vm.hasSelection)
+        #expect(vm.sourceName == "voice.m4a")
+    }
+
+    @Test("MIDI is rejected as a non-waveform transcription source")
+    func midiSource() throws {
+        let vm = TranscribeViewModel(api: FakeTranscriber(), library: FakeLibrary())
+
+        #expect(!vm.select(name: "notes.mid", bytes: Data([0x4D, 0x54, 0x68, 0x64])))
+        #expect(!vm.hasSelection)
+        #expect("\(vm.phase)".contains("UNSUPPORTED"))
+    }
+
+    @Test("oversized files are rejected before their contents are read")
+    func oversizedSourcePreflight() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("micromix-large-\(UUID().uuidString).wav")
+        #expect(FileManager.default.createFile(atPath: url.path, contents: nil))
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.truncate(atOffset: UInt64(TranscribeViewModel.maximumSourceBytes + 1))
+        try handle.close()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        do {
+            _ = try TranscribeViewModel.readSource(at: url)
+            Issue.record("Oversized source should be rejected")
+        } catch TranscribeViewModel.SourceReadError.tooLarge {
+            // Expected: the sparse file is rejected from metadata, without allocation.
+        }
+    }
+
     // MARK: - helper
 
     private func waitUntil(timeout: TimeInterval = 3, _ condition: () -> Bool) async {

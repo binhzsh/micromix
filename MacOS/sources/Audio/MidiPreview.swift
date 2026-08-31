@@ -47,7 +47,11 @@ final class MidiPreview: ObservableObject {
 
     func play() {
         guard let player else { return }
-        player.play()
+        player.play { [weak self] in
+            Task { @MainActor in
+                self?.state = .idle
+            }
+        }
         state = .playing
     }
 

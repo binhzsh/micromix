@@ -13,7 +13,7 @@ struct TranscribeScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Typography.monoLabel("2. TRANSCRIBE — AUDIO TO MIDI", size: 11)
+            Typography.monoLabel("3. TRANSCRIBE — AUDIO TO MIDI", size: 11)
                 .foregroundColor(Palette.ink.opacity(0.6))
 
             // Audio selection / drop zone
@@ -129,13 +129,21 @@ struct TranscribeScreen: View {
     private func handleDrop(_ urls: [URL]) {
         guard let url = urls.first else { return }
         Task {
-            guard let data = try? Data(contentsOf: url), data.count <= 200 * 1024 * 1024 else {
-                viewModel.selection = nil
+            let data: Data
+            do {
+                data = try await Task.detached(priority: .userInitiated) {
+                    try TranscribeViewModel.readSource(at: url)
+                }.value
+            } catch let error as TranscribeViewModel.SourceReadError {
+                viewModel.rejectSource(error)
+                return
+            } catch {
+                viewModel.rejectSource(.unreadable)
                 return
             }
             let analysis = try? await LocalMusicAnalyzer.analyze(url: url)
             let name = url.lastPathComponent
-            viewModel.select(name: name, bytes: data, analysis: analysis)
+            _ = viewModel.select(name: name, bytes: data, analysis: analysis)
         }
     }
 }

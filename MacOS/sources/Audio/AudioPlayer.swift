@@ -2,6 +2,18 @@ import Foundation
 import AVFAudio
 import Combine
 
+private final class AudioPlayerCompletionDelegate: NSObject, AVAudioPlayerDelegate, @unchecked Sendable {
+    let didFinish: @Sendable () -> Void
+
+    init(didFinish: @escaping @Sendable () -> Void) {
+        self.didFinish = didFinish
+    }
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        didFinish()
+    }
+}
+
 /// Wraps `AVAudioPlayer` for playback of generated audio results.
 ///
 /// Runs on the main actor; playback duration is derived locally via
@@ -19,6 +31,11 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var currentDuration: Double?
 
     private var player: AVAudioPlayer?
+    private lazy var completionDelegate = AudioPlayerCompletionDelegate { [weak self] in
+        Task { @MainActor in
+            self?.state = .idle
+        }
+    }
 
     /// Load audio at `url` for playback. Returns derived duration (seconds),
     /// or nil if the file cannot be opened.
@@ -26,6 +43,7 @@ final class AudioPlayer: ObservableObject {
     func load(url: URL, item: LibraryItem) -> Double? {
         do {
             let player = try AVAudioPlayer(contentsOf: url)
+            player.delegate = completionDelegate
             self.player = player
             self.currentItem = item
             self.state = .idle
@@ -33,7 +51,9 @@ final class AudioPlayer: ObservableObject {
             self.currentDuration = duration
             return duration
         } catch {
+            self.player = nil
             self.currentItem = nil
+            self.currentDuration = nil
             self.state = .idle
             return nil
         }

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UniformTypeIdentifiers
 
 /// Drives the TRANSCRIBE flow: audio file selection, instrument selection,
 /// tempo detection toggle, job lifecycle (via `JobRunner`), and persistence of
@@ -10,6 +11,13 @@ import Combine
 /// `GenerateViewModel`).
 @MainActor
 final class TranscribeViewModel: ObservableObject {
+    enum SourceReadError: Error {
+        case tooLarge
+        case unreadable
+    }
+
+    nonisolated static var maximumSourceBytes: Int { 200 * 1024 * 1024 }
+
     /// High-level flow phase surfaced to the UI.
     enum Phase: Equatable {
         case idle
@@ -60,12 +68,57 @@ final class TranscribeViewModel: ObservableObject {
     var isRunning: Bool { phase == .running }
     var isBlocked: Bool { isRunning }
 
+    nonisolated static func readSource(at url: URL) throws -> Data {
+        let values = try url.resourceValues(forKeys: [.fileSizeKey])
+        if let fileSize = values.fileSize, fileSize > maximumSourceBytes {
+            throw SourceReadError.tooLarge
+        }
+
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let data = try handle.read(upToCount: maximumSourceBytes + 1) ?? Data()
+        guard data.count <= maximumSourceBytes else {
+            throw SourceReadError.tooLarge
+        }
+        return data
+    }
+
     /// Set the source audio file. Ignored while a job is running.
     @discardableResult
     func select(name: String, bytes: Data, analysis: LocalMusicAnalysis? = nil) -> Bool {
         guard !isRunning else { return false }
+        let pathExtension = (name as NSString).pathExtension.lowercased()
+        guard let type = UTType(filenameExtension: pathExtension),
+              type.conforms(to: .audio),
+              !type.conforms(to: .midi) else {
+            selection = nil
+            phase = .error("UNSUPPORTED AUDIO FILE")
+            return false
+        }
+        guard !bytes.isEmpty else {
+            selection = nil
+            phase = .error("COULD NOT READ AUDIO FILE")
+            return false
+        }
+        guard bytes.count <= Self.maximumSourceBytes else {
+            selection = nil
+            phase = .error("AUDIO FILE EXCEEDS 200 MB")
+            return false
+        }
         selection = Selection(name: name, bytes: bytes, analysis: analysis)
+        phase = .idle
         return true
+    }
+
+    func rejectSource(_ error: SourceReadError) {
+        guard !isRunning else { return }
+        selection = nil
+        switch error {
+        case .tooLarge:
+            phase = .error("AUDIO FILE EXCEEDS 200 MB")
+        case .unreadable:
+            phase = .error("COULD NOT READ AUDIO FILE")
+        }
     }
 
     /// Clear the current selection.
