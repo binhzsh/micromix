@@ -8,6 +8,11 @@ import Combine
 /// fakes can stand in for the real actor / `@MainActor` store.
 @MainActor
 final class GenerateViewModel: ObservableObject {
+    private actor SubmittedJobReference {
+        private var id: String?
+        func set(_ id: String) { self.id = id }
+        func value() -> String? { id }
+    }
     /// High-level flow phase surfaced to the UI.
     enum Phase: Equatable {
         case idle
@@ -33,13 +38,19 @@ final class GenerateViewModel: ObservableObject {
 
     private let api: any GenerateServicing
     private let library: any LibraryStoring
+    private let reattacher: JobReattacher?
     private let runner = JobRunner()
 
     private var cancellables = Set<AnyCancellable>()
 
-    init(api: any GenerateServicing, library: any LibraryStoring) {
+    init(
+        api: any GenerateServicing,
+        library: any LibraryStoring,
+        reattacher: JobReattacher? = nil
+    ) {
         self.api = api
         self.library = library
+        self.reattacher = reattacher
         // Mirror JobRunner's published timings into this VM's published props.
         runner.$elapsed
             .receive(on: DispatchQueue.main)
@@ -71,21 +82,36 @@ final class GenerateViewModel: ObservableObject {
 
         let api = self.api
         let library = self.library
+        let reattacher = self.reattacher
         let lyricsArg = useLyrics ? lyrics : nil
         let preset = self.preset
         let durationSeconds = self.durationSeconds
         let title = Self.title(from: input)
+        let submittedJob = SubmittedJobReference()
         phase = .running
         lastItem = nil
 
-        runner.start(JobRunner.Job(name: "generate") {
+        runner.start(JobRunner.Job(name: "generate", work: {
             do {
-                let data = try await api.generate(
-                    input: input,
-                    lyrics: lyricsArg,
-                    preset: preset,
-                    durationSeconds: durationSeconds
-                )
+                if let submitter = api as? any DurableGenerationSubmitting, let reattacher {
+                    let job = try await submitter.submitGeneration(
+                        input: input,
+                        lyrics: lyricsArg,
+                        preset: preset,
+                        durationSeconds: durationSeconds
+                    )
+                    await submittedJob.set(job.id)
+                    try await reattacher.track(job)
+                    let items = try await reattacher.recoverSubmittedJob(id: job.id)
+                    guard let item = items.first else { return }
+                    await MainActor.run {
+                        self.lastItem = item
+                        self.phase = .done
+                    }
+                    return
+                }
+
+                let data = try await api.generate(input: input, lyrics: lyricsArg, preset: preset, durationSeconds: durationSeconds)
                 let item = LibraryItem(
                     id: UUID(),
                     kind: .audio,
@@ -109,7 +135,13 @@ final class GenerateViewModel: ObservableObject {
                     ?? error.localizedDescription
                 await MainActor.run { self.phase = .error(message) }
             }
-        })
+        }, onCancel: {
+            Task {
+                guard let cancelling = api as? any DurableJobCancelling,
+                      let id = await submittedJob.value() else { return }
+                try? await cancelling.cancel(jobID: id)
+            }
+        }))
         return true
     }
 

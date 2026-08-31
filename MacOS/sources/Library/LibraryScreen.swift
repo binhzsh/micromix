@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// LIBRARY mode: a dot-matrix list of saved results with transport controls
@@ -22,6 +23,7 @@ struct LibraryScreen: View {
         VStack(alignment: .leading, spacing: 10) {
             header
             listOrEmpty
+            provenance
             transport
         }
     }
@@ -153,6 +155,11 @@ struct LibraryScreen: View {
                 guard let item = selectedItem else { return }
                 NSWorkspace.shared.activateFileViewerSelecting([library.resolvedURL(for: item)])
             }
+            button("COPY PROVENANCE", color: Palette.accentOrange, disabled: selectedItem?.provenance == nil) {
+                guard let copyText = selectedItem?.provenance?.copyText else { return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(copyText, forType: .string)
+            }
             Spacer(minLength: 0)
         }
     }
@@ -195,8 +202,42 @@ struct LibraryScreen: View {
         library.items.first { $0.id == selectedID }
     }
 
+    @ViewBuilder private var provenance: some View {
+        if let item = selectedItem {
+            DeckPanel {
+                VStack(alignment: .leading, spacing: 4) {
+                    Typography.monoLabel("PROVENANCE", size: 10)
+                        .foregroundColor(Palette.ink.opacity(0.64))
+                    if let provenance = item.provenance {
+                        Text("\(provenance.operation ?? item.kind.rawValue.uppercased()) · JOB \(provenance.jobID.suffix(8)) · OUTPUT #\(provenance.output.position + 1)")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(Palette.ink)
+                        Text("INPUTS: \(provenance.inputs.sorted { $0.position < $1.position }.map { $0.asset.filename }.joined(separator: ", ").ifEmpty("(none)"))")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(Palette.ink.opacity(0.72))
+                        Text("PARAMETERS: \(provenance.parameters.keys.sorted().map { "\($0)=\(provenance.parameters[$0]!.displayText)" }.joined(separator: ", ").ifEmpty("(none)"))")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(Palette.ink.opacity(0.72))
+                            .lineLimit(2)
+                    } else {
+                        Text("PROVENANCE UNAVAILABLE FOR THIS LEGACY ITEM")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(Palette.ink.opacity(0.60))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
     static func formatDuration(_ seconds: Double) -> String {
         let total = Int(seconds.rounded())
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+private extension String {
+    func ifEmpty(_ fallback: String) -> String {
+        isEmpty ? fallback : self
     }
 }

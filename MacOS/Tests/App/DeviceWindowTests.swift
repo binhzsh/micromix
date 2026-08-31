@@ -59,6 +59,7 @@ struct DeviceWindowTests {
             transcribe: TranscribeViewModel(api: api, library: library),
             analyze: AnalyzeViewModel(),
             library: library,
+            reattacher: JobReattacher(api: api, library: library),
             player: AudioPlayer(),
             midiPreview: MidiPreview(),
             connection: connection

@@ -55,6 +55,19 @@ actor MicromixAPI {
                   lyrics: String? = nil,
                   preset: String = "turbo",
                   durationSeconds: Double = 30) async throws -> Data {
+        let job = try await submitGeneration(
+            input: input, lyrics: lyrics, preset: preset, durationSeconds: durationSeconds
+        )
+        return try await awaitAsset(for: job)
+    }
+
+    /// Submit generation and return as soon as the gateway accepts its durable job.
+    func submitGeneration(
+        input: String,
+        lyrics: String? = nil,
+        preset: String = "turbo",
+        durationSeconds: Double = 30
+    ) async throws -> RemoteJob {
         var body: [String: Any] = [
             "prompt": input,
             "preset": preset,
@@ -64,8 +77,7 @@ actor MicromixAPI {
             body["lyrics"] = lyrics
         }
         let payload = try JSONSerialization.data(withJSONObject: body)
-        let job = try await submitJob(path: "/v1/jobs/generation", body: payload)
-        return try await awaitAsset(for: job)
+        return try await submitJob(path: "/v1/jobs/generation", body: payload)
     }
 
     /// Audio -> MIDI transcription. File field is `audio_file`; instruments
@@ -74,6 +86,19 @@ actor MicromixAPI {
                     filename: String,
                     instruments: [String],
                     detectTempo: Bool = true) async throws -> Data {
+        let job = try await submitTranscription(
+            audio: audio, filename: filename, instruments: instruments, detectTempo: detectTempo
+        )
+        return try await awaitAsset(for: job)
+    }
+
+    /// Submit transcription and return as soon as the gateway accepts its durable job.
+    func submitTranscription(
+        audio: Data,
+        filename: String,
+        instruments: [String],
+        detectTempo: Bool = true
+    ) async throws -> RemoteJob {
         let boundary = "Boundary-\(UUID().uuidString)"
         let payload = Self.multipartBody(
             boundary: boundary,
@@ -82,12 +107,11 @@ actor MicromixAPI {
             instruments: instruments,
             detectTempo: detectTempo
         )
-        let job = try await submitJob(
+        return try await submitJob(
             path: "/v1/jobs/transcription",
             body: payload,
             contentType: "multipart/form-data; boundary=\(boundary)"
         )
-        return try await awaitAsset(for: job)
     }
 
     func jobs() async throws -> [RemoteJob] {
@@ -145,7 +169,7 @@ actor MicromixAPI {
         }
     }
 
-    private func cancel(jobID: String) async throws {
+    func cancel(jobID: String) async throws {
         let (data, response) = try await send(path: "/v1/jobs/\(jobID)/cancel", method: "POST")
         try Self.validate(response, data: data)
     }

@@ -4,13 +4,16 @@ import Testing
 
 /// Fakes standing in for `MicromixAPI` / `LocalLibrary` in the GENERATE flow.
 @MainActor
-private final class FakeGenerator: GenerateServicing, @unchecked Sendable {
+private final class FakeGenerator: GenerateServicing, DurableGenerationSubmitting, DurableJobServicing, DurableJobCancelling, @unchecked Sendable {
     var result: Result<Data, Error> = .success(Data("fake-audio".utf8))
     var capturedInput: String?
     var capturedLyrics: String?
     var capturedPreset: String?
     var capturedDuration: Double?
     var delay: Duration = .zero
+    var submittedJob = try! JSONDecoder().decode(RemoteJob.self, from: Data("{\"id\":\"job-1\",\"kind\":\"generation\",\"state\":\"succeeded\",\"progress\":1,\"error\":null}".utf8))
+    var outputs = [DownloadedRemoteAsset(asset: RemoteAsset(id: "out-1", filename: "result.wav", mediaType: "audio/wav", sizeBytes: 4, sha256: "75f56ac1ef945e2a21f45f004d29a52e618474d44dd8d36e318b3dba7c3b6de6", downloadUrl: "/v1/assets/out-1"), data: Data("wav!".utf8))]
+    var cancelledJobID: String?
 
     func generate(input: String,
                   lyrics: String?,
@@ -25,6 +28,20 @@ private final class FakeGenerator: GenerateServicing, @unchecked Sendable {
         }
         return try result.get()
     }
+
+    func submitGeneration(input: String, lyrics: String?, preset: String, durationSeconds: Double) async throws -> RemoteJob {
+        capturedInput = input
+        capturedLyrics = lyrics
+        capturedPreset = preset
+        capturedDuration = durationSeconds
+        return submittedJob
+    }
+
+    func job(id: String) async throws -> RemoteJob { submittedJob }
+
+    func fetchOutputs(for job: RemoteJob) async throws -> [DownloadedRemoteAsset] { outputs }
+
+    func cancel(jobID: String) async throws { cancelledJobID = jobID }
 }
 
 @MainActor
@@ -108,6 +125,45 @@ struct GenerateViewModelTests {
         #expect(!started)
         #expect("\(vm.phase)".contains("error"))
         #expect(library.saved.isEmpty)
+    }
+
+    @Test("durable submission is recorded before its output is imported")
+    func durableSubmissionFlow() async throws {
+        let api = FakeGenerator()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = LocalLibrary(directory: directory)
+        let reattacher = JobReattacher(api: api, library: library, pollInterval: .zero)
+        let vm = GenerateViewModel(api: api, library: library, reattacher: reattacher)
+        vm.prompt = "durable prompt"
+
+        #expect(vm.start())
+        await waitUntil { vm.phase == .done }
+
+        #expect(library.pendingJobIDs.isEmpty)
+        #expect(library.items.count == 1)
+        #expect(library.items.first?.remoteOutputAssetID == "out-1")
+        #expect(library.items.first?.provenance?.jobID == "job-1")
+    }
+
+    @Test("cancelling a durable generation forwards its accepted job ID")
+    func cancellingDurableGenerationForwardsJobID() async throws {
+        let api = FakeGenerator()
+        api.submittedJob = try JSONDecoder().decode(RemoteJob.self, from: Data("{\"id\":\"job-1\",\"kind\":\"generation\",\"state\":\"running\",\"progress\":0,\"error\":null}".utf8))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = LocalLibrary(directory: directory)
+        let vm = GenerateViewModel(
+            api: api,
+            library: library,
+            reattacher: JobReattacher(api: api, library: library)
+        )
+        vm.prompt = "cancel me"
+
+        #expect(vm.start())
+        await waitUntil { api.capturedInput == "cancel me" }
+        vm.cancel()
+        await waitUntil { api.cancelledJobID == "job-1" }
+
+        #expect(api.cancelledJobID == "job-1")
     }
 
     // MARK: - helper

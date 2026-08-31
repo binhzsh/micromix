@@ -31,6 +31,19 @@ indirect enum JSONValue: Codable, Equatable, Sendable {
     }
 }
 
+extension JSONValue {
+    var displayText: String {
+        switch self {
+        case .string(let value): value
+        case .number(let value): value.formatted()
+        case .bool(let value): value ? "true" : "false"
+        case .array(let values): "[" + values.map(\.displayText).joined(separator: ", ") + "]"
+        case .object(let values): "{" + values.keys.sorted().map { "\($0): \(values[$0]!.displayText)" }.joined(separator: ", ") + "}"
+        case .null: "null"
+        }
+    }
+}
+
 /// Health snapshot of the durable gateway and its local workers.
 struct HealthStatus: Codable, Equatable, Sendable {
     struct Worker: Codable, Equatable, Sendable {
@@ -75,6 +88,30 @@ struct RemoteAssetLink: Codable, Equatable, Sendable {
     let asset: RemoteAsset
 }
 
+struct LibraryProvenance: Codable, Equatable, Sendable {
+    let jobID: String
+    let operation: String?
+    let parameters: [String: JSONValue]
+    let inputs: [RemoteAssetLink]
+    let output: RemoteAssetLink
+}
+
+extension LibraryProvenance {
+    var copyText: String {
+        let parameterLines = parameters.keys.sorted().map { "\($0): \(parameters[$0]!.displayText)" }
+        let inputLines = inputs.sorted { $0.position < $1.position }.map {
+            "#\($0.position + 1) \($0.name) — \($0.asset.filename)"
+        }
+        return ([
+            "Operation: \(operation ?? "\(output.asset.mediaType) export")",
+            "Job: \(jobID)",
+            "Output: #\(output.position + 1) \(output.name) — \(output.asset.filename)",
+            "Inputs:",
+        ] + (inputLines.isEmpty ? ["(none)"] : inputLines) + ["Parameters:"] +
+        (parameterLines.isEmpty ? ["(none)"] : parameterLines)).joined(separator: "\n")
+    }
+}
+
 struct DownloadedRemoteAsset: Equatable, Sendable {
     let asset: RemoteAsset
     let data: Data
@@ -87,13 +124,18 @@ struct RemoteJob: Codable, Equatable, Identifiable, Sendable {
     let parameters: [String: JSONValue]
     let progress: Double?
     let progressDetail: String?
+    let upstreamID: String?
+    let cancelRequested: Bool
     let error: String?
     let asset: RemoteAsset?
     let inputs: [RemoteAssetLink]
     let outputs: [RemoteAssetLink]
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, state, parameters, progress, progressDetail, error, asset, inputs, outputs
+        case id, kind, state, parameters, progress, error, asset, inputs, outputs
+        case progressDetail
+        case upstreamID = "upstreamId"
+        case cancelRequested
     }
 
     init(from decoder: Decoder) throws {
@@ -104,6 +146,8 @@ struct RemoteJob: Codable, Equatable, Identifiable, Sendable {
         parameters = try container.decodeIfPresent([String: JSONValue].self, forKey: .parameters) ?? [:]
         progress = try container.decodeIfPresent(Double.self, forKey: .progress)
         progressDetail = try container.decodeIfPresent(String.self, forKey: .progressDetail)
+        upstreamID = try container.decodeIfPresent(String.self, forKey: .upstreamID)
+        cancelRequested = try container.decodeIfPresent(Bool.self, forKey: .cancelRequested) ?? false
         error = try container.decodeIfPresent(String.self, forKey: .error)
         asset = try container.decodeIfPresent(RemoteAsset.self, forKey: .asset)
         inputs = try container.decodeIfPresent([RemoteAssetLink].self, forKey: .inputs) ?? []
@@ -137,4 +181,30 @@ struct LibraryItem: Codable, Identifiable, Equatable, Sendable {
     let durationSeconds: Double?
     /// Path relative to the library root, e.g. `audio/<uuid>.wav`.
     let relativePath: String
+    /// Remote render information, absent for library items created before durable jobs.
+    let provenance: LibraryProvenance?
+    /// Stable remote output asset identity used to make recovery imports idempotent.
+    let remoteOutputAssetID: String?
+
+    init(
+        id: UUID,
+        kind: LibraryItemKind,
+        title: String,
+        createdAt: Date,
+        promptOrSource: String,
+        durationSeconds: Double?,
+        relativePath: String,
+        provenance: LibraryProvenance? = nil,
+        remoteOutputAssetID: String? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.createdAt = createdAt
+        self.promptOrSource = promptOrSource
+        self.durationSeconds = durationSeconds
+        self.relativePath = relativePath
+        self.provenance = provenance
+        self.remoteOutputAssetID = remoteOutputAssetID
+    }
 }

@@ -145,11 +145,25 @@ struct MicromixAPITests {
         let api = makeAPI()
         let job = try await api.job(id: "job-ref")
         #expect(job.operation == "reference")
+        #expect(job.upstreamID == "ace-1")
+        #expect(job.cancelRequested == false)
         #expect(job.inputs.map(\.asset.filename) == ["source.wav"])
         #expect(job.outputs.map(\.asset.filename) == ["result-1.wav", "result-2.wav"])
         #expect(job.parameters["seed"] == .number(42))
         let outputs = try await api.fetchOutputs(for: job)
         #expect(outputs.map(\.data) == [Data("one".utf8), Data("two".utf8)])
+    }
+
+    @Test("durable generation submission returns the accepted job before polling")
+    func submitGenerationReturnsAcceptedJob() async throws {
+        MockURLProtocol.handler = { request in
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/v1/jobs/generation")
+            return (HTTPURLResponse(url: request.url!, statusCode: 202, httpVersion: nil, headerFields: nil)!, Data(#"{"id":"job-submit","kind":"generation","state":"queued"}"#.utf8))
+        }
+        let job = try await makeAPI().submitGeneration(input: "ambient", lyrics: nil, preset: "turbo", durationSeconds: 30)
+        #expect(job.id == "job-submit")
+        #expect(job.state == "queued")
     }
 
     @Test("non-2xx surfaces MicromixAPIError with the body detail")

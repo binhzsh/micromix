@@ -11,6 +11,11 @@ import UniformTypeIdentifiers
 /// `GenerateViewModel`).
 @MainActor
 final class TranscribeViewModel: ObservableObject {
+    private actor SubmittedJobReference {
+        private var id: String?
+        func set(_ id: String) { self.id = id }
+        func value() -> String? { id }
+    }
     enum SourceReadError: Error {
         case tooLarge
         case unreadable
@@ -51,13 +56,19 @@ final class TranscribeViewModel: ObservableObject {
 
     private let api: any TranscribeServicing
     private let library: any LibraryStoring
+    private let reattacher: JobReattacher?
     private let runner = JobRunner()
 
     private var cancellables = Set<AnyCancellable>()
 
-    init(api: any TranscribeServicing, library: any LibraryStoring) {
+    init(
+        api: any TranscribeServicing,
+        library: any LibraryStoring,
+        reattacher: JobReattacher? = nil
+    ) {
         self.api = api
         self.library = library
+        self.reattacher = reattacher
         // Mirror JobRunner's published timings into this VM's published props.
         runner.$elapsed
             .receive(on: DispatchQueue.main)
@@ -151,23 +162,38 @@ final class TranscribeViewModel: ObservableObject {
 
         let api = self.api
         let library = self.library
+        let reattacher = self.reattacher
         let filename = selection.name
         let audio = selection.bytes
         let instruments = self.instruments
         let detectTempo = self.detectTempo
         let title = Self.title(from: filename)
+        let submittedJob = SubmittedJobReference()
 
         phase = .running
         lastItem = nil
 
-        runner.start(JobRunner.Job(name: "transcribe") {
+        runner.start(JobRunner.Job(name: "transcribe", work: {
             do {
-                let data = try await api.transcribe(
-                    audio: audio,
-                    filename: filename,
-                    instruments: instruments,
-                    detectTempo: detectTempo
-                )
+                if let submitter = api as? any DurableTranscriptionSubmitting, let reattacher {
+                    let job = try await submitter.submitTranscription(
+                        audio: audio,
+                        filename: filename,
+                        instruments: instruments,
+                        detectTempo: detectTempo
+                    )
+                    await submittedJob.set(job.id)
+                    try await reattacher.track(job)
+                    let items = try await reattacher.recoverSubmittedJob(id: job.id)
+                    guard let item = items.first else { return }
+                    await MainActor.run {
+                        self.lastItem = item
+                        self.phase = .done
+                    }
+                    return
+                }
+
+                let data = try await api.transcribe(audio: audio, filename: filename, instruments: instruments, detectTempo: detectTempo)
                 let item = LibraryItem(
                     id: UUID(),
                     kind: .midi,
@@ -191,7 +217,13 @@ final class TranscribeViewModel: ObservableObject {
                     ?? error.localizedDescription
                 await MainActor.run { self.phase = .error(message) }
             }
-        })
+        }, onCancel: {
+            Task {
+                guard let cancelling = api as? any DurableJobCancelling,
+                      let id = await submittedJob.value() else { return }
+                try? await cancelling.cancel(jobID: id)
+            }
+        }))
         return true
     }
 

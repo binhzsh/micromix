@@ -11,6 +11,8 @@ final class LibraryRecord {
     var promptOrSource: String
     var durationSeconds: Double?
     var relativePath: String
+    var provenanceData: Data?
+    @Attribute(.unique) var remoteOutputAssetID: String?
 
     init(item: LibraryItem) {
         id = item.id
@@ -20,6 +22,8 @@ final class LibraryRecord {
         promptOrSource = item.promptOrSource
         durationSeconds = item.durationSeconds
         relativePath = item.relativePath
+        provenanceData = item.provenance.flatMap { try? JSONEncoder().encode($0) }
+        remoteOutputAssetID = item.remoteOutputAssetID
     }
 
     var item: LibraryItem {
@@ -30,8 +34,21 @@ final class LibraryRecord {
             createdAt: createdAt,
             promptOrSource: promptOrSource,
             durationSeconds: durationSeconds,
-            relativePath: relativePath
+            relativePath: relativePath,
+            provenance: provenanceData.flatMap { try? JSONDecoder().decode(LibraryProvenance.self, from: $0) },
+            remoteOutputAssetID: remoteOutputAssetID
         )
+    }
+}
+
+@Model
+final class PendingJobRecord {
+    @Attribute(.unique) var id: String
+    var submittedAt: Date
+
+    init(id: String, submittedAt: Date = .now) {
+        self.id = id
+        self.submittedAt = submittedAt
     }
 }
 
@@ -40,6 +57,7 @@ final class LibraryRecord {
 @MainActor
 final class LocalLibrary: ObservableObject {
     @Published private(set) var items: [LibraryItem] = []
+    @Published private(set) var pendingJobIDs: [String] = []
 
     let rootDirectory: URL
     private let container: ModelContainer
@@ -54,7 +72,7 @@ final class LocalLibrary: ObservableObject {
         legacyManifestURL = root.appendingPathComponent("library.json")
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
-        let schema = Schema([LibraryRecord.self])
+        let schema = Schema([LibraryRecord.self, PendingJobRecord.self])
         let configuration = ModelConfiguration(
             "MicromixLibrary",
             schema: schema,
@@ -91,6 +109,63 @@ final class LocalLibrary: ObservableObject {
         }
     }
 
+    func trackPendingJob(id: String, submittedAt: Date = .now) throws {
+        guard pendingRecord(id: id) == nil else { return }
+        context.insert(PendingJobRecord(id: id, submittedAt: submittedAt))
+        try context.save()
+        reload()
+    }
+
+    func removePendingJob(id: String) throws {
+        guard let record = pendingRecord(id: id) else { return }
+        context.delete(record)
+        try context.save()
+        reload()
+    }
+
+    func importRemoteOutput(
+        _ item: LibraryItem,
+        bytes: Data,
+        remoteAssetID: String,
+        jobID: String,
+        provenance: LibraryProvenance? = nil
+    ) throws -> LibraryItem {
+        if let existing = libraryRecord(remoteAssetID: remoteAssetID) {
+            return existing.item
+        }
+
+        let imported = LibraryItem(
+            id: item.id,
+            kind: item.kind,
+            title: item.title,
+            createdAt: item.createdAt,
+            promptOrSource: item.promptOrSource,
+            durationSeconds: item.durationSeconds,
+            relativePath: item.relativePath,
+            provenance: provenance ?? item.provenance ?? LibraryProvenance(
+                jobID: jobID,
+                operation: nil,
+                parameters: [:],
+                inputs: [],
+                output: RemoteAssetLink(
+                    name: "result",
+                    position: 0,
+                    asset: RemoteAsset(
+                        id: remoteAssetID,
+                        filename: item.title,
+                        mediaType: item.kind == .audio ? "audio/wav" : "audio/midi",
+                        sizeBytes: bytes.count,
+                        sha256: "",
+                        downloadUrl: ""
+                    )
+                )
+            ),
+            remoteOutputAssetID: remoteAssetID
+        )
+        try add(imported, bytes: bytes)
+        return imported
+    }
+
     func remove(id: UUID) throws {
         let targetID = id
         var descriptor = FetchDescriptor<LibraryRecord>(
@@ -113,6 +188,28 @@ final class LocalLibrary: ObservableObject {
             sortBy: [SortDescriptor(\LibraryRecord.createdAt, order: .reverse)]
         )
         items = (try? context.fetch(descriptor).map(\.item)) ?? []
+        let pendingDescriptor = FetchDescriptor<PendingJobRecord>(
+            sortBy: [SortDescriptor(\PendingJobRecord.submittedAt)]
+        )
+        pendingJobIDs = (try? context.fetch(pendingDescriptor).map(\.id)) ?? []
+    }
+
+    private func pendingRecord(id: String) -> PendingJobRecord? {
+        let targetID = id
+        var descriptor = FetchDescriptor<PendingJobRecord>(
+            predicate: #Predicate { $0.id == targetID }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
+    private func libraryRecord(remoteAssetID: String) -> LibraryRecord? {
+        let targetID = remoteAssetID
+        var descriptor = FetchDescriptor<LibraryRecord>(
+            predicate: #Predicate { $0.remoteOutputAssetID == targetID }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
     }
 
     private func migrateLegacyManifestIfNeeded() {

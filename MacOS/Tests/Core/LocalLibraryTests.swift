@@ -101,4 +101,29 @@ struct LocalLibraryTests {
             #expect(lib.items.isEmpty)
         }
     }
+
+    @Test("pending remote jobs persist and remote output imports are idempotent")
+    func durableRemoteImport() throws {
+        try withLibrary { library, directory in
+            try library.trackPendingJob(id: "remote-job")
+            #expect(library.pendingJobIDs == ["remote-job"])
+            #expect(LocalLibrary(directory: directory).pendingJobIDs == ["remote-job"])
+
+            let item = LibraryItem(
+                id: UUID(), kind: .audio, title: "Variation", createdAt: Date(),
+                promptOrSource: "reference", durationSeconds: nil,
+                relativePath: "audio/variation.wav"
+            )
+            let first = try library.importRemoteOutput(
+                item, bytes: Data("wav".utf8), remoteAssetID: "output-1", jobID: "remote-job"
+            )
+            let second = try library.importRemoteOutput(
+                item, bytes: Data("wav".utf8), remoteAssetID: "output-1", jobID: "remote-job"
+            )
+            #expect(first.id == second.id)
+            #expect(library.items.count == 1)
+            try library.removePendingJob(id: "remote-job")
+            #expect(library.pendingJobIDs.isEmpty)
+        }
+    }
 }

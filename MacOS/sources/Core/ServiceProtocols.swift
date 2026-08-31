@@ -28,9 +28,47 @@ protocol LibraryStoring: Sendable {
     @MainActor func add(_ item: LibraryItem, bytes: Data) throws
 }
 
+/// Lookup and output retrieval used by durable-job recovery.
+protocol DurableJobServicing: Sendable {
+    func job(id: String) async throws -> RemoteJob
+    func fetchOutputs(for job: RemoteJob) async throws -> [DownloadedRemoteAsset]
+}
+
+/// Submission seams used when the app must persist the accepted gateway ID
+/// before it begins waiting for a result.
+protocol DurableGenerationSubmitting: Sendable {
+    func submitGeneration(
+        input: String,
+        lyrics: String?,
+        preset: String,
+        durationSeconds: Double
+    ) async throws -> RemoteJob
+}
+
+protocol DurableTranscriptionSubmitting: Sendable {
+    func submitTranscription(
+        audio: Data,
+        filename: String,
+        instruments: [String],
+        detectTempo: Bool
+    ) async throws -> RemoteJob
+}
+
+protocol DurableJobCancelling: Sendable {
+    func cancel(jobID: String) async throws
+}
+
 // MARK: - Production conformances
 
 extension MicromixAPI: GenerateServicing {
 }
 
 extension MicromixAPI: TranscribeServicing {}
+
+extension MicromixAPI: DurableJobServicing {}
+
+extension MicromixAPI: DurableGenerationSubmitting {}
+
+extension MicromixAPI: DurableTranscriptionSubmitting {}
+
+extension MicromixAPI: DurableJobCancelling {}

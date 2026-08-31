@@ -28,6 +28,7 @@ struct DeviceWindow: View {
     @ObservedObject var transcribe: TranscribeViewModel
     @ObservedObject var analyze: AnalyzeViewModel
     @ObservedObject var library: LocalLibrary
+    @ObservedObject var reattacher: JobReattacher
     @ObservedObject var player: AudioPlayer
     @ObservedObject var midiPreview: MidiPreview
     @ObservedObject var connection: ConnectionMonitor
@@ -39,6 +40,8 @@ struct DeviceWindow: View {
                 generate: generate,
                 transcribe: transcribe,
                 analyze: analyze,
+                library: library,
+                reattacher: reattacher,
                 connection: connection
             )
             DeckRegion(
@@ -74,6 +77,8 @@ private struct ScreenRegion: View {
     @ObservedObject var generate: GenerateViewModel
     @ObservedObject var transcribe: TranscribeViewModel
     @ObservedObject var analyze: AnalyzeViewModel
+    @ObservedObject var library: LocalLibrary
+    @ObservedObject var reattacher: JobReattacher
     @ObservedObject var connection: ConnectionMonitor
 
     var body: some View {
@@ -121,6 +126,16 @@ private struct ScreenRegion: View {
     }
 
     private var statusLine: String {
+        switch reattacher.status {
+        case .recovering(let count), .pending(let count):
+            return "RECOVERING — \(count) JOB\(count == 1 ? "" : "S")"
+        case .unavailable(let count):
+            return "RECOVERY PENDING — \(count) JOB\(count == 1 ? "" : "S")"
+        case .missing(let count):
+            return "REMOTE JOB UNAVAILABLE — \(count)"
+        case .idle:
+            break
+        }
         switch mode {
         case .generate:
             guard connection.isConnected else { return "SERVER UNREACHABLE — CHECK WIREGUARD" }
