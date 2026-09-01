@@ -4,9 +4,9 @@
 
 **Goal:** Convert one Logic-prepared vocal stem into a selected private target voice, returning one WAV with durable provenance.
 
-**Architecture:** A new private `vocal-swap` worker provides an Applio/RVC-compatible conversion boundary. The gateway owns the public voice list and a `vocal_swap` durable job; the macOS app adds a source-first mode that uses existing upload, cancellation, reattachment, and Library import paths.
+**Architecture:** A new private `vocal-swap` worker packages Maestro's validated RVC FastAPI conversion boundary at upstream revision `7ef19867780cf703841ebafb565a4e47d1ea86ff`; Micromix never depends on the Maestro checkout at runtime. The gateway owns the public voice list and a `vocal_swap` durable job; the macOS app adds a source-first mode that uses existing upload, cancellation, reattachment, and Library import paths.
 
-**Tech Stack:** Swift 6/SwiftUI/Testing; FastAPI/Pydantic/pytest; Docker Compose; private Applio/RVC-compatible worker.
+**Tech Stack:** Swift 6/SwiftUI/Testing; FastAPI/Pydantic/pytest; Docker Compose; private RVC worker.
 
 **Spec:** `docs/superpowers/specs/2026-08-31-phase-2-vocal-swap-stem-design.md`
 
@@ -101,7 +101,7 @@ uv run --group dev python -m pytest tests/test_api.py::test_conversion_returns_o
 
 - [ ] **Step 3: Implement the smallest service**
 
-Maintain in-process records with `queued/running/succeeded/failed/cancelled`. Reject an unknown voice with HTTP 422 without calling the converter. Invoke the injected converter once, reject empty/non-WAV output, and never return a private filesystem path.
+Maintain in-process records with `queued/running/succeeded/failed/cancelled`. Reject an unknown voice with HTTP 422 without calling the converter. Port Maestro's direct `VC.vc_single` conversion implementation behind the injected converter, reject empty/non-WAV output, and never return a private filesystem path. Do not use Maestro's rejected legacy subprocess entrypoint.
 
 - [ ] **Step 4: Add and pass edge cases**
 
@@ -385,7 +385,7 @@ xcodebuild test -project Micromix.xcodeproj -scheme Micromix -destination 'platf
 
 - [ ] **Step 3: Commit, synchronize, and stop for manual acceptance**
 
-Update roadmap/README to state one prepared stem in and one WAV out; manual bilingual quality evaluation remains required.
+Update roadmap/README to state one prepared stem in and one WAV out; manual bilingual quality evaluation remains required. State that smoke/test weights are not production target voices.
 
 ~~~bash
 git add MacOS docs/MICROMIX_ROADMAP.md README.md

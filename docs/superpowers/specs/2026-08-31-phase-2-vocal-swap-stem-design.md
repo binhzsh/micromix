@@ -35,10 +35,12 @@ The simple user path is:
 
 ## Architecture
 
-Add a `vocal-swap` service to the `lts1` Compose stack. It owns an
-Applio/RVC-compatible conversion runtime and mounts a private ignored voice
-library. The gateway remains the only public API and never exposes worker
-paths, model files, or arbitrary backend arguments.
+Add a `vocal-swap` service to the `lts1` Compose stack. It packages Maestro's
+validated RVC FastAPI conversion implementation at upstream revision
+`7ef19867780cf703841ebafb565a4e47d1ea86ff`, rather than depending on Maestro
+at runtime. It mounts a private ignored voice library. The gateway remains the
+only public API and never exposes worker paths, model files, or arbitrary
+backend arguments.
 
 The voice-library manifest lives under ignored server data and contains only a
 stable voice ID, display name, model revision, and enabled flag. The worker
@@ -141,7 +143,9 @@ parameters or expose conversion internals.
 Manual listening evaluation remains separate: assess English and Vietnamese
 vocal identity transfer, intelligibility, pitch/expression preservation,
 artifacts, runtime, and Logic import before treating Vocal Swap as release
-ready.
+ready. Maestro currently supplies only smoke/test weights; a real private target
+voice model must be provisioned under Micromix's ignored voice root before any
+creative-use assessment.
 
 ## Deferred
 
