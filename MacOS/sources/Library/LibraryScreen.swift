@@ -212,16 +212,30 @@ struct LibraryScreen: View {
                         HStack(spacing: 5) {
                             Typography.monoLabel("ALTERNATIVES", size: 9)
                                 .foregroundColor(Palette.ink.opacity(0.64))
+                            Button("PREV") {
+                                guard let alternative = library.items.previousAlternative(before: item) else { return }
+                                select(alternative)
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Palette.ink.opacity(0.68))
+                            .disabled(library.items.previousAlternative(before: item) == nil)
                             ForEach(alternatives(for: item)) { alternative in
                                 Button("ALT \((alternative.provenance?.output.position ?? 0) + 1)") {
-                                    player.stop()
-                                    midiPreview.stop()
-                                    selectedID = alternative.id
+                                    select(alternative)
                                 }
                                 .buttonStyle(.borderless)
                                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                                 .foregroundColor(alternative.id == item.id ? Palette.accentOrange : Palette.ink.opacity(0.68))
                             }
+                            Button("NEXT") {
+                                guard let alternative = library.items.nextAlternative(after: item) else { return }
+                                select(alternative)
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Palette.ink.opacity(0.68))
+                            .disabled(library.items.nextAlternative(after: item) == nil)
                         }
                     }
                     if let provenance = item.provenance {
@@ -251,6 +265,12 @@ struct LibraryScreen: View {
 
     private func alternatives(for item: LibraryItem) -> [LibraryItem] {
         library.items.alternatives(for: item)
+    }
+
+    private func select(_ item: LibraryItem) {
+        player.stop()
+        midiPreview.stop()
+        selectedID = item.id
     }
 
     static func formatDuration(_ seconds: Double) -> String {

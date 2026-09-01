@@ -293,4 +293,18 @@ extension Collection where Element == LibraryItem {
                 ($0.provenance?.output.position ?? 0) < ($1.provenance?.output.position ?? 0)
             }
     }
+
+    func previousAlternative(before item: LibraryItem) -> LibraryItem? {
+        let alternatives = alternatives(for: item)
+        guard let index = alternatives.firstIndex(of: item), index > alternatives.startIndex else { return nil }
+        return alternatives[alternatives.index(before: index)]
+    }
+
+    func nextAlternative(after item: LibraryItem) -> LibraryItem? {
+        let alternatives = alternatives(for: item)
+        guard let index = alternatives.firstIndex(of: item) else { return nil }
+        let nextIndex = alternatives.index(after: index)
+        guard nextIndex < alternatives.endIndex else { return nil }
+        return alternatives[nextIndex]
+    }
 }

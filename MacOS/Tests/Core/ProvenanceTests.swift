@@ -14,6 +14,21 @@ struct ProvenanceTests {
         #expect([first, second, unrelated].alternatives(for: unrelated) == [unrelated])
     }
 
+    @Test("alternative navigation follows render order and stops at the ends")
+    func navigatesAlternativesWithinDurableJob() {
+        let first = item(id: UUID(), jobID: "job-a", position: 0)
+        let second = item(id: UUID(), jobID: "job-a", position: 1)
+        let third = item(id: UUID(), jobID: "job-a", position: 2)
+        let unrelated = item(id: UUID(), jobID: "job-b", position: 0)
+        let items = [third, unrelated, first, second]
+
+        #expect(items.nextAlternative(after: first) == second)
+        #expect(items.previousAlternative(before: third) == second)
+        #expect(items.previousAlternative(before: first) == nil)
+        #expect(items.nextAlternative(after: third) == nil)
+        #expect(items.nextAlternative(after: unrelated) == nil)
+    }
+
     @Test("copy text includes reproducible job, input, output, and parameters")
     func copyTextIncludesReproductionDetails() {
         let asset = RemoteAsset(
