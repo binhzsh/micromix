@@ -44,7 +44,7 @@ extension JSONValue {
     }
 }
 
-/// Health snapshot of the durable gateway and its local workers.
+/// Health snapshot of the local inference sidecar and its models.
 struct HealthStatus: Codable, Equatable, Sendable {
     struct Worker: Codable, Equatable, Sendable {
         let status: String

@@ -2,43 +2,53 @@
 
 Micromix is a private native macOS music workstation companion. The Mac app
 handles interaction, playback, local analysis, and its authoritative SwiftData
-library; `lts1` supplies heavyweight RTX 3090 inference through one durable API.
+library; inference runs on-device through a local Apple Silicon (MLX) sidecar.
+There is no remote inference server.
 
-## MVP stack
+## Local inference stack
 
-- ACE-Step 1.5 XL Turbo (8 steps) and XL SFT/Quality (50 steps), plus its 4B
-  language planner. Source and Hugging Face revisions are pinned in Compose.
-- MuScriptor 0.3.0 for audio-to-MIDI.
-- FastAPI + SQLite job gateway with cancellation, restart recovery, downloadable
-  assets, SHA-256 metadata, and seven-day server retention.
-- GPU-router integration. Both workers are cold at rest, load only after an
-  acquire succeeds, and expose `/api/gpu/release` to return VRAM.
-- SwiftUI macOS app with Generate, Analyze, Transcribe, and Library modes.
-  Analyze uses Apple's Music Understanding framework on macOS 27 and an
-  AVFoundation metadata fallback on macOS 26.
+`services/local-inference` is a FastAPI sidecar serving `127.0.0.1:8902`
+directly to the app. It runs MLX models on Apple Silicon:
 
-Only the gateway is published (`:8902`). ACE-Step and MuScriptor remain internal
-to Docker networks.
+- **MiniMax Music 3** (`mlx-community/MiniMax-Music3-mxfp8`) — text+lyrics
+  song generation via `mlx-audio` (flow matching, 44.1 kHz stereo).
+- **MLX-RVC** — vocal swap against `.safetensors`/`.pth` voice models in
+  `services/local-inference/data/voice-models/`.
+- **SAM-Audio** (`mlx-community/sam-audio-large`) — stem separation.
+- **Basic Pitch** — audio-to-MIDI transcription (ONNX).
+- **Whisper large-v3-turbo** — lyric extraction for reimagine operations.
 
-## Server deployment
+Only the reimagine operations are approximations: the MLX MiniMax port has no
+audio conditioning, so reference-generation/remix extract lyrics from the
+source via STT and generate from the style prompt, and repaint splices a
+generated segment into the source waveform with short crossfades.
 
-Run on `lts1` from `~/apps/micromix`:
+Model caches live in `~/.cache/huggingface`; jobs and generated assets are
+held in memory/disk under `services/local-inference/data/` (gitignored) and
+are not durable across sidecar restarts. The Mac library remains
+authoritative: it downloads completed assets and records lineage.
+
+## Running the sidecar
+
+A LaunchAgent (`com.micromix.local-inference`) starts the sidecar at login
+and keeps it alive:
 
 ```bash
-docker compose up -d --build
-curl http://localhost:8902/v1/health
-curl http://localhost:8902/v1/capabilities
+plist=services/local-inference/com.micromix.local-inference.plist
+cp "$plist" ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/$(basename "$plist")
 ```
 
-`HF_TOKEN` may be supplied in the ignored `.env`. Persistent locations default
-to `/mnt/fast_pool/fast_models/micromix` for model caches and `./data` for jobs,
-uploads, and results. Override them with `ACE_CACHE_ROOT`,
-`MUSCRIPTOR_CACHE_ROOT`, and `MICROMIX_DATA_ROOT`.
+Run manually instead with:
 
-The first inference downloads the three pinned ACE-Step repositories. This is
-intentionally lazy so starting Compose does not claim the shared GPU.
+```bash
+cd services/local-inference
+uv sync && .venv/bin/python -m local_inference.main
+```
 
-## Durable API
+First inference downloads models lazily (the MiniMax weights are ~13 GB).
+
+## API
 
 - `GET /v1/health`
 - `GET /v1/capabilities`
@@ -47,68 +57,46 @@ intentionally lazy so starting Compose does not claim the shared GPU.
 - `POST /v1/jobs/remix`
 - `POST /v1/jobs/repaint`
 - `POST /v1/jobs/transcription`
+- `POST /v1/jobs/vocal-swap`
+- `POST /v1/jobs/stem-split`
 - `POST /v1/assets`
 - `GET /v1/jobs`
 - `GET /v1/jobs/{id}`
 - `POST /v1/jobs/{id}/cancel`
 - `GET /v1/assets/{id}`
 
-Text generation remains source-free:
+Text generation:
 
 ```bash
 curl -X POST http://localhost:8902/v1/jobs/generation \
   -H 'Content-Type: application/json' \
-  -d '{"prompt":"warm analog jazz trio","preset":"turbo","duration_seconds":20,"variation_count":1}'
+  -d '{"prompt":"warm analog jazz trio","preset":"turbo","duration_seconds":20}'
 ```
 
-Reference generation, Remix, and Repaint first upload reusable source audio:
+Source operations upload reusable audio first:
 
 ```bash
 curl -X POST http://localhost:8902/v1/assets \
   -F 'audio_file=@source.wav;type=audio/wav'
 ```
 
-Use the returned asset `id` in one of the source operations:
+Then submit, poll the returned job `id` until `state` is terminal, and
+download `outputs[].asset.download_url` (the macOS client does this
+automatically):
 
 ```bash
-curl -X POST http://localhost:8902/v1/jobs/reference-generation \
-  -H 'Content-Type: application/json' \
-  -d '{"reference_asset_id":"<asset-id>","prompt":"dream pop production","preset":"quality","seed":42,"variation_count":2}'
-
 curl -X POST http://localhost:8902/v1/jobs/remix \
   -H 'Content-Type: application/json' \
-  -d '{"source_asset_id":"<asset-id>","prompt":"heavy psychedelic rock","source_strength":0.6,"variation_count":2}'
-
-curl -X POST http://localhost:8902/v1/jobs/repaint \
-  -H 'Content-Type: application/json' \
-  -d '{"source_asset_id":"<asset-id>","prompt":"restrained piano bridge","start_seconds":32,"end_seconds":44,"repaint_strength":0.5,"variation_count":2}'
+  -d '{"source_asset_id":"<asset-id>","prompt":"heavy psychedelic rock","lyrics":"[instrumental]"}'
 ```
 
-The submit response is HTTP 202. Poll its `id` until `state` is terminal, then
-download every `outputs[].asset.download_url`. The singular
-`asset.download_url` remains a compatibility alias for the first output.
-The macOS client performs polling and downloads automatically.
+Smoke checks:
 
-Jobs also expose ordered `inputs` and `outputs` arrays. Each link has a stable
-operation name, zero-based position, and asset record. Source jobs retain a
-`reference` or `source` input link for provenance. Public job parameters
-record the operation, requested variation count, and every effective 32-bit
-seed. An explicit seed produces consecutive values with unsigned wraparound;
-omitting it generates independent secure random seeds.
-
-Shared controls are `prompt`, optional `lyrics`, `turbo` or `quality`
-`preset`, optional `seed`, and `variation_count` from one through four.
-Reference generation also accepts duration, tempo, key, and time signature.
-Remix derives duration from its source and accepts `source_strength` from zero
-through one. Repaint accepts a three-to-ninety-second interval and
-`repaint_strength` from zero through one.
-
-Uploads and generated outputs are transient server working files and share the
-configured seven-day retention policy. The Mac library remains authoritative:
-it downloads completed assets and records their server asset IDs and input
-lineage. Logic Pro remains the finishing environment for separation, tuning,
-mixing, mastering, and arrangement; Micromix does not duplicate those DAW
-workflows.
+```bash
+scripts/smoke-test.sh                     # health + capabilities
+RUN_GENERATION=1 scripts/smoke-test.sh    # + a real 10-second generation job
+scripts/smoke-transcribe.sh audio.wav     # audio-to-MIDI round trip
+```
 
 ## Native development
 
@@ -118,12 +106,7 @@ xcodegen generate
 xcodebuild test -project Micromix.xcodeproj -scheme Micromix -destination 'platform=macOS'
 ```
 
-The default server URL is stored by `SettingsStore`; use the WireGuard-reachable
-`lts1` address when running on the MacBook Pro.
+The default server URL is `127.0.0.1:8902`, stored by `SettingsStore`.
 
-## GPU-router registry
-
-The shared router must register `micromix-ace-step` (23,000 MiB) and
-`micromix-muscriptor` (4,000 MiB) as `http-post` workers targeting their
-`/api/gpu/release` endpoints on `shared_net`. Deployment verification checks
-that both names appear in the router's `/status` response.
+Logic Pro remains the finishing environment for separation, tuning, mixing,
+mastering, and arrangement; Micromix does not duplicate those DAW workflows.

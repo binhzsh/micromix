@@ -3,7 +3,7 @@ set -euo pipefail
 
 MICROMIX_URL=${MICROMIX_URL:-http://localhost:8902}
 
-echo "==> Gateway health"
+echo "==> Sidecar health"
 curl --fail --silent --show-error "$MICROMIX_URL/v1/health"
 echo
 echo "==> Capabilities"
@@ -11,7 +11,7 @@ curl --fail --silent --show-error "$MICROMIX_URL/v1/capabilities"
 echo
 
 if [ "${RUN_GENERATION:-0}" != "1" ]; then
-  echo "Cold smoke complete. Set RUN_GENERATION=1 for a real 10-second ACE-Step job."
+  echo "Cold smoke complete. Set RUN_GENERATION=1 for a real 10-second MiniMax job."
   exit 0
 fi
 

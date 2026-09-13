@@ -1,1 +1,0 @@
-"""Durable Micromix inference gateway."""

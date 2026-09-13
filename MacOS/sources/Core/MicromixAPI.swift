@@ -14,7 +14,7 @@ struct MicromixAPIError: LocalizedError, Equatable, Sendable {
     }
 }
 
-/// Async client for the `micromix-api` shim on the configured base URL.
+/// Async client for the local inference sidecar on the configured base URL.
 ///
 /// Designed for Swift 6 strict concurrency: an `actor` so the underlying
 /// `URLSession` is isolated, with async/await methods that throw on non-2xx
@@ -62,7 +62,7 @@ actor MicromixAPI {
         return try await awaitAsset(for: job)
     }
 
-    /// Submit generation and return as soon as the gateway accepts its durable job.
+    /// Submit generation and return as soon as the sidecar accepts the job.
     func submitGeneration(
         input: String,
         lyrics: String? = nil,
@@ -100,7 +100,7 @@ actor MicromixAPI {
         return try await awaitAsset(for: job)
     }
 
-    /// Submit transcription and return as soon as the gateway accepts its durable job.
+    /// Submit transcription and return as soon as the sidecar accepts the job.
     func submitTranscription(
         audio: Data,
         filename: String,
@@ -141,7 +141,7 @@ actor MicromixAPI {
         return try Self.decoder.decode(RemoteAsset.self, from: responseData)
     }
 
-    /// Submit a source-conditioned generation job and return its durable gateway ID.
+    /// Submit a source-conditioned generation job and return its job ID.
     func submitReimagine(_ request: ReimagineRequest) async throws -> RemoteJob {
         let (path, body) = try Self.pathAndBody(for: request)
         return try await submitJob(path: path, body: body)
@@ -207,7 +207,7 @@ actor MicromixAPI {
         try Self.validate(response, data: data)
     }
 
-    /// Instrument groups from the shim, flattened for the picker.
+    /// Instrument groups from the sidecar, flattened for the picker.
     func instruments() async throws -> [String] {
         try await capabilities().transcriptionInstruments
     }

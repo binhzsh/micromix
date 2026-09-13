@@ -35,7 +35,7 @@ protocol DurableJobServicing: Sendable {
     func fetchOutputs(for job: RemoteJob) async throws -> [DownloadedRemoteAsset]
 }
 
-/// Submission seams used when the app must persist the accepted gateway ID
+/// Submission seams used when the app must persist the accepted job ID
 /// before it begins waiting for a result.
 protocol DurableGenerationSubmitting: Sendable {
     func submitGeneration(
