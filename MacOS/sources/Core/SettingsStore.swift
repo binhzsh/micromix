@@ -5,7 +5,7 @@ import Combine
 /// JSON under the Micromix application-support directory.
 @MainActor
 final class SettingsStore: ObservableObject {
-    nonisolated static let defaultBaseURL = "http://10.10.10.10:8902"
+    nonisolated static let defaultBaseURL = "http://127.0.0.1:8902"
 
     @Published var baseURL: String
 
