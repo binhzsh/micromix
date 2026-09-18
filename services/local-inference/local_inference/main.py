@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ---------------------------------------------------------------- config
 
@@ -73,17 +73,26 @@ class JobRecord(BaseModel):
     asset: AssetRecord | None = None
 
 
-class GenerationRequest(BaseModel):
+class LocalMusicRequest(BaseModel):
+    preset: Literal["minimax-cover"] = "minimax-cover"
+
+    @field_validator("preset", mode="before")
+    @classmethod
+    def normalize_legacy_preset(cls, value: str) -> str:
+        # Older native builds used ACE-Step names for this same local model.
+        return "minimax-cover" if value in ("turbo", "quality") else value
+
+
+class GenerationRequest(LocalMusicRequest):
     prompt: str = Field(min_length=1, max_length=4000)
     lyrics: str | None = Field(default=None, max_length=50_000)
-    preset: Literal["turbo", "quality"] = "turbo"
     seed: int | None = Field(default=None, ge=0, le=4_294_967_295)
-    variation_count: int = Field(default=1, ge=1, le=4)
+    variation_count: Literal[1] = 1
     duration_seconds: float = Field(default=30, ge=10, le=600)
-    bpm: int | None = Field(default=None, ge=30, le=300)
-    key: str | None = Field(default=None, max_length=32)
-    time_signature: Literal["2", "3", "4", "6"] | None = None
-    vocal_language: Literal["en", "vi"] | None = None
+    bpm: None = None
+    key: None = None
+    time_signature: None = None
+    vocal_language: None = None
 
 
 class VocalSwapRequest(BaseModel):
@@ -98,7 +107,7 @@ class StemSplitRequest(BaseModel):
     description: str = Field(min_length=1)
 
 
-class ReferenceGenerationRequest(BaseModel):
+class ReferenceGenerationRequest(LocalMusicRequest):
     """Reimagine: generate a new song informed by a reference track.
 
     The MLX MiniMax port has no audio-conditioning input, so the reference
@@ -108,19 +117,18 @@ class ReferenceGenerationRequest(BaseModel):
 
     prompt: str = Field(min_length=1, max_length=4000)
     lyrics: str | None = Field(default=None, max_length=50_000)
-    preset: Literal["turbo", "quality"] = "turbo"
     seed: int | None = Field(default=None, ge=0, le=4_294_967_295)
-    variation_count: int = Field(default=1, ge=1, le=4)
+    variation_count: Literal[1] = 1
     duration_seconds: float = Field(default=30, ge=10, le=600)
     reference_asset_id: str = Field(min_length=1)
-    # Accepted for API compatibility; the local model exposes no such controls.
-    bpm: int | None = Field(default=None, ge=30, le=300)
-    key: str | None = Field(default=None, max_length=32)
-    time_signature: Literal["2", "3", "4", "6"] | None = None
-    vocal_language: Literal["en", "vi"] | None = None
+    # Reject non-null controls that this local model cannot apply.
+    bpm: None = None
+    key: None = None
+    time_signature: None = None
+    vocal_language: None = None
 
 
-class RemixRequest(BaseModel):
+class RemixRequest(LocalMusicRequest):
     """Reimagine: cover-style re-generation from a source track.
 
     Lyrics come from the request or are extracted from the source via STT;
@@ -129,14 +137,13 @@ class RemixRequest(BaseModel):
 
     prompt: str = Field(min_length=1, max_length=4000)
     lyrics: str | None = Field(default=None, max_length=50_000)
-    preset: Literal["turbo", "quality"] = "turbo"
     seed: int | None = Field(default=None, ge=0, le=4_294_967_295)
-    variation_count: int = Field(default=1, ge=1, le=4)
-    source_strength: float = Field(default=0.5, ge=0.0, le=1.0)
+    variation_count: Literal[1] = 1
+    source_strength: None = None
     source_asset_id: str = Field(min_length=1)
 
 
-class RepaintRequest(BaseModel):
+class RepaintRequest(LocalMusicRequest):
     """Reimagine: replace a time range of the source with generated audio.
 
     The replacement segment is generated from the prompt and spliced into
@@ -145,12 +152,11 @@ class RepaintRequest(BaseModel):
 
     prompt: str = Field(min_length=1, max_length=4000)
     lyrics: str | None = Field(default=None, max_length=50_000)
-    preset: Literal["turbo", "quality"] = "turbo"
     seed: int | None = Field(default=None, ge=0, le=4_294_967_295)
-    variation_count: int = Field(default=1, ge=1, le=4)
+    variation_count: Literal[1] = 1
     start_seconds: float = Field(ge=0)
     end_seconds: float = Field(gt=0)
-    repaint_strength: float = Field(default=0.5, ge=0.0, le=1.0)
+    repaint_strength: None = None
     source_asset_id: str = Field(min_length=1)
 
 
@@ -190,7 +196,7 @@ def capabilities() -> dict:
         "generation_presets": [
             {
                 "id": "minimax-cover",
-                "label": "MiniMax Music 3 (Cover)",
+                "label": "MiniMax Music 3",
                 "model": "MiniMax-Music3-mxfp8",
                 "inference_steps": 30,
             }
@@ -625,7 +631,6 @@ async def submit_remix(request: RemixRequest) -> dict:
         extra_params={
             "duration_seconds": 30,
             "preset": request.preset,
-            "source_strength": request.source_strength,
         },
     )
 
@@ -642,9 +647,9 @@ async def submit_repaint(request: RepaintRequest) -> dict:
         seed=request.seed,
         source_asset_id=request.source_asset_id,
         extra_params={
+            "preset": request.preset,
             "start_seconds": request.start_seconds,
             "end_seconds": request.end_seconds,
-            "repaint_strength": request.repaint_strength,
         },
     )
 

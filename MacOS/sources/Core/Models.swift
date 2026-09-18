@@ -46,19 +46,10 @@ extension JSONValue {
 
 /// Health snapshot of the local inference sidecar and its models.
 struct HealthStatus: Codable, Equatable, Sendable {
-    struct Worker: Codable, Equatable, Sendable {
-        let status: String
-    }
-
-    struct Workers: Codable, Equatable, Sendable {
-        let aceStep: Worker
-        let muscriptor: Worker
-    }
-
     let service: String
     let status: String
-    let database: String
-    let workers: Workers
+    /// Unloaded models are available for lazy loading; they are not offline.
+    let models: [String: String]
 }
 
 struct GenerationPreset: Codable, Equatable, Identifiable, Sendable {

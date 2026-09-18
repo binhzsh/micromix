@@ -105,23 +105,10 @@ struct ReimagineScreen: View {
                 }
 
                 HStack(spacing: 10) {
-                    sectionLabel("PRESET")
-                        .frame(width: 124, alignment: .leading)
-                    presetButton("XL TURBO", value: "turbo")
-                    presetButton("XL QUALITY", value: "quality")
-                    compactTextField("BPM", text: $viewModel.bpmText, width: 78)
-                    compactTextField("KEY", text: $viewModel.key, width: 88)
-                    compactTextField("METER", text: $viewModel.timeSignature, width: 88)
-                    if viewModel.operation == .reference {
-                        Picker("Vocal language", selection: $viewModel.vocalLanguage) {
-                            ForEach(VocalLanguage.allCases) { language in
-                                Text(language.label).tag(language)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .frame(width: 100)
-                    }
+                    sectionLabel("MINIMAX MUSIC 3")
+                    Text("One result per render. Describe musical direction in the prompt.")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Palette.ink.opacity(0.68))
                     Spacer(minLength: 0)
                 }
             }
@@ -137,9 +124,6 @@ struct ReimagineScreen: View {
                     sectionLabel("RENDER")
                         .frame(width: 92, alignment: .leading)
                     compactTextField("SEED", text: $viewModel.seedText, width: 142)
-                    Stepper("VARIATIONS  \(viewModel.variationCount)", value: $viewModel.variationCount, in: 1...4)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Palette.ink.opacity(0.72))
                     operationControl
                     Spacer(minLength: 0)
                 }
@@ -185,29 +169,11 @@ struct ReimagineScreen: View {
             }
             .foregroundColor(Palette.ink.opacity(0.72))
         case .remix:
-            VStack(alignment: .leading, spacing: 3) {
-                Typography.monoLabel(
-                    "SOURCE STRENGTH  \(String(format: "%.2f", viewModel.sourceStrength))",
-                    size: 9
-                )
-                Slider(value: $viewModel.sourceStrength, in: 0...1, step: 0.05)
-                    .tint(Palette.accentOrange)
-                    .frame(width: 150)
-            }
-            .foregroundColor(Palette.ink.opacity(0.72))
+            EmptyView()
         case .repaint:
             HStack(spacing: 6) {
                 compactNumberField("START", value: $viewModel.startSeconds)
                 compactNumberField("END", value: $viewModel.endSeconds)
-                VStack(alignment: .leading, spacing: 3) {
-                    Typography.monoLabel(
-                        "STRENGTH  \(String(format: "%.2f", viewModel.repaintStrength))",
-                        size: 9
-                    )
-                    Slider(value: $viewModel.repaintStrength, in: 0...1, step: 0.05)
-                        .tint(Palette.accentOrange)
-                        .frame(width: 110)
-                }
             }
             .foregroundColor(Palette.ink.opacity(0.72))
         }
@@ -229,9 +195,9 @@ struct ReimagineScreen: View {
 
     private var operationHelp: String {
         switch viewModel.operation {
-        case .reference: "Use the source as musical guidance for a new track."
-        case .remix: "Reshape the full source while preserving its identity."
-        case .repaint: "Replace a selected time range inside the source."
+        case .reference: "Create a new track from source lyrics and your prompt."
+        case .remix: "Create a new arrangement from source lyrics; melody and voice are not preserved."
+        case .repaint: "Replace a selected time range with newly generated audio."
         }
     }
 
@@ -313,18 +279,6 @@ struct ReimagineScreen: View {
             .background(Palette.deck)
             .overlay(RoundedRectangle(cornerRadius: 3).stroke(Palette.divider, lineWidth: 1))
             .frame(width: 62)
-    }
-
-    private func presetButton(_ title: String, value: String) -> some View {
-        let selected = viewModel.preset == value
-        return Button(title) { viewModel.preset = value }
-            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-            .foregroundColor(selected ? .white : Palette.ink)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(selected ? Palette.ink : Palette.deck)
-            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Palette.divider, lineWidth: 1))
-            .buttonStyle(.plain)
     }
 
     private func selectSource(_ result: Result<[URL], Error>) {

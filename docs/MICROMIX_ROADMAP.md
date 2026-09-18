@@ -91,27 +91,27 @@ The architecture is now native macOS plus a local FastAPI sidecar at
 `lts1`/Compose stack and its unmerged vocal-foundation branch are historical;
 do not merge that branch wholesale into the local implementation.
 
-This is a source and lightweight runtime audit on 2026-09-18, not a new test-suite
-or listening acceptance result:
+Updated on 2026-09-18 after local contract fixes and automated verification.
+Manual listening acceptance is still pending:
 
 | Area | Implemented | Remaining / limitation |
 | --- | --- | --- |
 | Native app | Generate, Reimagine, Analyze, Transcribe, Library; SwiftData library and provenance | Validate all workflows against the local contract |
 | Local sidecar | Generation, Reimagine, transcription, vocal swap, stem split, assets and job routes | Health responds ready; only MiniMax reported loaded during audit; other models unvalidated in this review |
-| App connection | Default loopback URL | Swift `HealthStatus` requires `database`/`workers`; local health returns `models`, so decoding is incompatible |
-| Generation | MiniMax prompt/lyrics, seed, duration, one output | Variation count, BPM/key/meter and vocal language are accepted but not passed to the generation runner; advertised `minimax-cover` preset differs from request enum `turbo`/`quality` |
+| App connection | Local model-status decoding, ready-state handling, legacy `lts1` URL migration | Validate installed app with restarted sidecar |
+| Generation | MiniMax prompt/lyrics, seed, duration, one output; canonical preset and supported native controls | Dedicated BPM/key/meter/language, multiple variations and transformation strength are unavailable; API rejects unsupported controls |
 | Reimagine | Whisper lyrics extraction plus MiniMax; generated-segment repaint | No audio conditioning; source preservation and creative controls need evaluation |
 | Recovery | Native reattachment code and persistent imported library | Sidecar job/asset indexes are in memory and are lost on restart |
 | Vocal Swap / separation | MLX-RVC and SAM-Audio backend paths; capabilities lists a `base` voice | No dedicated native workflow; listed model is not evidence of usable conversion |
 | Transcription | Basic Pitch backend path | Quality and multi-instrument usefulness not established |
-| Acceptance | Historical server test results retained | Fresh local contract tests, headless native tests, bilingual listening and Logic import still required |
+| Acceptance | 79 native tests in 14 suites and 3 local API contract tests pass | Coordinated installed app/sidecar update, bilingual listening and Logic import still required |
 
 ### Immediate migration priorities
 
-1. Align native health decoding, capability/preset selection, and creative
-   controls with the local sidecar; add contract regression coverage.
+1. Completed: align native health decoding, preset encoding, and visible
+   creative controls with the local sidecar; add contract regression coverage.
 2. Define local job persistence/recovery and truthful cancellation behavior.
-3. Run headless app and lightweight backend tests on the Mac.
+3. Completed: run headless app and lightweight backend contract tests on the Mac.
 4. Manually evaluate generation, Reimagine and transcription before expanding
    vocal workflows; record model revisions, memory, runtime and Logic usefulness.
 
@@ -319,6 +319,7 @@ review passes.
 
 ## Next action
 
-Finish the local API/app integration gaps listed above under **Phase 0**.
-Then run local manual listening and Logic import evaluation before declaring
-the migration complete or expanding the creative core.
+Define and implement local job persistence/recovery next. Coordinate the
+installed app and sidecar update, then follow the [manual acceptance checklist](evaluations/local-migration.md).
+Do not declare the migration complete before bilingual listening and Logic
+import evaluation passes.
