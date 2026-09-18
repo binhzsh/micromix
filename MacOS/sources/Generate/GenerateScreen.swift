@@ -4,7 +4,7 @@ import SwiftUI
 /// a primary action whose visual state reflects whether generation is ready.
 struct GenerateScreen: View {
     @ObservedObject var viewModel: GenerateViewModel
-    var serverAvailable: Bool = true
+    var localInferenceAvailable: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -138,11 +138,11 @@ struct GenerateScreen: View {
     private var canGenerate: Bool {
         !viewModel.effectiveInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !viewModel.isBlocked
-            && serverAvailable
+            && localInferenceAvailable
     }
 
     private var unavailableReason: String {
-        if !serverAvailable { return "Server connection is unavailable" }
+        if !localInferenceAvailable { return "Local inference is unavailable" }
         if viewModel.isBlocked { return "Generation is already running" }
         return "Enter a prompt or lyrics first"
     }

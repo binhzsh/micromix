@@ -34,7 +34,7 @@ struct DeviceWindowTests {
     @Test("Reimagine keeps render controls adjacent to musical direction on tall decks")
     func reimagineRenderControlsDoNotDriftToDeckBottom() throws {
         let bottommostOrange = try reimagineOrangeMaximumY(
-            serverAvailable: true,
+            localInferenceAvailable: true,
             width: 940,
             height: 900
         )
@@ -46,7 +46,7 @@ struct DeviceWindowTests {
     }
 
     private func reimagineOrangeMaximumY(
-        serverAvailable: Bool,
+        localInferenceAvailable: Bool,
         width: CGFloat,
         height: CGFloat
     ) throws -> Int {
@@ -60,7 +60,7 @@ struct DeviceWindowTests {
         reimagine.prompt = "Turn this source into a compact synth groove"
         let view = ReimagineScreen(
             viewModel: reimagine,
-            serverAvailable: serverAvailable
+            localInferenceAvailable: localInferenceAvailable
         )
         .frame(width: width, height: height)
 

@@ -12,7 +12,7 @@ struct InstrumentPicker: View {
                 .foregroundColor(Palette.ink.opacity(0.68))
 
             if instruments.isEmpty {
-                Text("NO INSTRUMENTS — CHECK SERVER")
+                Text("NO INSTRUMENTS — CHECK LOCAL INFERENCE")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(Palette.ink.opacity(0.64))
                     .padding(10)

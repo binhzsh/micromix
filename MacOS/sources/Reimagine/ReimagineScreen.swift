@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 /// remixing, and bounded repainting.
 struct ReimagineScreen: View {
     @ObservedObject var viewModel: ReimagineViewModel
-    var serverAvailable: Bool = true
+    var localInferenceAvailable: Bool = true
     var analysisAvailable: Bool = true
     var onAnalyzeSource: (URL) -> Void = { _ in }
     var onOpenLibrary: () -> Void = {}
@@ -217,14 +217,14 @@ struct ReimagineScreen: View {
     }
 
     private var canStart: Bool {
-        serverAvailable
+        localInferenceAvailable
             && !viewModel.isRunning
             && viewModel.sourceURL != nil
             && !viewModel.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var unavailableReason: String {
-        if !serverAvailable { return "Server connection is unavailable" }
+        if !localInferenceAvailable { return "Local inference is unavailable" }
         if viewModel.isRunning { return "A Reimagine render is already running" }
         if viewModel.sourceURL == nil { return "Select an audio source first" }
         return "Enter a prompt first"

@@ -167,7 +167,7 @@ private struct ScreenRegion: View {
         case .unavailable(let count):
             return "RECOVERY PENDING — \(count) JOB\(count == 1 ? "" : "S")"
         case .missing(let count):
-            return "REMOTE JOB UNAVAILABLE — \(count)"
+            return "LOCAL JOB UNAVAILABLE — \(count)"
         case .idle:
             break
         }
@@ -262,11 +262,11 @@ private struct DeckRegion: View {
     @ViewBuilder private var modeControls: some View {
         switch mode {
         case .generate:
-            GenerateScreen(viewModel: generate, serverAvailable: connection.isConnected)
+            GenerateScreen(viewModel: generate, localInferenceAvailable: connection.isConnected)
         case .reimagine:
             ReimagineScreen(
                 viewModel: reimagine,
-                serverAvailable: connection.isConnected,
+                localInferenceAvailable: connection.isConnected,
                 analysisAvailable: !analyze.isRunning,
                 onAnalyzeSource: { url in
                     guard !analyze.isRunning else { return }
@@ -281,13 +281,13 @@ private struct DeckRegion: View {
             TranscribeScreen(
                 viewModel: transcribe,
                 instruments: connection.instruments,
-                serverAvailable: connection.isConnected
+                localInferenceAvailable: connection.isConnected
             )
         case .vocalSwap, .stemSplit:
             SourceProcessingScreen(
                 viewModel: mode == .vocalSwap ? vocalSwap : stemSplit,
                 voices: connection.vocalModels,
-                serverAvailable: connection.isConnected,
+                localInferenceAvailable: connection.isConnected,
                 onOpenLibrary: { mode = .library }
             )
         case .library:

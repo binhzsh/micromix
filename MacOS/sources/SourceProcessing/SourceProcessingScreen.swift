@@ -4,13 +4,13 @@ import UniformTypeIdentifiers
 struct SourceProcessingScreen: View {
     @ObservedObject var viewModel: SourceProcessingViewModel
     var voices: [String] = []
-    var serverAvailable = true
+    var localInferenceAvailable = true
     var onOpenLibrary: () -> Void = {}
     @State private var isImporting = false
 
     private var canStart: Bool {
         let direction = viewModel.operation == .vocalSwap ? viewModel.voiceModel : viewModel.description
-        return serverAvailable && !viewModel.isRunning && viewModel.sourceURL != nil
+        return localInferenceAvailable && !viewModel.isRunning && viewModel.sourceURL != nil
             && !direction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
