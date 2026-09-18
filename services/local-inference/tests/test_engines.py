@@ -1,6 +1,8 @@
 """Adapter regressions: replace only the heavy upstream dependency boundary."""
 import json
 import tempfile
+import importlib
+import os
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,6 +12,11 @@ from local_inference import engines
 
 
 class EngineTests(unittest.TestCase):
+    def test_workers_default_to_offline_model_loading(self):
+        with patch.dict(os.environ, {}, clear=True):
+            reloaded = importlib.reload(engines)
+            self.assertEqual(reloaded.os.environ["HF_HUB_OFFLINE"], "1")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

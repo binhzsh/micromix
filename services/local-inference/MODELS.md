@@ -2,6 +2,11 @@
 
 All rendering stays on this Mac. The API launches one disposable Python process per job and terminates its process group on cancellation. Each worker accepts a JSON manifest and atomically writes `output_dir/result.json` only after every output exists. There is no upstream HTTP server, Docker dependency, or remote inference.
 
+Workers set `HF_HUB_OFFLINE=1` before importing a model adapter. They therefore
+use only cached artifacts and fail with a local setup error if an artifact is
+missing; rendering never fetches a model from the network. Download or update
+models only through an explicit setup command while online.
+
 ## Install libraries
 
 From the repository root, to prepare isolated model environments:
@@ -83,3 +88,14 @@ Manifest shape:
 ```
 
 Heavy inference, listening, performance, and native UI acceptance are manual gates under AGENTS.md. Check a fixed-seed Turbo/Quality render and four variations; reference influence; cover source strength; a repaint interval with preserved surrounding music; instrument-filtered MIDI with tempo on/off from WAV/M4A/MP3; two distinct private voices and an index; both SAM stems; queued/running cancellation and restart recovery. Inspect `result.json` and listen/import outputs. Lightweight adapter tests prove parameter propagation and output publication only, not model quality or accepted feature parity.
+
+## Current development-Mac cache
+
+On 2026-09-18, the following public artifacts were downloaded and checked for
+offline cache use: ACE-Step shared bundle, XL Turbo, XL SFT, and 4B planner in
+`~/.cache/micromix/ace/checkpoints`; `mlx-community/sam-audio-large`;
+`mlx-community/MiniMax-Music3-mxfp8`; and the `lexandstuff` ContentVec, RMVPE,
+and RVC helper repositories. The local `base.safetensors` private RVC voice is
+present. MuScriptor medium was not downloaded because the authenticated account
+has not been approved for its gated model repository. Accept its license at the
+model page, then run `hf download MuScriptor/muscriptor-medium` while online.

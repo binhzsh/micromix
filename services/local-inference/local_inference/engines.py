@@ -10,6 +10,11 @@ import shutil
 import subprocess
 from pathlib import Path
 
+# Runtime workers may load only artifacts already present in the local model cache.
+# Model setup is an explicit, separate network operation.
+os.environ.setdefault('HF_HUB_OFFLINE', '1')
+os.environ.setdefault('HF_HUB_DISABLE_TELEMETRY', '1')
+
 ACE_REVISION = 'ca1e85fe9430179831e6bc6be790c332190a3866'
 MUSCRIPTOR_REVISION = '7f213afecf23bd6a1b8672aa223690ee9807cefb'
 MLX_AUDIO_REVISION = '40b27a2157150bf87a1f25958f049bdcd0861235'

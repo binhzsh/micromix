@@ -227,7 +227,10 @@ class Runtime:
     def _kill_group(pid, sig):
         try:
             os.killpg(pid, sig)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
+            # A terminating supervisor can relinquish its group between a
+            # wait() and this cleanup signal on macOS. Never signal a reused
+            # process group or turn an already-cancelled job into an API error.
             pass
 
     def _terminate(self, process):
