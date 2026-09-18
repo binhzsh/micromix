@@ -13,7 +13,11 @@ bash scripts/setup-local-models.sh --engine all
 
 Use `--engine ace`, `--engine muscriptor`, or `--engine mlx` to install separately. `--dry-run` resolves packages without installing them (it may create an empty Python environment and fetch package metadata/source). Setup installs libraries only, never model weights. ACE and MuScriptor use `.venv-ace` and `.venv-muscriptor`; MLX uses `.venv-mlx`. Do not combine these environments: ACE requires Transformers 4 while current MLX Audio requires Transformers 5. PyTorch/audio/vision versions are kept together using the versions in ACE's upstream lockfile. The sidecar's `uv sync` manages only the API environment; model setup leaves that environment untouched.
 
-No environment or running sidecar was changed during implementation. Package resolver dry runs passed on this Mac; that is not an installed-runtime import or inference test.
+On 2026-09-18, all three isolated library environments were installed on the
+development Mac. Their documented import preflights passed, ACE and MuScriptor
+reported MPS available, and a temporary loopback sidecar returned healthy
+capabilities. No model weights were downloaded and no inference was run; these
+checks do not establish model compatibility or audio quality.
 
 ## Reviewed upstream APIs
 

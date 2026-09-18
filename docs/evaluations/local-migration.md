@@ -62,5 +62,8 @@ open /tmp/micromix-local-review/Build/Products/Debug/Micromix.app
    quality parity accepted. Automatic full-song vocal preparation/mixing, Vocal
    Improve, Mashup and Complete remain future product work, not retired-server parity.
 
-Agents stop before these manual gates under AGENTS.md. Library dependency resolution
-was checked, but isolated runtime installation/import checks have not been executed.
+Agents stop before these manual gates under AGENTS.md. The isolated ACE,
+MuScriptor, and MLX library environments are installed on the development Mac;
+their import preflights and a temporary sidecar health/capabilities check passed.
+Weights, gated MuScriptor access, inference, listening, UI review, and Logic
+import have not been executed.

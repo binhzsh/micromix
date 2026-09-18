@@ -4,11 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SERVICE="$ROOT/services/local-inference"
 ENGINE=all
-DRY_RUN=()
+DRY_RUN=false
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --engine) ENGINE="${2:?--engine needs ace, muscriptor, mlx, or all}"; shift 2 ;;
-        --dry-run) DRY_RUN=(--dry-run); shift ;;
+        --dry-run) DRY_RUN=true; shift ;;
         *) echo "Usage: $0 [--engine ace|muscriptor|mlx|all] [--dry-run]" >&2; exit 2 ;;
     esac
 done
@@ -24,7 +24,11 @@ install_engine() {
     if [ ! -x "$env/bin/python" ]; then
         uv venv --python 3.12 "$env"
     fi
-    uv pip install "${DRY_RUN[@]}" --python "$env/bin/python" "$@"
+    if [ "$DRY_RUN" = true ]; then
+        uv pip install --dry-run --python "$env/bin/python" "$@"
+    else
+        uv pip install --python "$env/bin/python" "$@"
+    fi
     echo "$kind worker interpreter: $env/bin/python"
 }
 if [ "$ENGINE" = ace ] || [ "$ENGINE" = all ]; then
