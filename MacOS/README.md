@@ -22,11 +22,11 @@ newly generated segment. These are approximations, not full audio conditioning.
 
 The migration is implemented in part and has not passed end-to-end acceptance:
 
-- `HealthStatus` still requires the retired gateway's `database` and `workers`
-  fields, while the sidecar returns `models`. The native health decoder needs
-  updating before a ready sidecar can be treated as an app connection success.
-- Generation controls and preset identifiers need reconciliation with the local
-  model contract; accepting an API field does not mean the model uses it.
+- Local health decoding and saved `lts1` address migration are implemented.
+  Models marked `unloaded` do not prevent connecting to a ready sidecar.
+- Generate/Reimagine now expose only supported local controls and encode the
+  canonical MiniMax preset. Each render returns one result. The backend rejects
+  unsupported dedicated controls instead of silently ignoring them.
 - Sidecar jobs and asset indexes are in memory. App reattachment cannot recover
   jobs after a sidecar restart; assets already imported into Library persist.
 - Local model quality, English/Vietnamese vocals, and Logic import remain manual
@@ -43,3 +43,6 @@ xcodebuild test -project Micromix.xcodeproj -scheme Micromix -destination 'platf
 See the [root README](../README.md) for local sidecar setup and the
 [roadmap](../docs/MICROMIX_ROADMAP.md) for current progress and priorities.
 Older server and durable-gateway plans are historical context only.
+
+The current headless suite passes 79 tests. Manual acceptance is tracked in
+[the local migration checklist](../docs/evaluations/local-migration.md).

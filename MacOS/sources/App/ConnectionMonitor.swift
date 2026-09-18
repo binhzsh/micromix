@@ -7,8 +7,7 @@ import Combine
 @MainActor
 final class ConnectionMonitor: ObservableObject {
     @Published var connected: Bool = false
-    @Published private(set) var aceStepOK: Bool = false
-    @Published private(set) var muscriptorOK: Bool = false
+    @Published private(set) var modelStatuses: [String: String] = [:]
     @Published var lastError: String?
     /// Instruments for the transcribe picker, fetched at launch / refresh.
     @Published private(set) var instruments: [String] = []
@@ -37,7 +36,7 @@ final class ConnectionMonitor: ObservableObject {
         Task { [weak self] in await self?.refresh() }
     }
 
-    /// Load the instrument list from `/instruments` (best-effort; the picker
+    /// Load the instrument list from `/v1/capabilities` (best-effort; the picker
     /// degrades to an empty state if the server is down).
     func refreshInstruments() async {
         do {
@@ -51,14 +50,12 @@ final class ConnectionMonitor: ObservableObject {
     func refresh() async {
         do {
             let health = try await api.health()
-            connected = true
-            aceStepOK = health.workers.aceStep.status != "unreachable"
-            muscriptorOK = health.workers.muscriptor.status != "unreachable"
-            lastError = nil
+            connected = health.status == "ready"
+            modelStatuses = health.models
+            lastError = connected ? nil : "Local inference is \(health.status)"
         } catch {
             connected = false
-            aceStepOK = false
-            muscriptorOK = false
+            modelStatuses = [:]
             let message = (error as? MicromixAPIError)?.errorDescription
                 ?? error.localizedDescription
             lastError = message

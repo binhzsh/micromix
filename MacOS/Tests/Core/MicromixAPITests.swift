@@ -34,7 +34,7 @@ struct MicromixAPITests {
     private let succeededMIDIJob = #"{"id":"job-2","kind":"transcription","state":"succeeded","progress":1,"progress_detail":null,"error":null,"asset":{"id":"asset-2","filename":"result.mid","media_type":"audio/midi","size_bytes":4,"sha256":"def","download_url":"/v1/assets/asset-2"}}"#
 
     private func makeAPI() -> MicromixAPI {
-        MicromixAPI(baseURL: "http://10.10.10.10:8902", configuration: .mock())
+        MicromixAPI(baseURL: "http://127.0.0.1:8902", configuration: .mock())
     }
 
     private func makeRecordingAPI() -> (MicromixAPI, RequestRecorder) {
@@ -58,8 +58,10 @@ struct MicromixAPITests {
         _ = try await api.submitReimagine(request)
         #expect(recorder.requests.last?.url?.path == "/v1/jobs/reference-generation")
         #expect(recorder.jsonBodies.last?["reference_asset_id"] as? String == "asset-1")
-        #expect(recorder.jsonBodies.last?["variation_count"] as? Int == 2)
-        #expect(recorder.jsonBodies.last?["vocal_language"] as? String == "vi")
+        #expect(recorder.jsonBodies.last?["preset"] as? String == "minimax-cover")
+        #expect(recorder.jsonBodies.last?["variation_count"] as? Int == 1)
+        #expect(recorder.jsonBodies.last?["vocal_language"] == nil)
+        #expect(recorder.jsonBodies.last?["bpm"] == nil)
     }
 
     @Test("repaint reimagine posts source and range")
@@ -73,6 +75,9 @@ struct MicromixAPITests {
         _ = try await api.submitReimagine(request)
         #expect(recorder.requests.last?.url?.path == "/v1/jobs/repaint")
         #expect(recorder.jsonBodies.last?["source_asset_id"] as? String == "source-7")
+        #expect(recorder.jsonBodies.last?["repaint_strength"] == nil)
+        #expect(recorder.jsonBodies.last?["start_seconds"] as? Double == 12)
+        #expect(recorder.jsonBodies.last?["end_seconds"] as? Double == 24)
     }
 
     @Test("asset upload uses audio_file multipart field and decodes the asset")
@@ -99,18 +104,50 @@ struct MicromixAPITests {
         MockURLProtocol.handler = { request in
             #expect(request.httpMethod == "GET")
             #expect(request.url?.path == "/v1/health")
-            let body = #"{"service":"micromix-api","status":"ok","database":"ready","workers":{"ace_step":{"status":"cold"},"muscriptor":{"status":"ready"}}}"#
+            let body = #"{"service":"micromix-local-inference","status":"ready","models":{"minimax_music3":"ready","mlx_rvc":"unloaded","sam_audio":"unloaded","basic_pitch":"unloaded","whisper_stt":"unloaded"}}"#
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
         }
         let api = makeAPI()
         let status = try await api.health()
-        #expect(status.service == "micromix-api")
-        #expect(status.status == "ok")
-        #expect(status.workers.aceStep.status == "cold")
-        #expect(status.workers.muscriptor.status == "ready")
+        #expect(status.service == "micromix-local-inference")
+        #expect(status.status == "ready")
+        #expect(status.models["minimax_music3"] == "ready")
+        #expect(status.models["basic_pitch"] == "unloaded")
     }
 
-    @Test("generate submits an ACE-Step job and downloads its asset")
+
+    @Test("local health refresh connects before models load and clears on failure")
+    @MainActor func localConnectionRefresh() async {
+        MockURLProtocol.handler = { request in
+            let body = #"{"service":"micromix-local-inference","status":"ready","models":{"minimax_music3":"unloaded","basic_pitch":"unloaded"}}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+        }
+        let monitor = ConnectionMonitor(api: makeAPI())
+        await monitor.refresh()
+        #expect(monitor.isConnected)
+        #expect(monitor.lastError == nil)
+        #expect(monitor.modelStatuses["minimax_music3"] == "unloaded")
+        MockURLProtocol.handler = { _ in throw URLError(.cannotConnectToHost) }
+        await monitor.refresh()
+        #expect(!monitor.isConnected)
+        #expect(monitor.lastError != nil)
+        #expect(monitor.modelStatuses.isEmpty)
+    }
+
+    @Test("non-ready sidecar does not enable actions")
+    @MainActor func nonReadyConnection() async {
+        MockURLProtocol.handler = { request in
+            let body = #"{"service":"micromix-local-inference","status":"starting","models":{}}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+        }
+        let monitor = ConnectionMonitor(api: makeAPI())
+        await monitor.refresh()
+        #expect(!monitor.isConnected)
+        #expect(monitor.lastError != nil)
+        #expect(monitor.modelStatuses.isEmpty)
+    }
+
+    @Test("generate submits a local MiniMax job and downloads its asset")
     func generateBody() async throws {
         let completed = succeededAudioJob
         MockURLProtocol.handler = { request in
@@ -120,7 +157,7 @@ struct MicromixAPITests {
             let body = MockURLProtocol.body(of: request)
             let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
             #expect(json?["prompt"] as? String == "a lo-fi beat")
-            #expect(json?["preset"] as? String == "quality")
+            #expect(json?["preset"] as? String == "minimax-cover")
             #expect(json?["duration_seconds"] as? Double == 45)
             #expect(request.url?.path == "/v1/jobs/generation")
             return (HTTPURLResponse(url: request.url!, statusCode: 202, httpVersion: nil, headerFields: nil)!, Data(completed.utf8))
@@ -130,16 +167,16 @@ struct MicromixAPITests {
         #expect(bytes == Data([0xFF, 0xF1, 0x00]))
     }
 
-    @Test("generation sends optional creative controls")
+    @Test("generation sends only supported local controls")
     func generationSendsCreativeControls() async throws {
         MockURLProtocol.handler = { request in
             let json = try JSONSerialization.jsonObject(with: MockURLProtocol.body(of: request)) as? [String: Any]
             #expect(json?["seed"] as? UInt32 == 42)
-            #expect(json?["variation_count"] as? Int == 3)
-            #expect(json?["bpm"] as? Int == 118)
-            #expect(json?["key"] as? String == "A minor")
-            #expect(json?["time_signature"] as? String == "4")
-            #expect(json?["vocal_language"] as? String == "vi")
+            #expect(json?["variation_count"] as? Int == 1)
+            #expect(json?["bpm"] == nil)
+            #expect(json?["key"] == nil)
+            #expect(json?["time_signature"] == nil)
+            #expect(json?["vocal_language"] == nil)
             return (HTTPURLResponse(url: request.url!, statusCode: 202, httpVersion: nil, headerFields: nil)!, Data(succeededAudioJob.utf8))
         }
         _ = try await makeAPI().submitGeneration(

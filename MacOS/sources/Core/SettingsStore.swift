@@ -41,6 +41,8 @@ final class SettingsStore: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let saved = json["baseURL"] as? String, !saved.isEmpty
         else { return }
-        baseURL = saved
+        // Migrate the retired server setting without overriding custom local ports.
+        let host = URL(string: saved)?.host?.lowercased()
+        baseURL = ["10.10.10.10", "lts1"].contains(host ?? "") ? Self.defaultBaseURL : saved
     }
 }

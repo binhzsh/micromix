@@ -18,7 +18,7 @@ fi
 response=$(curl --fail --silent --show-error \
   -X POST "$MICROMIX_URL/v1/jobs/generation" \
   -H 'Content-Type: application/json' \
-  -d '{"prompt":"warm lo-fi drums and electric piano, instrumental","preset":"turbo","duration_seconds":10}')
+  -d '{"prompt":"warm lo-fi drums and electric piano, instrumental","preset":"minimax-cover","duration_seconds":10}')
 job_id=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$response")
 echo "submitted $job_id"
 

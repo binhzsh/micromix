@@ -15,10 +15,11 @@ The local migration is underway, not yet an accepted end-to-end release.
   Library), local sidecar routes, and local model integrations.
 - Observed: the sidecar health endpoint responds as ready, with MiniMax loaded.
   This is a service check, not proof of successful generation or app integration.
-- Blocking integration gap: the native health decoder still expects the old
-  gateway's `database` and `workers` fields instead of the sidecar's `models`.
-- Remaining: align app controls/presets with actual local capabilities, decide
-  restart recovery behavior, finish native vocal workflows, and validate models
+- Fixed: native health decoding now reads local model status; saved `lts1`
+  addresses migrate to loopback. Native requests and backend presets agree.
+- Verified: 79 native tests and 3 lightweight local API contract tests pass.
+- Remaining: decide restart recovery behavior, finish native vocal workflows,
+  and validate models
   with English/Vietnamese audio and Logic import.
 
 See [the roadmap](docs/MICROMIX_ROADMAP.md) for the implementation audit and next
@@ -46,6 +47,13 @@ Model caches live in `~/.cache/huggingface`; jobs and generated assets are
 held in memory/disk under `services/local-inference/data/` (gitignored) and
 are not durable across sidecar restarts. The Mac library remains
 authoritative: it downloads completed assets and records lineage.
+
+The native generation screens expose prompt/lyrics, seed, duration where
+supported, and repaint range. Each render produces one result. Dedicated
+BPM/key/meter/language, variation-count and transformation-strength controls
+are unavailable; non-default unsupported API inputs return HTTP 422.
+`minimax-cover` is the canonical preset; `turbo` and `quality` remain input
+aliases and are recorded as `minimax-cover` in job provenance.
 
 ## Running the sidecar
 
@@ -91,7 +99,7 @@ Text generation:
 ```bash
 curl -X POST http://localhost:8902/v1/jobs/generation \
   -H 'Content-Type: application/json' \
-  -d '{"prompt":"warm analog jazz trio","preset":"turbo","duration_seconds":20}'
+  -d '{"prompt":"warm analog jazz trio","preset":"minimax-cover","duration_seconds":20}'
 ```
 
 Source operations upload reusable audio first:
@@ -131,3 +139,17 @@ The default server URL is `127.0.0.1:8902`, stored by `SettingsStore`.
 
 Logic Pro remains the finishing environment for separation, tuning, mixing,
 mastering, and arrangement; Micromix does not duplicate those DAW workflows.
+
+## Verification
+
+Lightweight backend contract tests (no model downloads or inference):
+
+```bash
+cd services/local-inference
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+See [local migration acceptance](docs/evaluations/local-migration.md) for the
+coordinated app/sidecar update and manual listening checklist. A running sidecar
+must restart to load the new API contract; restarting currently loses job and
+asset indexes, so preserve wanted outputs first.
