@@ -1,5 +1,9 @@
 # Vocal Swap Status Handoff
 
+> Historical server-era record. As of 2026-09-18, all inference and development
+> are Mac-local. Do not follow the `lts1` deployment/resume instructions below.
+> See [the current roadmap](MICROMIX_ROADMAP.md) for migration status; old server results do not validate local models.
+
 **Last updated:** 2026-08-31
 
 ## Product decision

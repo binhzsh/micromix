@@ -3,7 +3,26 @@
 Micromix is a private native macOS music workstation companion. The Mac app
 handles interaction, playback, local analysis, and its authoritative SwiftData
 library; inference runs on-device through a local Apple Silicon (MLX) sidecar.
-There is no remote inference server.
+There is no remote inference server. All app and backend development, testing,
+and inference run on the Mac; `lts1`, WireGuard, and Docker are retired from the
+project architecture. Dependency and model downloads may require internet access.
+
+## Progress (2026-09-18)
+
+The local migration is underway, not yet an accepted end-to-end release.
+
+- Built: five native workspaces (Generate, Reimagine, Analyze, Transcribe,
+  Library), local sidecar routes, and local model integrations.
+- Observed: the sidecar health endpoint responds as ready, with MiniMax loaded.
+  This is a service check, not proof of successful generation or app integration.
+- Blocking integration gap: the native health decoder still expects the old
+  gateway's `database` and `workers` fields instead of the sidecar's `models`.
+- Remaining: align app controls/presets with actual local capabilities, decide
+  restart recovery behavior, finish native vocal workflows, and validate models
+  with English/Vietnamese audio and Logic import.
+
+See [the roadmap](docs/MICROMIX_ROADMAP.md) for the implementation audit and next
+steps. Older server plans and evaluation results are historical evidence only.
 
 ## Local inference stack
 
@@ -30,8 +49,10 @@ authoritative: it downloads completed assets and records lineage.
 
 ## Running the sidecar
 
-A LaunchAgent (`com.micromix.local-inference`) starts the sidecar at login
-and keeps it alive:
+Install dependencies with `cd services/local-inference && uv sync` first.
+An optional LaunchAgent (`com.micromix.local-inference`) starts the sidecar at
+login and keeps it alive. Run the following from the repository root. The
+checked-in plist contains absolute paths; adjust them if this checkout moves:
 
 ```bash
 plist=services/local-inference/com.micromix.local-inference.plist

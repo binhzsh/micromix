@@ -2,7 +2,9 @@
 
 **Status:** canonical source of truth
 
-**Approved:** 2026-08-31
+**Original roadmap approved:** 2026-08-31
+
+**Direction updated:** 2026-09-18 — Mac-only local inference
 
 **Product:** private, solo-user native macOS music tooling companion
 
@@ -84,41 +86,58 @@ must be updated in the same commit that approves the change.
 
 ## Current baseline
 
-The following foundation is complete:
+The architecture is now native macOS plus a local FastAPI sidecar at
+`127.0.0.1:8902`. All development and inference happen on the Mac. The former
+`lts1`/Compose stack and its unmerged vocal-foundation branch are historical;
+do not merge that branch wholesale into the local implementation.
 
-- [x] Native Generate, Reimagine, Analyze, Transcribe, and Library modes
-- [x] ACE-Step Turbo and Quality text/lyrics generation
-- [x] Reference generation, Remix/Cover, and time-range Repaint
-- [x] Seeds, alternatives, musical metadata, and transformation strength
-- [x] Durable jobs, cancellation, restart recovery, assets, and checksums
-- [x] Native job reattachment and local authoritative asset import
-- [x] Source, parameter, and output provenance
-- [x] Apple Music Understanding aggregate BPM, key, and instrument prefill
-- [x] MuScriptor polyphonic and multi-instrument audio-to-MIDI
+This is a source and lightweight runtime audit on 2026-09-18, not a new test-suite
+or listening acceptance result:
+
+| Area | Implemented | Remaining / limitation |
+| --- | --- | --- |
+| Native app | Generate, Reimagine, Analyze, Transcribe, Library; SwiftData library and provenance | Validate all workflows against the local contract |
+| Local sidecar | Generation, Reimagine, transcription, vocal swap, stem split, assets and job routes | Health responds ready; only MiniMax reported loaded during audit; other models unvalidated in this review |
+| App connection | Default loopback URL | Swift `HealthStatus` requires `database`/`workers`; local health returns `models`, so decoding is incompatible |
+| Generation | MiniMax prompt/lyrics, seed, duration, one output | Variation count, BPM/key/meter and vocal language are accepted but not passed to the generation runner; advertised `minimax-cover` preset differs from request enum `turbo`/`quality` |
+| Reimagine | Whisper lyrics extraction plus MiniMax; generated-segment repaint | No audio conditioning; source preservation and creative controls need evaluation |
+| Recovery | Native reattachment code and persistent imported library | Sidecar job/asset indexes are in memory and are lost on restart |
+| Vocal Swap / separation | MLX-RVC and SAM-Audio backend paths; capabilities lists a `base` voice | No dedicated native workflow; listed model is not evidence of usable conversion |
+| Transcription | Basic Pitch backend path | Quality and multi-instrument usefulness not established |
+| Acceptance | Historical server test results retained | Fresh local contract tests, headless native tests, bilingual listening and Logic import still required |
+
+### Immediate migration priorities
+
+1. Align native health decoding, capability/preset selection, and creative
+   controls with the local sidecar; add contract regression coverage.
+2. Define local job persistence/recovery and truthful cancellation behavior.
+3. Run headless app and lightweight backend tests on the Mac.
+4. Manually evaluate generation, Reimagine and transcription before expanding
+   vocal workflows; record model revisions, memory, runtime and Logic usefulness.
 
 ## Phase 0 — Product-quality baseline `[~]`
 
 **Goal:** establish a trustworthy operational and evaluation baseline before
 adding another model workflow.
 
-- [ ] Fast-forward the clean `lts1` checkout to the approved repository commit
-      and verify Compose remains healthy.
+- [ ] Verify the local sidecar, native API compatibility, model availability,
+      and startup/restart behavior on the Mac.
 - [ ] Create a small private evaluation corpus containing clean studio audio, a
       dense mastered mix, live/noisy audio, expressive vocals, instrumental
       material, polyphonic material, and a long source.
 - [ ] Define a repeatable scorecard for usefulness, source preservation,
-      artifacts, runtime, VRAM, failure recovery, and Logic import.
+      artifacts, runtime, unified memory, failure recovery, and Logic import.
 - [ ] Manually verify Generate, Reference, Remix, Repaint, and Transcribe using
       the corpus.
 - [ ] Record current model and service revisions with the evaluation results.
 - [ ] Fix release-blocking workflow or reliability defects found by the
       baseline; defer cosmetic improvements that do not affect creative use.
 
-**Exit gate:** the repository checkouts agree, automated tests pass, the live
-gateway is healthy, and every existing creative operation has a recorded manual
+**Exit gate:** automated tests pass, the local sidecar and native app agree on
+the API contract, and every existing creative operation has a recorded manual
 quality result.
 
-## Phase 1 — Finish the creative core `[~]`
+## Phase 1 — Finish the creative core (local migration follow-up)
 
 **Goal:** make Generate and Reimagine feel like one coherent, fast
 asset-creation system.
@@ -127,7 +146,7 @@ asset-creation system.
       cancellation, and result presentation across Generate and Reimagine.
 - [ ] Add missing high-value Generate controls only where they improve
       reproducibility or creative direction.
-- [ ] Evaluate ACE-Step Complete using vocals and partial arrangements.
+- [ ] Evaluate locally runnable audio-conditioned completion using vocals and partial arrangements.
 - [ ] Evaluate explicit English (`en`) and Vietnamese (`vi`) vocal-language
       handling; expose language only when it improves reliability over automatic
       detection.
@@ -156,10 +175,9 @@ place them into enough musical context to judge and use immediately.
 - [ ] Accept either a complete song or an already prepared vocal stem.
 - [ ] For complete songs, evaluate and select an automatic vocal/accompaniment
       preparation stage before exposing the workflow.
-- [ ] Evaluate the existing RVC and Applio capabilities on the private vocal
-      corpus.
+- [ ] Evaluate the local MLX-RVC integration on the private vocal corpus.
 - [ ] Compare identity transfer, lyric intelligibility, pitch/expression
-      preservation, Vietnamese tone preservation, artifacts, runtime, VRAM, and
+      preservation, Vietnamese tone preservation, artifacts, runtime, unified memory, and
       operational reliability using both English and Vietnamese vocals.
 - [ ] Select one production backend; do not expose backend selection in the app.
 - [ ] Define a durable vocal-conversion job with source, target voice, model
@@ -177,7 +195,7 @@ place them into enough musical context to judge and use immediately.
 target voice produces consistently usable conversions across the agreed corpus,
 with understandable failures and no manual server/model operation.
 
-**Stop condition:** do not build a production UI if neither backend clears the
+**Stop condition:** do not build a production UI if the local backend does not clear the
 quality bar.
 
 ## Phase 3 — Vocal Improve
@@ -234,10 +252,10 @@ scope; a user-controlled mastering environment is not.
 **Goal:** retain audio-to-MIDI only where Micromix offers a dependable advantage
 for polyphonic or multi-instrument material.
 
-- [ ] Benchmark MuScriptor Small, Medium, and Large against the current Medium
-      baseline and Logic's relevant audio-to-MIDI workflow.
+- [ ] Benchmark the local Basic Pitch integration against Logic's relevant
+      audio-to-MIDI workflow; consider other Mac-local models only if needed.
 - [ ] Score note accuracy, timing, instrument assignment, edit burden, runtime,
-      VRAM, and failure behavior.
+      unified memory, and failure behavior.
 - [ ] Select one default production profile; expose Fast/Best only if both have
       distinct proven value.
 - [ ] Improve MIDI output for the winning polyphonic and multi-instrument cases.
@@ -287,11 +305,11 @@ quality acceptance defined before implementation.
 
 Automated tests cover typed contracts, validation, state transitions,
 persistence, recovery, checksums, provenance, and failure handling. Backend
-changes are tested and deployed on `lts1`; native changes are tested headlessly
-on the Mac.
+and native changes are tested on the Mac; native tests run headlessly.
+Do not run heavy inference or desktop automation as an unattended acceptance check.
 
 Audio quality is a manual acceptance gate. Each model evaluation records the
-input, pinned model revision, settings, output, runtime, peak VRAM when
+input, pinned model revision, settings, output, runtime, peak unified memory when
 available, artifacts, source preservation, and usefulness after import into
 Logic. A model's feature list is not evidence that it belongs in Micromix.
 
@@ -301,5 +319,6 @@ review passes.
 
 ## Next action
 
-Continue the scoped implementation plans for **Phase 1 — Finish the creative
-core**, while keeping Phase 0 manual listening evaluation as the release gate.
+Finish the local API/app integration gaps listed above under **Phase 0**.
+Then run local manual listening and Logic import evaluation before declaring
+the migration complete or expanding the creative core.
