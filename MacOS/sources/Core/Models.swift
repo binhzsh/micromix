@@ -95,6 +95,18 @@ struct GenerationOptions: Equatable, Sendable {
 struct Capabilities: Codable, Equatable, Sendable {
     let generationPresets: [GenerationPreset]
     let transcriptionInstruments: [String]
+    let vocalModels: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case generationPresets, transcriptionInstruments, vocalModels
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        generationPresets = try values.decodeIfPresent([GenerationPreset].self, forKey: .generationPresets) ?? []
+        transcriptionInstruments = try values.decodeIfPresent([String].self, forKey: .transcriptionInstruments) ?? []
+        vocalModels = try values.decodeIfPresent([String].self, forKey: .vocalModels) ?? []
+    }
 }
 
 struct RemoteAsset: Codable, Equatable, Sendable {
@@ -298,4 +310,15 @@ extension Collection where Element == LibraryItem {
         guard nextIndex < alternatives.endIndex else { return nil }
         return alternatives[nextIndex]
     }
+}
+
+/// The two source-processing jobs share upload and durable recovery.
+enum SourceProcessingRequest: Sendable {
+    case vocalSwap(sourceAssetID: String, voiceModel: String, pitchShift: Int)
+    case stemSplit(sourceAssetID: String, description: String)
+}
+
+enum SourceProcessingOperation: String, Sendable {
+    case vocalSwap = "VOCAL SWAP"
+    case stemSplit = "STEM SPLIT"
 }

@@ -43,8 +43,27 @@ struct GenerateScreen: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Typography.monoLabel("ENGINE", size: 10)
                             .foregroundColor(Palette.ink.opacity(0.68))
-                        Typography.monoLabel("MINIMAX MUSIC 3", size: 11)
-                            .foregroundColor(Palette.ink)
+                        HStack(spacing: 6) {
+                            ForEach(["turbo", "quality"], id: \.self) { preset in
+                                let selected = viewModel.preset == preset
+                                Button {
+                                    viewModel.preset = preset
+                                } label: {
+                                    Text(preset == "turbo" ? "XL TURBO" : "XL QUALITY")
+                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                        .foregroundColor(selected ? .white : Palette.ink)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(selected ? Palette.ink : Palette.deck)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 3)
+                                                .stroke(selected ? Palette.ink : Palette.divider, lineWidth: 1)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(preset == "turbo" ? "XL Turbo engine" : "XL Quality engine")
+                            }
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
@@ -53,6 +72,14 @@ struct GenerateScreen: View {
                         Slider(value: $viewModel.durationSeconds, in: 10...120, step: 5)
                             .tint(Palette.accentOrange)
                             .frame(width: 180)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Typography.monoLabel("VARIATIONS", size: 10)
+                            .foregroundColor(Palette.ink.opacity(0.68))
+                        Stepper("\(viewModel.variationCount)", value: $viewModel.variationCount, in: 1...4)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(width: 84)
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
@@ -71,9 +98,21 @@ struct GenerateScreen: View {
             DeckPanel {
                 HStack(alignment: .bottom, spacing: 12) {
                     compactField("SEED", text: $viewModel.seedText, width: 120)
-                    Text("One result per render. Describe musical direction in the prompt.")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Palette.ink.opacity(0.68))
+                    compactField("BPM", text: $viewModel.bpmText, width: 72)
+                    compactField("KEY", text: $viewModel.key, width: 92)
+                    compactField("METER", text: $viewModel.timeSignature, width: 72)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Typography.monoLabel("VOCAL LANGUAGE", size: 10)
+                            .foregroundColor(Palette.ink.opacity(0.68))
+                        Picker("Vocal language", selection: $viewModel.vocalLanguage) {
+                            ForEach(VocalLanguage.allCases) { language in
+                                Text(language.label).tag(language)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .frame(width: 235)
+                    }
                     Spacer(minLength: 0)
                 }
                 .disabled(viewModel.isBlocked)

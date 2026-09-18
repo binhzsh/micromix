@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Micromix
 
-@Suite("MicromixAPI request building + decoding")
+@Suite("MicromixAPI request building + decoding", .serialized)
 struct MicromixAPITests {
 
     private final class RequestRecorder: @unchecked Sendable {
@@ -58,10 +58,10 @@ struct MicromixAPITests {
         _ = try await api.submitReimagine(request)
         #expect(recorder.requests.last?.url?.path == "/v1/jobs/reference-generation")
         #expect(recorder.jsonBodies.last?["reference_asset_id"] as? String == "asset-1")
-        #expect(recorder.jsonBodies.last?["preset"] as? String == "minimax-cover")
-        #expect(recorder.jsonBodies.last?["variation_count"] as? Int == 1)
-        #expect(recorder.jsonBodies.last?["vocal_language"] == nil)
-        #expect(recorder.jsonBodies.last?["bpm"] == nil)
+        #expect(recorder.jsonBodies.last?["preset"] as? String == "turbo")
+        #expect(recorder.jsonBodies.last?["variation_count"] as? Int == 2)
+        #expect(recorder.jsonBodies.last?["vocal_language"] as? String == "vi")
+        #expect(recorder.jsonBodies.last?["bpm"] as? Int == 120)
     }
 
     @Test("repaint reimagine posts source and range")
@@ -75,9 +75,50 @@ struct MicromixAPITests {
         _ = try await api.submitReimagine(request)
         #expect(recorder.requests.last?.url?.path == "/v1/jobs/repaint")
         #expect(recorder.jsonBodies.last?["source_asset_id"] as? String == "source-7")
-        #expect(recorder.jsonBodies.last?["repaint_strength"] == nil)
+        #expect(recorder.jsonBodies.last?["repaint_strength"] as? Double == 0.5)
         #expect(recorder.jsonBodies.last?["start_seconds"] as? Double == 12)
         #expect(recorder.jsonBodies.last?["end_seconds"] as? Double == 24)
+    }
+
+    @Test("remix preserves its source strength and variations")
+    func remixControls() async throws {
+        let (api, recorder) = makeRecordingAPI()
+        _ = try await api.submitReimagine(.remix(prompt: "jazz", lyrics: "hello", preset: "quality", seed: 7,
+                                                variationCount: 4, sourceStrength: 0.75, sourceAssetID: "source"))
+        #expect(recorder.requests.last?.url?.path == "/v1/jobs/remix")
+        #expect(recorder.jsonBodies.last?["source_strength"] as? Double == 0.75)
+        #expect(recorder.jsonBodies.last?["variation_count"] as? Int == 4)
+        #expect(recorder.jsonBodies.last?["preset"] as? String == "quality")
+        #expect(recorder.jsonBodies.last?["lyrics"] as? String == "hello")
+        #expect(recorder.jsonBodies.last?["seed"] as? Int == 7)
+    }
+
+    @Test("capabilities decode available voices and omit missing optional fields")
+    func voiceCapabilities() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let current = try decoder.decode(Capabilities.self, from: Data(#"{"vocal_models":["voice-one"]}"#.utf8))
+        #expect(current.vocalModels == ["voice-one"])
+        let legacy = try decoder.decode(Capabilities.self, from: Data(#"{"generation_presets":[],"transcription_instruments":[]}"#.utf8))
+        #expect(legacy.vocalModels.isEmpty)
+        #expect(VocalLanguage.english.apiValue == "en")
+        #expect(VocalLanguage.vietnamese.apiValue == "vi")
+        #expect(VocalLanguage.automatic.apiValue == nil)
+    }
+
+    @Test("source processing posts exact routes and bodies")
+    func sourceProcessingBodies() async throws {
+        let (api, recorder) = makeRecordingAPI()
+        _ = try await api.submitSourceProcessing(.vocalSwap(sourceAssetID: "source", voiceModel: "my-voice", pitchShift: 0))
+        #expect(recorder.requests.last?.url?.path == "/v1/jobs/vocal-swap")
+        #expect(recorder.jsonBodies.last?.keys.sorted() == ["pitch_shift", "source_asset_id", "voice_model"])
+        #expect(recorder.jsonBodies.last?["voice_model"] as? String == "my-voice")
+        #expect(recorder.jsonBodies.last?["pitch_shift"] as? Int == 0)
+        _ = try await api.submitSourceProcessing(.stemSplit(sourceAssetID: "source", description: "lead vocals"))
+        #expect(recorder.requests.last?.url?.path == "/v1/jobs/stem-split")
+        #expect(recorder.jsonBodies.last?.keys.sorted() == ["description", "source_asset_id"])
+        #expect(recorder.jsonBodies.last?["description"] as? String == "lead vocals")
+        #expect(recorder.jsonBodies.last?["source_asset_id"] as? String == "source")
     }
 
     @Test("asset upload uses audio_file multipart field and decodes the asset")
@@ -147,7 +188,7 @@ struct MicromixAPITests {
         #expect(monitor.modelStatuses.isEmpty)
     }
 
-    @Test("generate submits a local MiniMax job and downloads its asset")
+    @Test("generate submits a local ACE-Step job and downloads its asset")
     func generateBody() async throws {
         let completed = succeededAudioJob
         MockURLProtocol.handler = { request in
@@ -157,7 +198,7 @@ struct MicromixAPITests {
             let body = MockURLProtocol.body(of: request)
             let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
             #expect(json?["prompt"] as? String == "a lo-fi beat")
-            #expect(json?["preset"] as? String == "minimax-cover")
+            #expect(json?["preset"] as? String == "quality")
             #expect(json?["duration_seconds"] as? Double == 45)
             #expect(request.url?.path == "/v1/jobs/generation")
             return (HTTPURLResponse(url: request.url!, statusCode: 202, httpVersion: nil, headerFields: nil)!, Data(completed.utf8))
@@ -172,11 +213,11 @@ struct MicromixAPITests {
         MockURLProtocol.handler = { request in
             let json = try JSONSerialization.jsonObject(with: MockURLProtocol.body(of: request)) as? [String: Any]
             #expect(json?["seed"] as? UInt32 == 42)
-            #expect(json?["variation_count"] as? Int == 1)
-            #expect(json?["bpm"] == nil)
-            #expect(json?["key"] == nil)
-            #expect(json?["time_signature"] == nil)
-            #expect(json?["vocal_language"] == nil)
+            #expect(json?["variation_count"] as? Int == 3)
+            #expect(json?["bpm"] as? Int == 118)
+            #expect(json?["key"] as? String == "A minor")
+            #expect(json?["time_signature"] as? String == "4")
+            #expect(json?["vocal_language"] as? String == "vi")
             return (HTTPURLResponse(url: request.url!, statusCode: 202, httpVersion: nil, headerFields: nil)!, Data(succeededAudioJob.utf8))
         }
         _ = try await makeAPI().submitGeneration(

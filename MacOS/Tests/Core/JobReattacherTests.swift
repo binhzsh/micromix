@@ -5,12 +5,13 @@ import Testing
 @MainActor
 @Suite("Durable job reattachment")
 struct JobReattacherTests {
-    @Test("a completed remote job imports every output once and clears its pending record")
-    func completedJobImportsOutputs() async throws {
+    @Test("a completed remote job imports every output once and clears its pending record", arguments: ["generation", "vocal_swap", "stem_split"])
+    func completedJobImportsOutputs(kind: String) async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let library = LocalLibrary(directory: directory)
         try library.trackPendingJob(id: "job-1")
-        let api = StubDurableJobs(job: Self.job(state: "succeeded"), outputs: [
+        let completed = try JSONDecoder().decode(RemoteJob.self, from: Data("{\"id\":\"job-1\",\"kind\":\"\(kind)\",\"state\":\"succeeded\"}".utf8))
+        let api = StubDurableJobs(job: completed, outputs: [
             DownloadedRemoteAsset(asset: Self.asset(id: "out-1", filename: "first.wav", bytes: 3, sha256: "7692c3ad3540bb803c020b3aee66cd8887123234ea0c6e7143c0add73ff431ed"), data: Data("one".utf8)),
             DownloadedRemoteAsset(asset: Self.asset(id: "out-2", filename: "second.wav", bytes: 3, sha256: "3fc4ccfe745870e2c0d99f71f30ff0656c8dedd41cc1d7d3d376b0dbe685e2f3"), data: Data("two".utf8)),
         ])

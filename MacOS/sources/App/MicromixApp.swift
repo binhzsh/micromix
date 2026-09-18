@@ -16,6 +16,8 @@ struct MicromixApp: App {
         let reimagine = ReimagineViewModel(api: api, reattacher: reattacher)
         let transcribe = TranscribeViewModel(api: api, library: library, reattacher: reattacher)
         let analyze = AnalyzeViewModel()
+        let vocalSwap = SourceProcessingViewModel(operation: .vocalSwap, api: api, reattacher: reattacher)
+        let stemSplit = SourceProcessingViewModel(operation: .stemSplit, api: api, reattacher: reattacher)
 
         // Kick off a connection health check; the monitor polls every 15 s.
         monitor.start()
@@ -27,6 +29,8 @@ struct MicromixApp: App {
             generate: generate,
             reimagine: reimagine,
             transcribe: transcribe,
+            vocalSwap: vocalSwap,
+            stemSplit: stemSplit,
             analyze: analyze,
             library: library,
             reattacher: reattacher,
@@ -42,6 +46,8 @@ struct MicromixApp: App {
                 generate: root.generate,
                 reimagine: root.reimagine,
                 transcribe: root.transcribe,
+                vocalSwap: root.vocalSwap,
+                stemSplit: root.stemSplit,
                 analyze: root.analyze,
                 library: root.library,
                 reattacher: root.reattacher,
@@ -60,6 +66,8 @@ struct AppRoot: Sendable {
     let generate: GenerateViewModel
     let reimagine: ReimagineViewModel
     let transcribe: TranscribeViewModel
+    let vocalSwap: SourceProcessingViewModel
+    let stemSplit: SourceProcessingViewModel
     let analyze: AnalyzeViewModel
     let library: LocalLibrary
     let reattacher: JobReattacher
