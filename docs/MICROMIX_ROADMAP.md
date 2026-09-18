@@ -91,29 +91,20 @@ The architecture is now native macOS plus a local FastAPI sidecar at
 `lts1`/Compose stack and its unmerged vocal-foundation branch are historical;
 do not merge that branch wholesale into the local implementation.
 
-Updated on 2026-09-18 after local contract fixes and automated verification.
-Manual listening acceptance is still pending:
+Updated on 2026-09-18 after implementing local server-feature parity.
 
-| Area | Implemented | Remaining / limitation |
+| Area | Implemented | Remaining |
 | --- | --- | --- |
-| Native app | Generate, Reimagine, Analyze, Transcribe, Library; SwiftData library and provenance | Validate all workflows against the local contract |
-| Local sidecar | Generation, Reimagine, transcription, vocal swap, stem split, assets and job routes | Health responds ready; only MiniMax reported loaded during audit; other models unvalidated in this review |
-| App connection | Local model-status decoding, ready-state handling, legacy `lts1` URL migration | Validate installed app with restarted sidecar |
-| Generation | MiniMax prompt/lyrics, seed, duration, one output; canonical preset and supported native controls | Dedicated BPM/key/meter/language, multiple variations and transformation strength are unavailable; API rejects unsupported controls |
-| Reimagine | Whisper lyrics extraction plus MiniMax; generated-segment repaint | No audio conditioning; source preservation and creative controls need evaluation |
-| Recovery | Native reattachment code and persistent imported library | Sidecar job/asset indexes are in memory and are lost on restart |
-| Vocal Swap / separation | MLX-RVC and SAM-Audio backend paths; capabilities lists a `base` voice | No dedicated native workflow; listed model is not evidence of usable conversion |
-| Transcription | Basic Pitch backend path | Quality and multi-instrument usefulness not established |
-| Acceptance | 79 native tests in 14 suites and 3 local API contract tests pass | Coordinated installed app/sidecar update, bilingual listening and Logic import still required |
+| Native | Seven workspaces, source lineage, private voice picker, stem outputs | Manual visual and Logic acceptance |
+| Generation | Local ACE XL Turbo/SFT, real source conditioning, metadata, language, seeded variations | Weights and listening evaluation |
+| Transcription | Local MuScriptor, instrument filters, tempo detection, FFmpeg formats | Gated model access and MIDI evaluation |
+| Vocal/stems | Selected private RVC weights/index and revision checks; SAM target/residual | Private model setup and listening evaluation |
+| Runtime | SQLite, recovery, process cancellation, isolation, upload cap and retention | Installed-runtime and manual integration acceptance |
 
-### Immediate migration priorities
-
-1. Completed: align native health decoding, preset encoding, and visible
-   creative controls with the local sidecar; add contract regression coverage.
-2. Define local job persistence/recovery and truthful cancellation behavior.
-3. Completed: run headless app and lightweight backend contract tests on the Mac.
-4. Manually evaluate generation, Reimagine and transcription before expanding
-   vocal workflows; record model revisions, memory, runtime and Logic usefulness.
+See [runtime setup](../services/local-inference/MODELS.md) and
+[acceptance checklist](evaluations/local-migration.md). Later product roadmap items
+(Vocal Improve, automatic song preparation/reference mixing, Mashup, Complete) are
+new product work, not features shipped by the retired server.
 
 ## Phase 0 — Product-quality baseline `[~]`
 
