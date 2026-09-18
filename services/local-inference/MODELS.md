@@ -94,8 +94,7 @@ Heavy inference, listening, performance, and native UI acceptance are manual gat
 On 2026-09-18, the following public artifacts were downloaded and checked for
 offline cache use: ACE-Step shared bundle, XL Turbo, XL SFT, and 4B planner in
 `~/.cache/micromix/ace/checkpoints`; `mlx-community/sam-audio-large`;
-`mlx-community/MiniMax-Music3-mxfp8`; and the `lexandstuff` ContentVec, RMVPE,
-and RVC helper repositories. The local `base.safetensors` private RVC voice is
-present. MuScriptor medium was not downloaded because the authenticated account
-has not been approved for its gated model repository. Accept its license at the
-model page, then run `hf download MuScriptor/muscriptor-medium` while online.
+`mlx-community/MiniMax-Music3-mxfp8`; the `lexandstuff` ContentVec, RMVPE, and
+RVC helper repositories; and `MuScriptor/muscriptor-medium`. The local
+`base.safetensors` private RVC voice is present. All public and approved model
+caches resolve with `HF_HUB_OFFLINE=1`.
