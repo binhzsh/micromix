@@ -297,7 +297,26 @@ private struct DeckRegion: View {
                 midiPreview: midiPreview,
                 selectedID: $selectedID,
                 onGenerate: { mode = .generate },
-                onTranscribe: { mode = .transcribe }
+                onStartTranscribe: { mode = .transcribe },
+                onReimagine: { url in
+                    reimagine.sourceURL = url
+                    reimagine.operation = .remix
+                    mode = .reimagine
+                },
+                onStemSplit: { url in
+                    stemSplit.sourceURL = url
+                    mode = .stemSplit
+                },
+                onVocalSwap: { url in
+                    vocalSwap.sourceURL = url
+                    mode = .vocalSwap
+                },
+                onTranscribe: { url in
+                    Task {
+                        guard await transcribe.select(url: url) else { return }
+                        mode = .transcribe
+                    }
+                }
             )
         }
     }

@@ -112,20 +112,7 @@ struct TranscribeScreen: View {
     private func handleDrop(_ urls: [URL]) {
         guard let url = urls.first else { return }
         Task {
-            let data: Data
-            do {
-                data = try await Task.detached(priority: .userInitiated) {
-                    try TranscribeViewModel.readSource(at: url)
-                }.value
-            } catch let error as TranscribeViewModel.SourceReadError {
-                viewModel.rejectSource(error)
-                return
-            } catch {
-                viewModel.rejectSource(.unreadable)
-                return
-            }
-            let analysis = try? await LocalMusicAnalyzer.analyze(url: url)
-            _ = viewModel.select(name: url.lastPathComponent, bytes: data, analysis: analysis)
+            _ = await viewModel.select(url: url)
         }
     }
 }

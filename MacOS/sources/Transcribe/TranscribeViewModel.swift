@@ -121,6 +121,26 @@ final class TranscribeViewModel: ObservableObject {
         return true
     }
 
+    /// Read and validate an audio file selected from Finder, a drop, or the managed Library.
+    @discardableResult
+    func select(url: URL) async -> Bool {
+        guard !isRunning else { return false }
+        let data: Data
+        do {
+            data = try await Task.detached(priority: .userInitiated) {
+                try Self.readSource(at: url)
+            }.value
+        } catch let error as SourceReadError {
+            rejectSource(error)
+            return false
+        } catch {
+            rejectSource(.unreadable)
+            return false
+        }
+        let analysis = try? await LocalMusicAnalyzer.analyze(url: url)
+        return select(name: url.lastPathComponent, bytes: data, analysis: analysis)
+    }
+
     func rejectSource(_ error: SourceReadError) {
         guard !isRunning else { return }
         selection = nil

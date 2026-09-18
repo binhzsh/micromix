@@ -57,7 +57,24 @@ struct ProvenanceTests {
         #expect(text.contains("preset: turbo"))
     }
 
-    private func item(id: UUID, jobID: String, position: Int) -> LibraryItem {
+    @Test("smart collections group generated, transformed, processing, and MIDI assets")
+    func classifiesWorkspaceCollections() {
+        let generated = item(id: UUID(), jobID: "job-generate", position: 0, operation: "generation")
+        let remixed = item(id: UUID(), jobID: "job-remix", position: 0, operation: "remix")
+        let vocal = item(id: UUID(), jobID: "job-vocal", position: 0, operation: "vocal_swap")
+        let midi = LibraryItem(
+            id: UUID(), kind: .midi, title: "score.mid", createdAt: .now,
+            promptOrSource: "song.wav", durationSeconds: nil, relativePath: "midi/score.mid"
+        )
+
+        #expect(LibraryCollection.generated.includes(generated))
+        #expect(LibraryCollection.transforms.includes(remixed))
+        #expect(LibraryCollection.stemsAndVocals.includes(vocal))
+        #expect(LibraryCollection.midi.includes(midi))
+        #expect(!LibraryCollection.transforms.includes(midi))
+    }
+
+    private func item(id: UUID, jobID: String, position: Int, operation: String = "generation") -> LibraryItem {
         let asset = RemoteAsset(
             id: "asset-\(id.uuidString)", filename: "result.wav", mediaType: "audio/wav",
             sizeBytes: 12, sha256: "abc", downloadUrl: "/v1/assets/asset"
@@ -66,7 +83,7 @@ struct ProvenanceTests {
             id: id, kind: .audio, title: "result.wav", createdAt: .now,
             promptOrSource: "test", durationSeconds: nil, relativePath: "audio/result.wav",
             provenance: LibraryProvenance(
-                jobID: jobID, operation: "generation", parameters: [:], inputs: [],
+                jobID: jobID, operation: operation, parameters: [:], inputs: [],
                 output: RemoteAssetLink(name: "result", position: position, asset: asset)
             )
         )
