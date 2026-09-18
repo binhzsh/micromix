@@ -82,3 +82,11 @@ extension MicromixAPI: DurableTranscriptionSubmitting {}
 extension MicromixAPI: DurableReimagineSubmitting {}
 
 extension MicromixAPI: DurableJobCancelling {}
+
+protocol DurableSourceProcessing: Sendable {
+    func uploadAsset(data: Data, filename: String, mediaType: String) async throws -> RemoteAsset
+    func submitSourceProcessing(_ request: SourceProcessingRequest) async throws -> RemoteJob
+    func cancel(jobID: String) async throws
+}
+
+extension MicromixAPI: DurableSourceProcessing {}

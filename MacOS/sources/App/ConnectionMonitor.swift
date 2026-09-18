@@ -11,6 +11,7 @@ final class ConnectionMonitor: ObservableObject {
     @Published var lastError: String?
     /// Instruments for the transcribe picker, fetched at launch / refresh.
     @Published private(set) var instruments: [String] = []
+    @Published private(set) var vocalModels: [String] = []
 
     /// Poll interval per the design spec.
     static let pollInterval: TimeInterval = 15
@@ -40,9 +41,12 @@ final class ConnectionMonitor: ObservableObject {
     /// degrades to an empty state if the server is down).
     func refreshInstruments() async {
         do {
-            instruments = try await api.instruments()
+            let capabilities = try await api.capabilities()
+            instruments = capabilities.transcriptionInstruments
+            vocalModels = capabilities.vocalModels
         } catch {
             instruments = []
+            vocalModels = []
         }
     }
 
@@ -53,6 +57,7 @@ final class ConnectionMonitor: ObservableObject {
             connected = health.status == "ready"
             modelStatuses = health.models
             lastError = connected ? nil : "Local inference is \(health.status)"
+            if connected { await refreshInstruments() }
         } catch {
             connected = false
             modelStatuses = [:]

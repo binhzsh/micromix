@@ -13,3 +13,6 @@ graphify-out/
 
 # Private model-evaluation inputs and generated media
 evaluations/private/
+
+# Isolated local model dependency environments
+.venv-*/

@@ -21,6 +21,8 @@ Inspect status, branch, and remotes, then fetch and use `git pull --ff-only` bef
 - `cd MacOS && xcodegen generate`: generate the Xcode project.
 - `cd MacOS && xcodebuild test -project Micromix.xcodeproj -scheme Micromix -destination 'platform=macOS'`: run native tests.
 - `cd services/local-inference && uv sync`: install local sidecar dependencies.
+- `bash scripts/setup-local-models.sh --engine all`: install isolated local model libraries without weights. See `services/local-inference/MODELS.md`.
+- `.venv/bin/python -m unittest discover -s tests -v` from the sidecar directory: lightweight API, adapter and subprocess runtime tests.
 - `cd services/local-inference && .venv/bin/python -m local_inference.main`: run the sidecar locally (when the LaunchAgent is not already running).
 - `curl http://127.0.0.1:8902/v1/health` and `bash scripts/smoke-test.sh`: lightweight health and capability checks without model inference.
 - See root `README.md` for optional LaunchAgent setup and manual inference checks.

@@ -50,10 +50,10 @@ actor MicromixAPI {
         return try Self.decoder.decode(Capabilities.self, from: data)
     }
 
-    /// Submit a local MiniMax job, poll it, and download its resulting asset.
+    /// Submit a local ACE-Step job, poll it, and download its resulting asset.
     func generate(input: String,
                   lyrics: String? = nil,
-                  preset: String = "minimax-cover",
+                  preset: String = "turbo",
                   durationSeconds: Double = 30,
                   options: GenerationOptions = .init()) async throws -> Data {
         let job = try await submitGeneration(
@@ -66,22 +66,24 @@ actor MicromixAPI {
     func submitGeneration(
         input: String,
         lyrics: String? = nil,
-        preset: String = "minimax-cover",
+        preset: String = "turbo",
         durationSeconds: Double = 30,
         options: GenerationOptions = .init()
     ) async throws -> RemoteJob {
         var body: [String: Any] = [
             "prompt": input,
-            "preset": "minimax-cover",
+            "preset": preset,
             "duration_seconds": durationSeconds,
         ]
         if let lyrics, !lyrics.isEmpty {
             body["lyrics"] = lyrics
         }
         if let seed = options.seed { body["seed"] = seed }
-        // The current local model returns one output and has no dedicated
-        // tempo/key/meter/language controls. Keep these out of its wire contract.
-        body["variation_count"] = 1
+        body["variation_count"] = options.variationCount
+        if let bpm = options.bpm { body["bpm"] = bpm }
+        if let key = options.key, !key.isEmpty { body["key"] = key }
+        if let timeSignature = options.timeSignature, !timeSignature.isEmpty { body["time_signature"] = timeSignature }
+        if let vocalLanguage = options.vocalLanguage.apiValue { body["vocal_language"] = vocalLanguage }
         let payload = try JSONSerialization.data(withJSONObject: body)
         return try await submitJob(path: "/v1/jobs/generation", body: payload)
     }
@@ -143,6 +145,20 @@ actor MicromixAPI {
     func submitReimagine(_ request: ReimagineRequest) async throws -> RemoteJob {
         let (path, body) = try Self.pathAndBody(for: request)
         return try await submitJob(path: path, body: body)
+    }
+
+    func submitSourceProcessing(_ request: SourceProcessingRequest) async throws -> RemoteJob {
+        let path: String
+        let body: [String: Any]
+        switch request {
+        case let .vocalSwap(sourceAssetID, voiceModel, pitchShift):
+            path = "/v1/jobs/vocal-swap"
+            body = ["source_asset_id": sourceAssetID, "voice_model": voiceModel, "pitch_shift": pitchShift]
+        case let .stemSplit(sourceAssetID, description):
+            path = "/v1/jobs/stem-split"
+            body = ["source_asset_id": sourceAssetID, "description": description]
+        }
+        return try await submitJob(path: path, body: JSONSerialization.data(withJSONObject: body))
     }
 
     func jobs() async throws -> [RemoteJob] {
@@ -300,37 +316,43 @@ actor MicromixAPI {
         let path: String
 
         switch request {
-        case let .reference(prompt, lyrics, _, seed, _, durationSeconds, _, _, _, _, sourceAssetID):
+        case let .reference(prompt, lyrics, preset, seed, variationCount, durationSeconds, bpm, key, timeSignature, vocalLanguage, sourceAssetID):
             path = "/v1/jobs/reference-generation"
             body = [
                 "prompt": prompt,
-                "preset": "minimax-cover",
-                "variation_count": 1,
+                "preset": preset,
+                "variation_count": variationCount,
                 "duration_seconds": durationSeconds,
                 "reference_asset_id": sourceAssetID,
             ]
+            if let bpm { body["bpm"] = bpm }
+            if let key { body["key"] = key }
+            if let timeSignature { body["time_signature"] = timeSignature }
+            if let vocalLanguage = vocalLanguage.apiValue { body["vocal_language"] = vocalLanguage }
             if let lyrics, !lyrics.isEmpty { body["lyrics"] = lyrics }
             if let seed { body["seed"] = seed }
 
-        case let .remix(prompt, lyrics, _, seed, _, _, sourceAssetID):
+        case let .remix(prompt, lyrics, preset, seed, variationCount, sourceStrength, sourceAssetID):
             path = "/v1/jobs/remix"
             body = [
                 "prompt": prompt,
-                "preset": "minimax-cover",
-                "variation_count": 1,
+                "preset": preset,
+                "variation_count": variationCount,
+                "source_strength": sourceStrength,
                 "source_asset_id": sourceAssetID,
             ]
             if let lyrics, !lyrics.isEmpty { body["lyrics"] = lyrics }
             if let seed { body["seed"] = seed }
 
-        case let .repaint(prompt, lyrics, _, seed, _, startSeconds, endSeconds, _, sourceAssetID):
+        case let .repaint(prompt, lyrics, preset, seed, variationCount, startSeconds, endSeconds, repaintStrength, sourceAssetID):
             path = "/v1/jobs/repaint"
             body = [
                 "prompt": prompt,
-                "preset": "minimax-cover",
-                "variation_count": 1,
+                "preset": preset,
+                "variation_count": variationCount,
                 "start_seconds": startSeconds,
                 "end_seconds": endSeconds,
+                "repaint_strength": repaintStrength,
                 "source_asset_id": sourceAssetID,
             ]
             if let lyrics, !lyrics.isEmpty { body["lyrics"] = lyrics }

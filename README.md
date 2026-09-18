@@ -9,51 +9,36 @@ project architecture. Dependency and model downloads may require internet access
 
 ## Progress (2026-09-18)
 
-The local migration is underway, not yet an accepted end-to-end release.
+Server feature parity is implemented locally; real-model and listening acceptance
+are still pending. Seven native workspaces cover Generate, Reimagine, Analyze,
+Transcribe, Vocal Swap, Stem Split, and Library.
 
-- Built: five native workspaces (Generate, Reimagine, Analyze, Transcribe,
-  Library), local sidecar routes, and local model integrations.
-- Observed: the sidecar health endpoint responds as ready, with MiniMax loaded.
-  This is a service check, not proof of successful generation or app integration.
-- Fixed: native health decoding now reads local model status; saved `lts1`
-  addresses migrate to loopback. Native requests and backend presets agree.
-- Verified: 79 native tests and 3 lightweight local API contract tests pass.
-- Remaining: decide restart recovery behavior, finish native vocal workflows,
-  and validate models
-  with English/Vietnamese audio and Logic import.
+- ACE-Step XL Turbo/SFT restores audio-conditioned reference, cover and repaint,
+  BPM/key/meter, English/Vietnamese language intent, strength, and 1–4 seeded variations.
+- MuScriptor replaces Basic Pitch with instrument filtering and tempo-grid MIDI.
+- MLX-RVC loads the selected private voice and optional index; SAM returns target
+  and residual stems. MiniMax remains an optional basic text generator.
+- SQLite preserves jobs, asset checksums, links, seeds and provenance. Interrupted
+  jobs recover; cancellation terminates worker processes. One disposable worker
+  runs at a time, releasing model memory on exit. Uploads are capped at 200 MiB;
+  seven-day retention preserves active-job inputs.
 
-See [the roadmap](docs/MICROMIX_ROADMAP.md) for the implementation audit and next
-steps. Older server plans and evaluation results are historical evidence only.
+See [model setup and exact runtime pins](services/local-inference/MODELS.md) and
+[manual acceptance](docs/evaluations/local-migration.md). Dependency presence does
+not prove weights, inference compatibility, or audio quality. The native SwiftData
+library remains authoritative for saved results.
 
 ## Local inference stack
 
-`services/local-inference` is a FastAPI sidecar serving `127.0.0.1:8902`
-directly to the app. It runs MLX models on Apple Silicon:
+The loopback FastAPI sidecar serves `127.0.0.1:8902`. Install its dependencies
+with `uv sync` in `services/local-inference`, then install isolated model libraries:
 
-- **MiniMax Music 3** (`mlx-community/MiniMax-Music3-mxfp8`) — text+lyrics
-  song generation via `mlx-audio` (flow matching, 44.1 kHz stereo).
-- **MLX-RVC** — vocal swap against `.safetensors`/`.pth` voice models in
-  `services/local-inference/data/voice-models/`.
-- **SAM-Audio** (`mlx-community/sam-audio-large`) — stem separation.
-- **Basic Pitch** — audio-to-MIDI transcription (ONNX).
-- **Whisper large-v3-turbo** — lyric extraction for reimagine operations.
+```bash
+bash scripts/setup-local-models.sh --engine all
+```
 
-Only the reimagine operations are approximations: the MLX MiniMax port has no
-audio conditioning, so reference-generation/remix extract lyrics from the
-source via STT and generate from the style prompt, and repaint splices a
-generated segment into the source waveform with short crossfades.
-
-Model caches live in `~/.cache/huggingface`; jobs and generated assets are
-held in memory/disk under `services/local-inference/data/` (gitignored) and
-are not durable across sidecar restarts. The Mac library remains
-authoritative: it downloads completed assets and records lineage.
-
-The native generation screens expose prompt/lyrics, seed, duration where
-supported, and repaint range. Each render produces one result. Dedicated
-BPM/key/meter/language, variation-count and transformation-strength controls
-are unavailable; non-default unsupported API inputs return HTTP 422.
-`minimax-cover` is the canonical preset; `turbo` and `quality` remain input
-aliases and are recorded as `minimax-cover` in job provenance.
+This installs libraries only. Follow the model setup document for weights and
+MuScriptor license access. No server, Docker or remote inference is used.
 
 ## Running the sidecar
 
@@ -75,7 +60,7 @@ cd services/local-inference
 uv sync && .venv/bin/python -m local_inference.main
 ```
 
-First inference downloads models lazily (the MiniMax weights are ~13 GB).
+Missing weights may download on first use; prepare models using the setup guide before manual acceptance.
 
 ## API
 
@@ -150,6 +135,6 @@ cd services/local-inference
 ```
 
 See [local migration acceptance](docs/evaluations/local-migration.md) for the
-coordinated app/sidecar update and manual listening checklist. A running sidecar
-must restart to load the new API contract; restarting currently loses job and
-asset indexes, so preserve wanted outputs first.
+coordinated app/sidecar update and manual listening checklist. A running sidecar must restart to load these changes. Preserve wanted outputs
+from the old in-memory service before the first upgrade; subsequent SQLite-backed
+restarts retain jobs and asset indexes.

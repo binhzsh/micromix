@@ -1,29 +1,34 @@
 # Local migration verification — 2026-09-18
 
-Status: automated contract checks pass; manual app and audio acceptance pending.
+Status: local parity implementation and automated checks complete; installed model,
+visual, listening and Logic acceptance pending.
 
 ## Automated evidence
 
-- `xcodebuild test -project Micromix.xcodeproj -scheme Micromix -destination
-  'platform=macOS' -parallel-testing-enabled NO` from `MacOS`: 79 tests in 14
-  suites pass.
-- `.venv/bin/python -m unittest discover -s tests -v` from
-  `services/local-inference`: 3 contract tests pass, including all four music
-  submission routes, real asset upload, preset normalization and rejection of
-  unsupported controls. Inference dispatch is mocked; models are never loaded.
-- Regression tests first reproduced the missing `database` health decode,
-  advertised preset rejection and silently accepted unsupported inputs.
-- Existing local health/capability endpoints respond; this does not validate
-  model output, performance or the installed app.
+- 37 Python tests pass: API contracts, controls, private voice revisions, adapter
+  forwarding, durable storage, atomic output publication, cancellation, recovery,
+  pre-commit process crashes, retention and streaming uploads.
+- 80 native headless tests in 14 suites pass with DeviceWindowTests excluded because they include
+  visual rendering. Model calls are mocked in adapter tests; runtime tests use real
+  lightweight subprocesses. No weights downloaded or inference run.
+- Independent runtime/API re-review found no blocking defects.
 
 ## Manual update and acceptance
 
-All commands below run on the Mac. Preserve wanted outputs in Library or export
-them before restarting the sidecar: in-memory job and asset indexes are lost.
-Do not interrupt an active render. The source fixes are not loaded into an
-already-running sidecar or an already-installed app automatically.
+Preserve wanted outputs from the old in-memory sidecar before upgrading. Do not
+interrupt an active render. New SQLite-backed jobs survive subsequent restarts.
 
-From the repository root, build a reviewable app:
+Install API and model libraries, then follow [model setup](../../services/local-inference/MODELS.md)
+for weights, license access, private voices and exact import preflights:
+
+```bash
+cd services/local-inference
+uv sync
+cd ../..
+bash scripts/setup-local-models.sh --engine all
+```
+
+Build the app:
 
 ```bash
 cd MacOS
@@ -34,40 +39,28 @@ xcodebuild build -project Micromix.xcodeproj -scheme Micromix \
 cd ..
 ```
 
-If using the existing LaunchAgent, restart it after preserving outputs:
+When ready, restart the configured LaunchAgent (or stop/restart a manually run sidecar):
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.micromix.local-inference
 bash scripts/smoke-test.sh
-```
-
-Otherwise stop the manually started sidecar and run it again:
-
-```bash
-cd services/local-inference
-.venv/bin/python -m local_inference.main
-```
-
-Quit any old Micromix app, then launch the review build manually:
-
-```bash
 open /tmp/micromix-local-review/Build/Products/Debug/Micromix.app
 ```
 
-1. Confirm the connection indicator is available even when model status is
-   `unloaded`. If a legacy `lts1` setting existed, confirm local connection.
-2. Confirm Generate/Reimagine show MiniMax, seed and applicable duration/range
-   controls, without unsupported variations, strength or dedicated musical
-   metadata controls. Check layout and keyboard accessibility.
-3. Generate one short instrumental and one vocal example in each of English
-   and Vietnamese. Check prompt adherence, intelligibility and tonal meaning.
-4. Run Reference and Remix with a short source. Judge the new arrangement with
-   the expectation that extracted lyrics guide it; melody/voice preservation
-   is not supported. Repaint a valid range and listen to its boundaries.
-5. Run Transcribe, then confirm generated audio and MIDI import into Library
-   and Logic. Inspect source/operation/seed/model provenance.
-6. Record model revisions, runtime, peak memory, audible defects and usefulness.
-   Report outcomes before declaring the migration accepted.
+1. Inspect all seven workspaces, controls, keyboard access and connection status.
+2. Generate Turbo and Quality examples in English/Vietnamese, with fixed seeds and
+   four variations. Check metadata intent, intelligibility and Vietnamese tones.
+3. Compare reference influence and cover strength. Repaint a valid interval and
+   inspect preserved surrounding audio and boundaries.
+4. Transcribe WAV, MP3 and M4A with instrument filters and tempo on/off; import MIDI
+   into Logic and inspect tracks/grid. Strict tempo detection can reject unstable beats.
+5. Convert a prepared vocal with two private voices, pitch offsets and an optional
+   index; inspect provenance. Split target/residual stems and listen to both.
+6. Cancel queued/running work and restart during a job; confirm durable reattachment,
+   retained inputs and terminal-state consistency. Save selected results to Library.
+7. Record model revisions, runtime, memory, defects and usefulness before declaring
+   quality parity accepted. Automatic full-song vocal preparation/mixing, Vocal
+   Improve, Mashup and Complete remain future product work, not retired-server parity.
 
-Job persistence/restart recovery, vocal workflow UI and broader model-quality
-validation remain open. The historic server branch is not needed for these checks.
+Agents stop before these manual gates under AGENTS.md. Library dependency resolution
+was checked, but isolated runtime installation/import checks have not been executed.

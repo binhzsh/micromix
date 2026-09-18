@@ -6,12 +6,12 @@ import Testing
 @MainActor
 @Suite("Device window regressions")
 struct DeviceWindowTests {
-    @Test("studio modes are ordered and numbered one through five")
+    @Test("studio modes are ordered and numbered one through seven")
     func studioModeOrderAndNumbers() {
         #expect(DeviceMode.allCases.map(\.rawValue) == [
-            "GENERATE", "REIMAGINE", "ANALYZE", "TRANSCRIBE", "LIBRARY",
+            "GENERATE", "REIMAGINE", "ANALYZE", "TRANSCRIBE", "VOCAL SWAP", "STEM SPLIT", "LIBRARY",
         ])
-        #expect(DeviceMode.allCases.map(\.displayIndex) == [1, 2, 3, 4, 5])
+        #expect(DeviceMode.allCases.map(\.displayIndex) == [1, 2, 3, 4, 5, 6, 7])
     }
 
     @Test("lyrics layout keeps the primary action visible at the default window size")
@@ -113,6 +113,8 @@ struct DeviceWindowTests {
             generate: generate,
             reimagine: ReimagineViewModel(api: api, reattacher: reattacher),
             transcribe: TranscribeViewModel(api: api, library: library),
+            vocalSwap: SourceProcessingViewModel(operation: .vocalSwap, api: api, reattacher: reattacher),
+            stemSplit: SourceProcessingViewModel(operation: .stemSplit, api: api, reattacher: reattacher),
             analyze: AnalyzeViewModel(),
             library: library,
             reattacher: reattacher,

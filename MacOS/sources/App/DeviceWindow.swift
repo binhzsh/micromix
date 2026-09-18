@@ -6,6 +6,8 @@ enum DeviceMode: String, CaseIterable, Identifiable {
     case reimagine = "REIMAGINE"
     case analyze = "ANALYZE"
     case transcribe = "TRANSCRIBE"
+    case vocalSwap = "VOCAL SWAP"
+    case stemSplit = "STEM SPLIT"
     case library = "LIBRARY"
 
     var id: String { rawValue }
@@ -37,6 +39,8 @@ struct DeviceWindow: View {
     @ObservedObject var generate: GenerateViewModel
     @ObservedObject var reimagine: ReimagineViewModel
     @ObservedObject var transcribe: TranscribeViewModel
+    @ObservedObject var vocalSwap: SourceProcessingViewModel
+    @ObservedObject var stemSplit: SourceProcessingViewModel
     @ObservedObject var analyze: AnalyzeViewModel
     @ObservedObject var library: LocalLibrary
     @ObservedObject var reattacher: JobReattacher
@@ -51,6 +55,8 @@ struct DeviceWindow: View {
                 generate: generate,
                 reimagine: reimagine,
                 transcribe: transcribe,
+                vocalSwap: vocalSwap,
+                stemSplit: stemSplit,
                 analyze: analyze,
                 library: library,
                 reattacher: reattacher,
@@ -61,6 +67,8 @@ struct DeviceWindow: View {
                 generate: generate,
                 reimagine: reimagine,
                 transcribe: transcribe,
+                vocalSwap: vocalSwap,
+                stemSplit: stemSplit,
                 analyze: analyze,
                 library: library,
                 player: player,
@@ -90,6 +98,8 @@ private struct ScreenRegion: View {
     @ObservedObject var generate: GenerateViewModel
     @ObservedObject var reimagine: ReimagineViewModel
     @ObservedObject var transcribe: TranscribeViewModel
+    @ObservedObject var vocalSwap: SourceProcessingViewModel
+    @ObservedObject var stemSplit: SourceProcessingViewModel
     @ObservedObject var analyze: AnalyzeViewModel
     @ObservedObject var library: LocalLibrary
     @ObservedObject var reattacher: JobReattacher
@@ -138,6 +148,12 @@ private struct ScreenRegion: View {
             if case .error(let message) = transcribe.phase { return shorten(message) }
             if transcribe.phase == .done { return "TRANSCRIBED" }
             if transcribe.phase == .cancelled { return "CANCELLED" }
+        case .vocalSwap, .stemSplit:
+            let model = mode == .vocalSwap ? vocalSwap : stemSplit
+            if model.isRunning { return "PROCESSING" }
+            if let error = model.errorMessage { return shorten(error) }
+            if model.phase == .done { return "SAVED TO LIBRARY" }
+            if model.phase == .cancelled { return "CANCELLED" }
         case .library:
             break
         }
@@ -157,17 +173,19 @@ private struct ScreenRegion: View {
         }
         switch mode {
         case .generate:
-            guard connection.isConnected else { return "SERVER UNREACHABLE — CHECK WIREGUARD" }
+            guard connection.isConnected else { return "LOCAL INFERENCE UNAVAILABLE" }
             return generate.isRunning ? "GENERATING…" : "READY — ENTER PROMPT"
         case .reimagine:
-            guard connection.isConnected else { return "SERVER UNREACHABLE — CHECK WIREGUARD" }
+            guard connection.isConnected else { return "LOCAL INFERENCE UNAVAILABLE" }
             if reimagine.isRunning { return "RENDERING VARIATIONS…" }
             return reimagine.sourceURL == nil ? "READY — SELECT A SOURCE" : "READY — SET DIRECTION"
         case .analyze:
             return analyze.isRunning ? "ANALYZING LOCALLY…" : "READY — SELECT AUDIO"
         case .transcribe:
-            guard connection.isConnected else { return "SERVER UNREACHABLE — CHECK WIREGUARD" }
+            guard connection.isConnected else { return "LOCAL INFERENCE UNAVAILABLE" }
             return transcribe.isRunning ? "TRANSCRIBING…" : "READY — SELECT AUDIO"
+        case .vocalSwap, .stemSplit:
+            return connection.isConnected ? "READY — SELECT AUDIO" : "LOCAL INFERENCE UNAVAILABLE"
         case .library: return "LIBRARY"
         }
     }
@@ -190,6 +208,8 @@ private struct DeckRegion: View {
     @ObservedObject var generate: GenerateViewModel
     @ObservedObject var reimagine: ReimagineViewModel
     @ObservedObject var transcribe: TranscribeViewModel
+    @ObservedObject var vocalSwap: SourceProcessingViewModel
+    @ObservedObject var stemSplit: SourceProcessingViewModel
     @ObservedObject var analyze: AnalyzeViewModel
     @ObservedObject var library: LocalLibrary
     @ObservedObject var player: AudioPlayer
@@ -262,6 +282,13 @@ private struct DeckRegion: View {
                 viewModel: transcribe,
                 instruments: connection.instruments,
                 serverAvailable: connection.isConnected
+            )
+        case .vocalSwap, .stemSplit:
+            SourceProcessingScreen(
+                viewModel: mode == .vocalSwap ? vocalSwap : stemSplit,
+                voices: connection.vocalModels,
+                serverAvailable: connection.isConnected,
+                onOpenLibrary: { mode = .library }
             )
         case .library:
             LibraryScreen(
