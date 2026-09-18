@@ -3,13 +3,12 @@
 Micromix is a private native macOS music workstation companion. The Mac app
 handles interaction, playback, local analysis, and its authoritative SwiftData
 library; inference runs on-device through a local Apple Silicon (MLX) sidecar.
-There is no remote inference server. All app and backend development, testing,
-and inference run on the Mac; `lts1`, WireGuard, and Docker are retired from the
-project architecture. Dependency and model downloads may require internet access.
+All app and inference work runs on this Mac. Dependency and model downloads may
+require internet access.
 
 ## Progress (2026-09-18)
 
-Server feature parity is implemented locally; real-model and listening acceptance
+Local feature parity is implemented; real-model and listening acceptance
 are still pending. Seven native workspaces cover Generate, Reimagine, Analyze,
 Transcribe, Vocal Swap, Stem Split, and Library.
 
@@ -38,7 +37,7 @@ bash scripts/setup-local-models.sh --engine all
 ```
 
 This installs libraries only. Follow the model setup document for weights and
-MuScriptor license access. No server, Docker or remote inference is used.
+MuScriptor license access. No networked or container inference is used.
 
 ## Running the sidecar
 
@@ -120,7 +119,7 @@ xcodegen generate
 xcodebuild test -project Micromix.xcodeproj -scheme Micromix -destination 'platform=macOS'
 ```
 
-The default server URL is `127.0.0.1:8902`, stored by `SettingsStore`.
+The app uses only the loopback local-inference endpoint at `127.0.0.1:8902`.
 
 Logic Pro remains the finishing environment for separation, tuning, mixing,
 mastering, and arrangement; Micromix does not duplicate those DAW workflows.

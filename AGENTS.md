@@ -8,13 +8,13 @@ The local FastAPI inference sidecar lives in `services/local-inference/`; operat
 
 ## Product Scope
 
-Micromix is a private, solo-user project and will not be published. The native macOS app is the only user-facing product. All inference runs locally on the Mac, using Apple Silicon models where supported. There is no `lts1`, remote inference, or Docker deployment dependency. Do not build a web app, public service, multi-user features, or publishing infrastructure unless explicitly requested.
+Micromix is a private, solo-user project and will not be published. The native macOS app is the only user-facing product. All inference runs locally on the Mac, using Apple Silicon models where supported. There is no networked or container deployment dependency. Do not build a web app, public service, multi-user features, or publishing infrastructure unless explicitly requested.
 
 ## Workspace Ownership & Local Development
 
-Perform native app, inference-engine, FastAPI, and model integration work on this Mac in this repository. The app connects to the local sidecar at `http://127.0.0.1:8902`. Network access may be needed to install dependencies and download model weights; inference must run locally. Do not restore the retired `lts1` stack or merge legacy server branches wholesale.
+Perform native app, inference-engine, FastAPI, and model integration work on this Mac in this repository. The app connects only to the local sidecar at `http://127.0.0.1:8902`. Network access may be needed to install dependencies and download model weights; inference must run locally. Do not restore retired deployment infrastructure or merge legacy deployment branches wholesale.
 
-Inspect status, branch, and remotes, then fetch and use `git pull --ff-only` before starting work. Keep app and sidecar changes in this one GitHub repository. If histories diverge or a checkout is dirty, stop and reconcile—never force-push, reset, or copy over changes. Historical server plans are background context, not current deployment instructions; use `README.md` and `docs/MICROMIX_ROADMAP.md` for the current direction.
+Inspect status, branch, and remotes, then fetch and use `git pull --ff-only` before starting work. Keep app and sidecar changes in this one GitHub repository. If histories diverge or a checkout is dirty, stop and reconcile—never force-push, reset, or copy over changes. Historical deployment plans are background context, not current deployment instructions; use `README.md` and `docs/MICROMIX_ROADMAP.md` for the current direction.
 
 ## Build, Test, and Development Commands
 

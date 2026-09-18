@@ -1,6 +1,6 @@
 # Local model runtimes
 
-All rendering stays on this Mac. The API launches one disposable Python process per job and terminates its process group on cancellation. Each worker accepts a JSON manifest and atomically writes `output_dir/result.json` only after every output exists. There is no upstream HTTP server, Docker dependency, or remote inference.
+All rendering stays on this Mac. The API launches one disposable Python process per job and terminates its process group on cancellation. Each worker accepts a JSON manifest and atomically writes `output_dir/result.json` only after every output exists. There is no networked endpoint, container dependency, or off-machine inference.
 
 Workers set `HF_HUB_OFFLINE=1` before importing a model adapter. They therefore
 use only cached artifacts and fail with a local setup error if an artifact is

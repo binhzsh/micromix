@@ -9,7 +9,7 @@ struct MicromixAPIError: LocalizedError, Equatable, Sendable {
         "HTTP \(statusCode): \(detail)"
     }
 
-    static func unreachable(_ message: String = "server unreachable") -> MicromixAPIError {
+    static func unreachable(_ message: String = "local inference unavailable") -> MicromixAPIError {
         MicromixAPIError(statusCode: -1, detail: message)
     }
 }
@@ -254,7 +254,7 @@ actor MicromixAPI {
             throw MicromixAPIError.unreachable()
         }
         guard (200..<300).contains(http.statusCode) else {
-            let detail = String(data: data, encoding: .utf8) ?? "server returned HTTP \(http.statusCode)"
+            let detail = String(data: data, encoding: .utf8) ?? "local inference returned HTTP \(http.statusCode)"
             throw MicromixAPIError(statusCode: http.statusCode, detail: detail)
         }
     }

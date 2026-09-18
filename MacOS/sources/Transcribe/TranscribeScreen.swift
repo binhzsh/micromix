@@ -4,10 +4,10 @@ import UniformTypeIdentifiers
 struct TranscribeScreen: View {
     @ObservedObject var viewModel: TranscribeViewModel
     let instruments: [String]
-    var serverAvailable: Bool = true
+    var localInferenceAvailable: Bool = true
 
     private var canTranscribe: Bool {
-        viewModel.hasSelection && !viewModel.isBlocked && serverAvailable
+        viewModel.hasSelection && !viewModel.isBlocked && localInferenceAvailable
     }
 
     var body: some View {
@@ -43,7 +43,7 @@ struct TranscribeScreen: View {
                     action: { _ = viewModel.start() }
                 )
                 .keyboardShortcut(.return, modifiers: [.command])
-                .accessibilityHint(canTranscribe ? "Convert the selected audio to MIDI" : "Select audio and connect to the server first")
+                .accessibilityHint(canTranscribe ? "Convert the selected audio to MIDI" : "Select audio and start local inference first")
 
                 if viewModel.isRunning {
                     Button(action: viewModel.cancel) {

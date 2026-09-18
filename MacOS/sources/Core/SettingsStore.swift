@@ -1,8 +1,7 @@
 import Foundation
 import Combine
 
-/// User-configurable app settings. v1 holds the API base URL, persisted as
-/// JSON under the Micromix application-support directory.
+/// Local inference settings persisted under the Micromix application-support directory.
 @MainActor
 final class SettingsStore: ObservableObject {
     nonisolated static let defaultBaseURL = "http://127.0.0.1:8902"
@@ -30,6 +29,9 @@ final class SettingsStore: ObservableObject {
 
     /// Persist the current baseURL atomically.
     func save() throws {
+        if !Self.isLoopbackEndpoint(baseURL) {
+            baseURL = Self.defaultBaseURL
+        }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let payload = ["baseURL": baseURL]
         let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted])
@@ -41,8 +43,20 @@ final class SettingsStore: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let saved = json["baseURL"] as? String, !saved.isEmpty
         else { return }
-        // Migrate the retired server setting without overriding custom local ports.
-        let host = URL(string: saved)?.host?.lowercased()
-        baseURL = ["10.10.10.10", "lts1"].contains(host ?? "") ? Self.defaultBaseURL : saved
+        guard Self.isLoopbackEndpoint(saved) else {
+            baseURL = Self.defaultBaseURL
+            try? save()
+            return
+        }
+        baseURL = saved
+    }
+
+    private static func isLoopbackEndpoint(_ value: String) -> Bool {
+        guard let components = URLComponents(string: value),
+              components.scheme?.lowercased() == "http",
+              let host = components.host?.lowercased() else {
+            return false
+        }
+        return ["127.0.0.1", "localhost", "::1"].contains(host)
     }
 }

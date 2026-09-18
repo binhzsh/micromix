@@ -3,7 +3,7 @@ import Combine
 
 /// Polls `MicromixAPI.health()` every 15 s (and on demand) and publishes a
 /// connection snapshot the UI uses to drive the connection LED and to disable
-/// GENERATE/TRANSCRIBE while the server is unreachable.
+/// GENERATE/TRANSCRIBE while local inference is unavailable.
 @MainActor
 final class ConnectionMonitor: ObservableObject {
     @Published var connected: Bool = false
@@ -38,7 +38,7 @@ final class ConnectionMonitor: ObservableObject {
     }
 
     /// Load the instrument list from `/v1/capabilities` (best-effort; the picker
-    /// degrades to an empty state if the server is down).
+    /// degrades to an empty state if local inference is unavailable).
     func refreshInstruments() async {
         do {
             let capabilities = try await api.capabilities()
