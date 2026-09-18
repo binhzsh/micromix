@@ -138,6 +138,20 @@ struct TranscribeViewModelTests {
         #expect(vm.sourceName == "voice.m4a")
     }
 
+    @Test("managed audio URL uses the same validated selection path")
+    func managedAudioURL() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("micromix-library-\(UUID().uuidString).wav")
+        try Data("audio".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let vm = TranscribeViewModel(api: FakeTranscriber(), library: FakeLibrary())
+
+        #expect(await vm.select(url: url))
+        #expect(vm.hasSelection)
+        #expect(vm.sourceName == url.lastPathComponent)
+    }
+
     @Test("MIDI is rejected as a non-waveform transcription source")
     func midiSource() throws {
         let vm = TranscribeViewModel(api: FakeTranscriber(), library: FakeLibrary())

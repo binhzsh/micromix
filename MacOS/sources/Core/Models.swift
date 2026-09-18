@@ -287,6 +287,57 @@ struct LibraryItem: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+extension LibraryItem {
+    /// Normalizes operation names persisted by current and earlier local jobs.
+    var workspaceOperation: String? {
+        provenance?.operation?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+    }
+}
+
+/// Overlapping, non-destructive smart collections for the local asset workspace.
+enum LibraryCollection: String, CaseIterable, Identifiable, Sendable {
+    case all
+    case audio
+    case generated
+    case transforms
+    case stemsAndVocals
+    case midi
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .all: "ALL"
+        case .audio: "AUDIO"
+        case .generated: "GENERATED"
+        case .transforms: "REMIXES"
+        case .stemsAndVocals: "STEMS + VOCALS"
+        case .midi: "MIDI"
+        }
+    }
+
+    func includes(_ item: LibraryItem) -> Bool {
+        switch self {
+        case .all:
+            true
+        case .audio:
+            item.kind == .audio
+        case .midi:
+            item.kind == .midi
+        case .generated:
+            item.kind == .audio && ["generation", "generate", "text"].contains(item.workspaceOperation)
+        case .transforms:
+            item.kind == .audio && ["reference", "remix", "repaint"].contains(item.workspaceOperation)
+        case .stemsAndVocals:
+            item.kind == .audio && ["stem_split", "vocal_swap"].contains(item.workspaceOperation)
+        }
+    }
+}
+
 extension Collection where Element == LibraryItem {
     /// Outputs from the same durable render, ordered as the model returned them.
     func alternatives(for item: LibraryItem) -> [LibraryItem] {

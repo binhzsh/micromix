@@ -9,7 +9,13 @@ struct LibraryScreen: View {
     @ObservedObject var midiPreview: MidiPreview
     @Binding var selectedID: UUID?
     var onGenerate: () -> Void = {}
-    var onTranscribe: () -> Void = {}
+    var onStartTranscribe: () -> Void = {}
+    var onReimagine: (URL) -> Void = { _ in }
+    var onStemSplit: (URL) -> Void = { _ in }
+    var onVocalSwap: (URL) -> Void = { _ in }
+    var onTranscribe: (URL) -> Void = { _ in }
+    @State private var collection: LibraryCollection = .all
+    @State private var searchText = ""
 
     private let columns = [
         GridItem(.fixed(44), alignment: .leading),
@@ -22,18 +28,64 @@ struct LibraryScreen: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
+            organization
             listOrEmpty
+            assetInspector
             provenance
             transport
         }
+        .onChange(of: collection) { _, _ in clearHiddenSelection() }
+        .onChange(of: searchText) { _, _ in clearHiddenSelection() }
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Typography.monoLabel("LIBRARY — \(library.items.count) ITEM\(library.items.count == 1 ? "" : "S")", size: 11)
+            Typography.monoLabel("LIBRARY — \(displayedItems.count) OF \(library.items.count) ASSET\(library.items.count == 1 ? "" : "S")", size: 11)
                 .foregroundColor(Palette.ink.opacity(0.76))
             Spacer()
         }
+    }
+
+    private var organization: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(LibraryCollection.allCases) { option in
+                        collectionButton(option)
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Palette.ink.opacity(0.6))
+                TextField("SEARCH TITLE, SOURCE, OR OPERATION", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(Palette.ink)
+                if !searchText.isEmpty {
+                    Button("CLEAR") { searchText = "" }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Palette.accentBlue)
+                }
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.divider, lineWidth: 1))
+        }
+    }
+
+    private func collectionButton(_ option: LibraryCollection) -> some View {
+        let active = collection == option
+        return Button(option.label) { collection = option }
+            .buttonStyle(.plain)
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .foregroundColor(active ? Palette.deck : Palette.ink.opacity(0.76))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(active ? Palette.accentBlue : Palette.deck)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(active ? Palette.accentBlue : Palette.divider, lineWidth: 1))
     }
 
     @ViewBuilder private var listOrEmpty: some View {
@@ -51,10 +103,28 @@ struct LibraryScreen: View {
                         .multilineTextAlignment(.center)
                     HStack(spacing: 8) {
                         emptyAction("GENERATE", color: Palette.accentOrange, action: onGenerate)
-                        emptyAction("TRANSCRIBE", color: Palette.accentBlue, action: onTranscribe)
+                        emptyAction("TRANSCRIBE", color: Palette.accentBlue, action: onStartTranscribe)
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: 130)
+            }
+        } else if displayedItems.isEmpty {
+            DeckPanel {
+                VStack(spacing: 8) {
+                    Typography.monoLabel("NO MATCHING ASSETS", size: 12)
+                        .foregroundColor(Palette.ink)
+                    Text("Choose another collection or clear the search to see your saved files.")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Palette.ink.opacity(0.66))
+                    Button("CLEAR FILTERS") {
+                        collection = .all
+                        searchText = ""
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(Palette.accentBlue)
+                }
+                .frame(maxWidth: .infinity, minHeight: 110)
             }
         } else {
             table
@@ -66,7 +136,7 @@ struct LibraryScreen: View {
             LazyVStack(spacing: 0) {
                 headerRow
                 Divider().overlay(Palette.divider)
-                ForEach(Array(library.items.enumerated()), id: \.element.id) { index, item in
+                ForEach(Array(displayedItems.enumerated()), id: \.element.id) { index, item in
                     row(index: index + 1, item: item)
                     Divider().overlay(Palette.divider.opacity(0.6))
                 }
@@ -120,6 +190,39 @@ struct LibraryScreen: View {
         }
     }
 
+    @ViewBuilder private var assetInspector: some View {
+        if let item = selectedItem {
+            DeckPanel {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        Typography.monoLabel("SELECTED ASSET", size: 10)
+                            .foregroundColor(Palette.ink.opacity(0.64))
+                        Spacer()
+                        Typography.monoLabel(item.kind == .audio ? "AUDIO" : "MIDI", size: 10)
+                            .foregroundColor(item.kind == .audio ? Palette.accentGreen : Palette.accentBlue)
+                    }
+                    Text(item.title)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Palette.ink)
+                        .lineLimit(1)
+                    Text(item.relativePath)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Palette.ink.opacity(0.64))
+                        .lineLimit(1)
+                    if item.kind == .audio {
+                        HStack(spacing: 7) {
+                            actionButton("REMIX", color: Palette.accentOrange) { onReimagine(library.resolvedURL(for: item)) }
+                            actionButton("SPLIT", color: Palette.accentBlue) { onStemSplit(library.resolvedURL(for: item)) }
+                            actionButton("SWAP", color: Palette.accentGreen) { onVocalSwap(library.resolvedURL(for: item)) }
+                            actionButton("TRANSCRIBE", color: Palette.accentBlue) { onTranscribe(library.resolvedURL(for: item)) }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
     private var transport: some View {
         HStack(spacing: 10) {
             button("PLAY", color: Palette.accentGreen, disabled: selectedItem == nil) {
@@ -155,6 +258,10 @@ struct LibraryScreen: View {
                 guard let item = selectedItem else { return }
                 NSWorkspace.shared.activateFileViewerSelecting([library.resolvedURL(for: item)])
             }
+            button("OPEN", color: Palette.accentBlue, disabled: selectedItem == nil) {
+                guard let item = selectedItem else { return }
+                NSWorkspace.shared.open(library.resolvedURL(for: item))
+            }
             button("COPY PROVENANCE", color: Palette.accentOrange, disabled: selectedItem?.provenance == nil) {
                 guard let copyText = selectedItem?.provenance?.copyText else { return }
                 NSPasteboard.general.clearContents()
@@ -182,6 +289,17 @@ struct LibraryScreen: View {
         .disabled(disabled)
     }
 
+    private func actionButton(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Typography.monoLabel(title, size: 9)
+                .foregroundColor(color)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(color, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
     private func col(_ text: String) -> some View {
         Typography.monoLabel(text, size: 10)
             .foregroundColor(Palette.ink.opacity(0.64))
@@ -200,6 +318,27 @@ struct LibraryScreen: View {
 
     private var selectedItem: LibraryItem? {
         library.items.first { $0.id == selectedID }
+    }
+
+    private var displayedItems: [LibraryItem] {
+        library.items.filter { item in
+            collection.includes(item) && searchMatches(item)
+        }
+    }
+
+    private func searchMatches(_ item: LibraryItem) -> Bool {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return true }
+        return [item.title, item.promptOrSource, item.relativePath, item.workspaceOperation ?? ""]
+            .contains { $0.lowercased().contains(query) }
+    }
+
+    private func clearHiddenSelection() {
+        guard let selectedID,
+              !displayedItems.contains(where: { $0.id == selectedID }) else { return }
+        player.stop()
+        midiPreview.stop()
+        self.selectedID = nil
     }
 
     @ViewBuilder private var provenance: some View {
