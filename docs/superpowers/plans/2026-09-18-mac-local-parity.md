@@ -1,5 +1,11 @@
 # Mac-local parity implementation plan
 
+**Status:** Complete. Merged to `main` on 2026-09-18 (PR #2, commit `b578046`).
+All five tasks landed: durable SQLite runtime, local model workers, native
+parity workflows (including Vocal Swap and Stem Split), API integration, and
+verification. Remaining gates are manual: real weights, listening, visual and
+Logic acceptance per `docs/evaluations/local-migration.md`.
+
 > **For agentic workers:** Use subagent-driven-development for independent implementation domains, then integrate and review the whole branch. Do not run heavy inference or desktop automation.
 
 **Goal:** Restore the audited server features locally and fix broken local adapters.

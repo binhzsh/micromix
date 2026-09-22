@@ -1,5 +1,11 @@
 # Micromix Phase 0 Baseline Results
 
+> **STALE (2026-09-18).** These results describe the retired `lts1`/Docker
+> deployment and do not validate the Mac-local runtime. Current local-migration
+> status and the active manual acceptance gate are recorded in
+> `docs/evaluations/local-migration.md`; the re-scoped Phase 0 tracker is in
+> `docs/MICROMIX_ROADMAP.md`.
+
 **Gate:** PENDING MANUAL EVALUATION
 
 **Deployed release commit:** `763fb8cd3b59e8422405c6511f797fd78b23f3d5`

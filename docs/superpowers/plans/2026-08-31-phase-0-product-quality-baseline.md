@@ -1,5 +1,11 @@
 # Phase 0 Product-Quality Baseline Implementation Plan
 
+**Status:** Historical (server era). This plan targeted the retired `lts1`/
+Docker deployment; its evaluation artifacts under
+`docs/evaluations/phase-0/` are stale. Phase 0 is re-scoped for the Mac-local
+stack in `docs/MICROMIX_ROADMAP.md` and remains active there (`[~]`) pending
+manual listening, corpus, and Logic acceptance.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use

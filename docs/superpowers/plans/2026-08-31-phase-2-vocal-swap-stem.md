@@ -1,5 +1,13 @@
 # Phase 2 Vocal Swap Stem Workflow Implementation Plan
 
+> **SUPERSEDED (2026-09-18).** This plan targeted the retired `lts1`/
+> Docker/Compose stack (`services/vocal-swap`, `services/micromix-api`). Do not
+> execute it. The product is now Mac-local: Vocal Swap and Stem Split shipped
+> natively with the local sidecar via PR #2 (commit `b578046`) using MLX-RVC
+> and SAM-Audio in `services/local-inference`. Roadmap Phase 2 tracking lives
+> in `docs/MICROMIX_ROADMAP.md`; quality acceptance is pending per
+> `docs/evaluations/local-migration.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Convert one Logic-prepared vocal stem into a selected private target voice, returning one WAV with durable provenance.

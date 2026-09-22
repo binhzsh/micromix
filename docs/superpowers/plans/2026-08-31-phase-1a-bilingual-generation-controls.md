@@ -1,5 +1,10 @@
 # Phase 1A Bilingual Generation Controls Implementation Plan
 
+**Status:** Feature work complete; the trailing deployment steps targeted the
+retired `lts1`/Docker stack and were replaced by the Mac-local migration
+(PR #2, commit `b578046`). English/Vietnamese language intent now ships through
+the local ACE-Step engine; see `docs/MICROMIX_ROADMAP.md` Phase 1.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use
