@@ -22,3 +22,7 @@ buildServer.json
 
 # xcode-build-server compile database (machine-generated)
 .compile
+
+# SwiftPM artifacts from the language-server manifest (MacOS/Package.swift)
+.build/
+.swiftpm/
