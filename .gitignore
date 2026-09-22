@@ -16,3 +16,6 @@ evaluations/private/
 
 # Isolated local model dependency environments
 .venv-*/
+
+# SourceKit-LSP / xcode-build-server project context (machine-generated)
+buildServer.json
