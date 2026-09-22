@@ -8,10 +8,12 @@ import Testing
 struct DeviceWindowTests {
     @Test("studio modes are ordered and numbered one through seven")
     func studioModeOrderAndNumbers() {
-        #expect(DeviceMode.allCases.map(\.rawValue) == [
+        let selectable = DeviceMode.allCases.filter(\.isSelectableMode)
+        #expect(selectable.map(\.rawValue) == [
             "GENERATE", "REIMAGINE", "ANALYZE", "TRANSCRIBE", "VOCAL SWAP", "STEM SPLIT", "LIBRARY",
         ])
-        #expect(DeviceMode.allCases.map(\.displayIndex) == [1, 2, 3, 4, 5, 6, 7])
+        #expect(selectable.map(\.displayIndex) == [1, 2, 3, 4, 5, 6, 7])
+        #expect(DeviceMode.allCases.contains(.guide))
     }
 
     @Test("lyrics layout keeps the primary action visible at the default window size")
@@ -23,7 +25,7 @@ struct DeviceWindowTests {
     @Test("lyrics layout keeps the primary action visible at the minimum window size")
     func lyricsActionVisibleAtMinimumSize() throws {
         let count = try orangePixelCount(width: 900, height: 640, populated: true)
-        #expect(count > 1_000)
+        #expect(count > 1_000, "count=\(count)")
     }
 
     @Test("empty generation input does not present an enabled orange action")

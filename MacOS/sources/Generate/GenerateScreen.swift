@@ -11,112 +11,118 @@ struct GenerateScreen: View {
             Typography.monoLabel("1. GENERATE — TEXT OR LYRICS", size: 11)
                 .foregroundColor(Palette.ink.opacity(0.76))
 
-            DeckPanel {
-                VStack(alignment: .leading, spacing: 8) {
-                    Toggle(isOn: $viewModel.useLyrics) {
-                        Typography.monoLabel("USE LYRICS", size: 11)
-                            .foregroundColor(Palette.ink)
-                    }
-                    .toggleStyle(PanelToggleStyle())
-                    .disabled(viewModel.isBlocked)
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 12) {
+                    DeckPanel {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Toggle(isOn: $viewModel.useLyrics) {
+                                Typography.monoLabel("USE LYRICS", size: 11)
+                                    .foregroundColor(Palette.ink)
+                            }
+                            .toggleStyle(PanelToggleStyle())
+                            .disabled(viewModel.isBlocked)
 
-                    HStack(alignment: .top, spacing: 10) {
-                        editorGroup(
-                            label: "PROMPT",
-                            text: $viewModel.prompt,
-                            placeholder: "DESCRIBE THE TRACK, MOOD, INSTRUMENTS OR ARRANGEMENT"
-                        )
+                            HStack(alignment: .top, spacing: 10) {
+                                editorGroup(
+                                    label: viewModel.useLyrics ? "PROMPT (OPTIONAL)" : "PROMPT",
+                                    text: $viewModel.prompt,
+                                    placeholder: "DESCRIBE THE TRACK, MOOD, INSTRUMENTS OR ARRANGEMENT"
+                                )
 
-                        if viewModel.useLyrics {
-                            editorGroup(
-                                label: "LYRICS",
-                                text: $viewModel.lyrics,
-                                placeholder: "PASTE LYRICS OR WRITE VERSE / CHORUS SECTIONS"
-                            )
-                        }
-                    }
-                }
-            }
-
-            DeckPanel {
-                HStack(alignment: .top, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Typography.monoLabel("ENGINE", size: 10)
-                            .foregroundColor(Palette.ink.opacity(0.68))
-                        HStack(spacing: 6) {
-                            ForEach(["turbo", "quality"], id: \.self) { preset in
-                                let selected = viewModel.preset == preset
-                                Button {
-                                    viewModel.preset = preset
-                                } label: {
-                                    Text(preset == "turbo" ? "XL TURBO" : "XL QUALITY")
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                        .foregroundColor(selected ? .white : Palette.ink)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(selected ? Palette.ink : Palette.deck)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 3)
-                                                .stroke(selected ? Palette.ink : Palette.divider, lineWidth: 1)
-                                        )
+                                if viewModel.useLyrics {
+                                    editorGroup(
+                                        label: "LYRICS",
+                                        text: $viewModel.lyrics,
+                                        placeholder: "PASTE LYRICS OR WRITE VERSE / CHORUS SECTIONS"
+                                    )
                                 }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(preset == "turbo" ? "XL Turbo engine" : "XL Quality engine")
                             }
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Typography.monoLabel("DURATION  \(Int(viewModel.durationSeconds)) SEC", size: 10)
-                            .foregroundColor(Palette.ink.opacity(0.68))
-                        Slider(value: $viewModel.durationSeconds, in: 10...120, step: 5)
-                            .tint(Palette.accentOrange)
-                            .frame(width: 180)
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Typography.monoLabel("VARIATIONS", size: 10)
-                            .foregroundColor(Palette.ink.opacity(0.68))
-                        Stepper("\(viewModel.variationCount)", value: $viewModel.variationCount, in: 1...4)
-                            .font(.system(size: 11, design: .monospaced))
-                            .frame(width: 84)
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Typography.monoLabel("FORMAT", size: 10)
-                            .foregroundColor(Palette.ink.opacity(0.68))
-                        Text(viewModel.format.uppercased())
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Palette.ink)
-                            .padding(.vertical, 6)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .disabled(viewModel.isBlocked)
-            }
-
-            DeckPanel {
-                HStack(alignment: .bottom, spacing: 12) {
-                    compactField("SEED", text: $viewModel.seedText, width: 120)
-                    compactField("BPM", text: $viewModel.bpmText, width: 72)
-                    compactField("KEY", text: $viewModel.key, width: 92)
-                    compactField("METER", text: $viewModel.timeSignature, width: 72)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Typography.monoLabel("VOCAL LANGUAGE", size: 10)
-                            .foregroundColor(Palette.ink.opacity(0.68))
-                        Picker("Vocal language", selection: $viewModel.vocalLanguage) {
-                            ForEach(VocalLanguage.allCases) { language in
-                                Text(language.label).tag(language)
+                    DeckPanel {
+                        HStack(alignment: .top, spacing: 24) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Typography.monoLabel("ENGINE", size: 10)
+                                    .foregroundColor(Palette.ink.opacity(0.68))
+                                HStack(spacing: 6) {
+                                    ForEach(["turbo", "quality"], id: \.self) { preset in
+                                        let selected = viewModel.preset == preset
+                                        Button {
+                                            viewModel.preset = preset
+                                        } label: {
+                                            Text(preset == "turbo" ? "XL TURBO" : "XL QUALITY")
+                                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                                .foregroundColor(selected ? .white : Palette.ink)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 6)
+                                                .background(selected ? Palette.ink : Palette.deck)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 3)
+                                                        .stroke(selected ? Palette.ink : Palette.divider, lineWidth: 1)
+                                                )
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel(preset == "turbo" ? "XL Turbo engine" : "XL Quality engine")
+                                    }
+                                }
                             }
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Typography.monoLabel("DURATION  \(Int(viewModel.durationSeconds)) SEC", size: 10)
+                                    .foregroundColor(Palette.ink.opacity(0.68))
+                                Slider(value: $viewModel.durationSeconds, in: 10...120, step: 5)
+                                    .tint(Palette.accentOrange)
+                                    .frame(width: 180)
+                            }
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Typography.monoLabel("VARIATIONS", size: 10)
+                                    .foregroundColor(Palette.ink.opacity(0.68))
+                                Stepper("\(viewModel.variationCount)", value: $viewModel.variationCount, in: 1...4)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .frame(width: 84)
+                            }
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Typography.monoLabel("FORMAT", size: 10)
+                                    .foregroundColor(Palette.ink.opacity(0.68))
+                                Text(viewModel.format.uppercased())
+                                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(Palette.ink)
+                                    .padding(.vertical, 6)
+                            }
+                            Spacer(minLength: 0)
                         }
-                        .labelsHidden()
-                        .pickerStyle(.segmented)
-                        .frame(width: 235)
+                        .disabled(viewModel.isBlocked)
                     }
-                    Spacer(minLength: 0)
+
+                    DeckPanel {
+                        HStack(alignment: .bottom, spacing: 12) {
+                            compactField("SEED", text: $viewModel.seedText, width: 120)
+                            compactField("BPM", text: $viewModel.bpmText, width: 72)
+                            compactField("KEY", text: $viewModel.key, width: 92)
+                            compactField("METER", text: $viewModel.timeSignature, width: 72)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Typography.monoLabel("VOCAL LANGUAGE", size: 10)
+                                    .foregroundColor(Palette.ink.opacity(0.68))
+                                Picker("Vocal language", selection: $viewModel.vocalLanguage) {
+                                    ForEach(VocalLanguage.allCases) { language in
+                                        Text(language.label).tag(language)
+                                    }
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.segmented)
+                                .frame(width: 235)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .disabled(viewModel.isBlocked)
+                    }
+
                 }
-                .disabled(viewModel.isBlocked)
             }
+            .scrollIndicators(.visible)
 
             HStack(spacing: 8) {
                 PrimaryActionButton(

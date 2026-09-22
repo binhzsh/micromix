@@ -9,8 +9,12 @@ enum DeviceMode: String, CaseIterable, Identifiable {
     case vocalSwap = "VOCAL SWAP"
     case stemSplit = "STEM SPLIT"
     case library = "LIBRARY"
+    case guide = "GUIDE"
 
     var id: String { rawValue }
+
+    /// Workspaces that take part in numbered mode switching (⌘1…⌘7).
+    var isSelectableMode: Bool { self != .guide }
 
     var displayIndex: Int {
         (Self.allCases.firstIndex(of: self) ?? 0) + 1
@@ -154,7 +158,7 @@ private struct ScreenRegion: View {
             if let error = model.errorMessage { return shorten(error) }
             if model.phase == .done { return "SAVED TO LIBRARY" }
             if model.phase == .cancelled { return "CANCELLED" }
-        case .library:
+        case .guide, .library:
             break
         }
         return "00:00"
@@ -186,18 +190,19 @@ private struct ScreenRegion: View {
             return transcribe.isRunning ? "TRANSCRIBING…" : "READY — SELECT AUDIO"
         case .vocalSwap, .stemSplit:
             return connection.isConnected ? "READY — SELECT AUDIO" : "LOCAL INFERENCE UNAVAILABLE"
+        case .guide: return "WORKFLOW GUIDE"
         case .library: return "LIBRARY"
         }
     }
 
     private func format(elapsed: TimeInterval) -> String {
-        let m = Int(elapsed) / 60
-        let s = Int(elapsed) % 60
-        return String(format: "%02d:%02d", m, s)
+        let minutes = Int(elapsed) / 60
+        let seconds = Int(elapsed) % 60
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 
-    private func shorten(_ s: String) -> String {
-        s.count > 42 ? String(s.prefix(41)) + "…" : s
+    private func shorten(_ text: String) -> String {
+        text.count > 42 ? String(text.prefix(41)) + "…" : text
     }
 }
 
@@ -226,21 +231,22 @@ private struct DeckRegion: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
                 Typography.monoLabel("MODE SELECT", size: 10)
                     .foregroundColor(Palette.ink.opacity(0.72))
                 Spacer()
+                guideButton
                 connectionRow
             }
 
             LazyVGrid(columns: columns, spacing: 10) {
-                ForEach(DeviceMode.allCases) { m in
+                ForEach(DeviceMode.allCases.filter(\.isSelectableMode)) { entry in
                     PanelButton(
-                        title: m.rawValue,
-                        index: m.displayIndex,
-                        isActive: m == mode,
-                        action: { mode = m }
+                        title: entry.rawValue,
+                        index: entry.displayIndex,
+                        isActive: entry == mode,
+                        action: { mode = entry }
                     )
                 }
             }
@@ -290,6 +296,8 @@ private struct DeckRegion: View {
                 localInferenceAvailable: connection.isConnected,
                 onOpenLibrary: { mode = .library }
             )
+        case .guide:
+            WorkflowGuideView(mode: $mode)
         case .library:
             LibraryScreen(
                 library: library,
@@ -319,6 +327,27 @@ private struct DeckRegion: View {
                 }
             )
         }
+    }
+
+    private var guideButton: some View {
+        Button {
+            mode = .guide
+        } label: {
+            Label("WORKFLOW GUIDE", systemImage: "questionmark.circle")
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .tracking(1.0)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .background(mode == .guide ? Palette.ink : Palette.deck)
+        .foregroundColor(mode == .guide ? Palette.deck : Palette.ink)
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(Palette.ink.opacity(0.85), lineWidth: 1.5)
+        )
+        .keyboardShortcut("?", modifiers: [.command])
+        .accessibilityHint("Shows the end-to-end workflow guide")
     }
 
     private var connectionRow: some View {
