@@ -1,126 +1,153 @@
-# Micromix Phase 0 Baseline Results
+# Micromix Phase 0 Baseline Results — Local Runtime
 
-> **STALE (2026-09-18).** These results describe the retired `lts1`/Docker
-> deployment and do not validate the Mac-local runtime. Current local-migration
-> status and the active manual acceptance gate are recorded in
-> `docs/evaluations/local-migration.md`; the re-scoped Phase 0 tracker is in
-> `docs/MICROMIX_ROADMAP.md`.
+**Gate:** PENDING MANUAL EVALUATION (local Mac runtime)
 
-**Gate:** PENDING MANUAL EVALUATION
-
-**Deployed release commit:** `763fb8cd3b59e8422405c6511f797fd78b23f3d5`
-
-**Automated verification:** PASS
-
-**Manual listening and Logic import:** PENDING
-
-**Open release-blocking findings:** 0 known; manual evaluation not yet complete
+The previous contents of this file described the retired `lts1`/Docker
+deployment. That baseline is preserved in git history (commit `763fb8cd`,
+2026-08-31) and no longer applies. This document is the live scorecard for the
+Mac-local runtime defined by `docs/evaluations/local-migration.md`.
 
 ## Environment
 
-Captured on 2026-08-31 in America/Los_Angeles.
+Captured 2026-09-22 on the development Mac (America/Los_Angeles).
 
 | Component | Identity |
 | --- | --- |
-| Mac `main` | `763fb8cd3b59e8422405c6511f797fd78b23f3d5` |
-| GitHub `origin/main` at deployment | `763fb8cd3b59e8422405c6511f797fd78b23f3d5` |
-| `lts1` checkout | `763fb8cd3b59e8422405c6511f797fd78b23f3d5` |
-| Micromix API image | `sha256:46d4b9011a3669bc3e4b550f45c49873c6e8481ec526d67e17dfbc4105c1f77e` |
-| ACE-Step image | `sha256:b874a12201949767bd3a36d5c623fdf4d1af2291e0ecb9b775fa437efd2b965c` |
-| MuScriptor image | `sha256:2af17de70fa47615fa7739454f91ef8310e692f1b049fdaa6398ec782c80e204` |
-| ACE checkpoints | `acestep-v15-xl-turbo`, `acestep-v15-xl-sft` |
-| ACE inference steps | Turbo 8; Quality 50 |
-| ACE source revision | `dce621408bee8c31b4fcf4811682eb9359e1bc94` |
-| MuScriptor | `0.3.0`, Medium profile |
+| Repo commit under test | `4cf200df32c27f62d68eee06c72bdcce7f8394b9` (`docs: reconcile plan statuses after local migration`) |
+| Runtime | native macOS app + local FastAPI sidecar at `http://127.0.0.1:8902` (LaunchAgent `com.micromix.local-inference`) |
+| Sidecar commit revision pins | ACE `ca1e85fe`, MuScriptor `7f213afe`, MLX-Audio `40b27a21`, MLX-RVC `f2663353` (from `local_inference/engines.py`) |
+| ACE checkpoints | `acestep-v15-xl-turbo` (8 steps), `acestep-v15-xl-sft` (50 steps) — weights present in `~/.cache/huggingface/hub` and `~/.cache/ace-step/diffusers` |
+| MiniMax | `mlx-community/MiniMax-Music3-mxfp8` (text-only generation, 30 steps) — weights present |
+| SAM-Audio stem split | `mlx-community/sam-audio-large` — weights present |
+| MuScriptor | `muscriptor 0.3.0` in isolated `.venv-muscriptor`; gated license access required for transcription (verify before step 4) |
+| MLX-RVC voice models | `base` only (`services/local-inference/data/voice-models/base.safetensors`); private RVC voice(s) must be imported before step 5 |
+| ACE source revision | verify at setup: `git -C <ace checkout> rev-parse HEAD` (pin expected to match `ca1e85fe`) |
+| Python envs | `.venv-ace`, `.venv-muscriptor`, `.venv-mlx` (isolated per engine) |
 
-## Automated tests
+Fill in before recording results:
+
+- Sidecar process uptime / restart count at eval start: ______
+- Mac unified memory available at eval start: ______
+- MuScriptor license status (working / expired): ______
+- Private voice model(s) imported (name + SHA-256 revision shown by app): ______
+
+## Automated evidence (local runtime)
 
 | Suite | Method | Result |
 | --- | --- | --- |
-| macOS Swift | `xcodegen generate`, then full `xcodebuild test` | PASS — 72 tests in 14 suites |
-| Micromix API | frozen `uv:0.7.22-python3.12-bookworm` container | PASS — 78 tests |
-| MuScriptor worker | frozen `uv:0.9.30-python3.12-bookworm` container | PASS — 7 tests |
-| ACE supervisor | isolated `uv` container with pinned test dependencies | PASS — 4 tests |
+| Sidecar Python | `cd services/local-inference && .venv/bin/python -m unittest discover -s tests` | **39 pass (re-verified 2026-09-22 at `4cf200df`)** — API contracts, controls, private voice revisions, adapter forwarding, durable storage, atomic publication, cancellation, recovery, pre-commit crashes, retention, streaming uploads |
+| macOS Swift | `xcodegen generate`, then `xcodebuild test -project Micromix.xcodeproj -scheme Micromix -destination 'platform=macOS'` | 80 pass in 14 suites (2026-09-18); DeviceWindowTests excluded (visual rendering). Model calls mocked in adapter tests; runtime tests use real lightweight subprocesses. No weights or inference run. |
+| Independent re-review | runtime/API re-review of the local migration | no blocking defects found |
 
-The server host does not install `uv` globally. Tests used disposable containers
-with the repository mounted read-only and project environments under `/tmp`.
-The MuScriptor and ACE runs emitted non-failing pytest cache warnings because
-the repository mount was read-only. MuScriptor also emitted the upstream
-Starlette `httpx` deprecation warning.
+Re-run the Swift suite before the manual gate if native code changes since 2026-09-18.
 
-## Deployment health
+## Manual scorecard
 
-`docker compose up -d --build` rebuilt and recreated all three services from the
-deployed release commit.
+Corpus: `evaluations/private/corpus-manifest.json` (private, git-ignored).
+Current cases and their sources:
 
-After application startup:
+| Case | Category | Source | Duration | Vocals | Operations |
+| --- | --- | --- | --- | --- | --- |
+| Case | Category | Source | Duration | Vocals | Operations |
+| --- | --- | --- | --- | --- | --- |
+| `clean-studio` | clean_studio | `sources/case-a.m4a` (284 s) | medium | vi, polyphonic | reference, remix, repaint, transcribe |
+| `expressive-vocal` | expressive_vocal | `sources/case-a.m4a` (284 s) | medium | vi, polyphonic | reference, repaint |
+| `dense-mix` | dense_mastered_mix | `sources/case-b.m4a` (301 s) | medium | vi, polyphonic | reference, remix, repaint, transcribe |
+| `long-source` | long_source | `sources/case-c.m4a` (653 s) | long | vi, polyphonic | reference, remix, repaint, transcribe |
 
-- gateway service: `micromix-api`, status `ok`;
-- database: `ready`;
-- GPU router: `ready`, 24,113 MiB free before inference;
-- ACE-Step worker: `cold`;
-- MuScriptor worker: `cold`;
-- generation presets: Turbo and Quality; and
-- transcription instruments: 36.
+All sources are 2 ch / 48 kHz ALAC-in-M4A. Transcribe format coverage
+(WAV/MP3/M4A): derive WAV and MP3 variants from these files before step 4 if
+the app does not accept M4A directly for that operation.
 
-The first probe was issued approximately one second after Compose reported the
-API container as running and received a connection reset while Uvicorn was
-still starting. Container inspection showed no restart or crash; logs then
-reported application startup complete. The unchanged cold smoke passed after
-readiness. Disposition: `documented-limitation` for operational startup timing;
-no application defect was observed.
+Coverage gaps vs the Phase 0 corpus requirement (roadmap): `english_vocal`,
+`live_or_noisy`, `instrumental_only`. Note in findings if a gap materially
+limits what this evaluation can conclude; do not block on it.
 
-## Required API routes
+Scoring: **Usefulness** and **Source preservation** are `1-5`; everything else
+is pass/fail or free text. A score of 1-2 on any row is release-blocking until
+explained as an accepted limitation.
 
-The deployed OpenAPI document includes:
+### 1. Workspaces, controls, connection
 
-```text
-/v1/assets
-/v1/assets/{asset_id}
-/v1/capabilities
-/v1/health
-/v1/jobs
-/v1/jobs/generation
-/v1/jobs/reference-generation
-/v1/jobs/remix
-/v1/jobs/repaint
-/v1/jobs/transcription
-/v1/jobs/{job_id}
-/v1/jobs/{job_id}/cancel
-```
+| Check | Result | Notes |
+| --- | --- | --- |
+| All seven workspaces open without error | P/F | |
+| Connection status shows sidecar ready | P/F | |
+| Keyboard access through each workspace | P/F | |
 
-## Real cold-generation smoke
+### 2. Generate (Turbo + Quality, EN/VI, fixed seeds, 4 variations)
 
-| Field | Value |
+Use the same prompt and seed per language so results are comparable. Record
+the seed(s) used: ______
+
+| Check | EN result | VI result | Notes |
+| --- | --- | --- | --- |
+| Metadata intent honored (bpm/key/instrument) | 1-5 | 1-5 | |
+| Intelligibility of any vocals / coherence of instrumental | 1-5 | 1-5 | |
+| Vietnamese tones correct (VI column only) | — | P/F | |
+| Four variations produced, distinct but on-prompt | P/F | P/F | |
+| Reproducible with same seed (re-run one variation) | P/F | P/F | |
+| Runtime per variation (Turbo / Quality) | ______ s | ______ s | |
+
+### 3. Reimagine — reference, cover, repaint
+
+| Case | Check | Result | Notes |
+| --- | --- | --- | --- |
+| `clean-studio` | Reference influence visible without copying source | 1-5 | |
+| `dense-mix` | Cover strength (style shift vs source fidelity) | 1-5 | |
+| `expressive-vocal` | Repaint on valid interval: surrounding audio preserved, boundaries clean | P/F + 1-5 | interval used: ______ |
+
+### 4. Transcribe + Logic MIDI import
+
+MuScriptor license must be confirmed working before this section.
+
+| Case | Check | Result | Notes |
+| --- | --- | --- | --- |
+| `clean-studio` (m4a) | Tracks present, instruments sensible with filter on/off | 1-5 | |
+| `dense-mix` | Polyphonic separation quality | 1-5 | |
+| `long-source` | Long-file completion, no truncation | P/F | runtime ______ s |
+| Any case | Tempo detection: grid aligned (note: strict mode may reject unstable beats) | P/F | bpm detected: ______ |
+| Any case | Imported into Logic: tracks/grid correct | P/F | Logic version ______ |
+
+Format coverage: WAV / MP3 / M4A — mark which were exercised: ______
+
+### 5. Vocal Swap + Stem Split
+
+Requires an imported private voice model (revision recorded above).
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| Convert prepared vocal with two private voices (or `base` if only one available) | identity 1-5 / intelligibility 1-5 | voices: ______ |
+| Pitch offsets applied as requested | P/F | offsets: ______ |
+| Optional index + index_rate path works | P/F | |
+| Provenance shows engine, revision, voice model revision | P/F | |
+| Stem split (SAM-Audio): target and residual both usable | 1-5 | description used: ______ |
+
+### 6. Cancellation, restart recovery, Library save
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| Cancel a queued job → terminal state consistent | P/F | |
+| Cancel a running job → no orphaned output published | P/F | |
+| Restart sidecar mid-job → durable reattachment, inputs retained | P/F | job id: ______ |
+| Save selected results to Library | P/F | |
+
+### 7. Resource and defect log
+
+- Peak unified memory during heaviest job (Quality generation / long transcribe): ______
+- Defects found (severity: release-blocking / cosmetic):
+  1. ______
+  2. ______
+
+## Verdict
+
+| Item | Status |
 | --- | --- |
-| Job ID | `b4d662de274f4c43ba8d1f9db7f508f5` |
-| Upstream ID | `3e84146e-4ea3-426b-8b9a-a439e56cbdfa` |
-| Operation | text generation |
-| Prompt | `warm lo-fi drums and electric piano, instrumental` |
-| Preset | Turbo |
-| Requested duration | 10 seconds |
-| Effective seed | `3189942306` |
-| Variations | 1 |
-| Initial worker state | cold |
-| Created | `2026-08-31T21:48:31.282191Z` |
-| Succeeded | `2026-08-31T21:51:30.250763Z` |
-| End-to-end duration | approximately 179 seconds |
-| Terminal state | succeeded |
-| Output media | stereo WAV, 48 kHz, 10.000 seconds |
-| Asset ID | `48c37ebee5b6438384adba01311d8ba7` |
-| Size | 1,920,078 bytes |
-| SHA-256 | `56c3cb946a28a0295822e486311aacf0e891f55bf6deac205b68a9fdd65900f9` |
-| Download verification | size and SHA-256 match durable asset metadata |
-| Worker state after completion | cold; GPU released |
-| Peak VRAM | unavailable from current telemetry |
+| Automated tests (local) | PASS (re-verified: ______) |
+| Sidecar ↔ app API contract | P/F |
+| All creative operations have a recorded manual result | P/F |
+| Release-blocking findings open | count: ______ |
+| **Phase 0 gate** | PENDING / PASS / FAIL — date: ______ |
 
-This smoke verifies submission, GPU acquisition, cold model start, polling,
-inference, durable output metadata, download, checksum, and GPU release. Audio
-quality remains part of the manual corpus gate.
-
-## Manual evaluation
-
-Manual scorecards are pending for Generate, Reference, Remix/Cover, Repaint,
-Transcribe, real-job reattachment, provenance, and Logic import. Phase 0 cannot
-pass until these checks are completed and every release-blocking finding is
-resolved.
+Automatic full-song vocal preparation/mixing, Vocal Improve, Mashup and
+Complete are future product work (roadmap Phase 2+), not part of this gate.
