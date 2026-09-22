@@ -57,6 +57,42 @@ private final class FakeLibrary: LibraryStoring, @unchecked Sendable {
     }
 }
 
+/// A durable submit that completes only after `releaseSubmit`, and that does
+/// not observe task cancellation — the restart-race window the flow must guard.
+@MainActor
+private final class SuspendedSubmitGenerator: GenerateServicing, DurableGenerationSubmitting, DurableJobServicing, DurableJobCancelling, @unchecked Sendable {
+    private(set) var submitStarted = false
+    var releaseSubmit = false
+    private(set) var cancelledJobIDs: [String] = []
+
+    func generate(input: String, lyrics: String?, preset: String, durationSeconds: Double, options: GenerationOptions) async throws -> Data {
+        throw CancellationError()
+    }
+
+    private var submittedJob: RemoteJob {
+        get throws {
+            try JSONDecoder().decode(
+                RemoteJob.self,
+                from: Data(#"{"id":"job-1","kind":"generation","state":"running","progress":0,"error":null}"#.utf8)
+            )
+        }
+    }
+
+    func submitGeneration(input: String, lyrics: String?, preset: String, durationSeconds: Double, options: GenerationOptions) async throws -> RemoteJob {
+        submitStarted = true
+        while !releaseSubmit {
+            await Task.yield()
+        }
+        return try submittedJob
+    }
+
+    func job(id: String) async throws -> RemoteJob { try submittedJob }
+
+    func fetchOutputs(for job: RemoteJob) async throws -> [DownloadedRemoteAsset] { [] }
+
+    func cancel(jobID: String) async throws { cancelledJobIDs.append(jobID) }
+}
+
 @MainActor
 @Suite("GenerateViewModel")
 struct GenerateViewModelTests {
@@ -188,6 +224,56 @@ struct GenerateViewModelTests {
         await waitUntil { api.cancelledJobID == "job-1" }
 
         #expect(api.cancelledJobID == "job-1")
+    }
+
+    @Test("durable generation publishes every recovered alternative")
+    func durableGenerationPublishesAllAlternatives() async throws {
+        let api = FakeGenerator()
+        let wav = Data("wav!".utf8)
+        let sha = "75f56ac1ef945e2a21f45f004d29a52e618474d44dd8d36e318b3dba7c3b6de6"
+        api.outputs = [
+            DownloadedRemoteAsset(
+                asset: RemoteAsset(id: "out-1", filename: "a.wav", mediaType: "audio/wav", sizeBytes: wav.count, sha256: sha, downloadUrl: "/v1/assets/out-1"),
+                data: wav
+            ),
+            DownloadedRemoteAsset(
+                asset: RemoteAsset(id: "out-2", filename: "b.wav", mediaType: "audio/wav", sizeBytes: wav.count, sha256: sha, downloadUrl: "/v1/assets/out-2"),
+                data: wav
+            ),
+        ]
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = LocalLibrary(directory: directory)
+        let reattacher = JobReattacher(api: api, library: library, pollInterval: .zero)
+        let vm = GenerateViewModel(api: api, library: library, reattacher: reattacher)
+        vm.prompt = "two takes"
+        vm.variationCount = 2
+
+        #expect(vm.start())
+        await waitUntil { vm.phase == .done }
+
+        #expect(vm.results.count == 2)
+        #expect(library.items.count == 2)
+    }
+
+    @Test("cancelling before acceptance cancels the job that arrives late")
+    func cancellingBeforeAcceptanceCancelsLateJob() async throws {
+        let api = SuspendedSubmitGenerator()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = LocalLibrary(directory: directory)
+        let reattacher = JobReattacher(api: api, library: library, pollInterval: .zero)
+        let vm = GenerateViewModel(api: api, library: library, reattacher: reattacher)
+        vm.prompt = "cancel before acceptance"
+
+        #expect(vm.start())
+        await waitUntil { api.submitStarted }
+        vm.cancel()
+
+        api.releaseSubmit = true
+        await waitUntil { api.cancelledJobIDs == ["job-1"] }
+
+        #expect(api.cancelledJobIDs == ["job-1"])
+        #expect(vm.results.isEmpty)
+        #expect(vm.phase == .cancelled)
     }
 
     // MARK: - helper

@@ -11,14 +11,6 @@ extension JobReattacher: ReimagineJobReattaching {}
 
 @MainActor
 final class ReimagineViewModel: ObservableObject {
-    enum Phase: Equatable {
-        case idle
-        case running
-        case done
-        case cancelled
-        case error(String)
-    }
-
     @Published var operation: ReimagineOperation = .reference
     @Published var sourceURL: URL?
     @Published var prompt = ""
@@ -44,17 +36,18 @@ final class ReimagineViewModel: ObservableObject {
     @Published var startSeconds: Double = 0
     @Published var endSeconds: Double = 10
     @Published var repaintStrength: Double = 0.5
-    @Published private(set) var phase: Phase = .idle
-    @Published private(set) var results: [LibraryItem] = []
-    @Published private(set) var errorMessage: String?
+
+    var phase: JobStatus { flow.status }
+    var elapsed: TimeInterval { flow.elapsed }
+    var results: [LibraryItem] { flow.results }
+    var errorMessage: String? { flow.errorMessage }
 
     private let api: any DurableReimagineSubmitting
     private let canceller: any DurableJobCancelling
     private let reattacher: any ReimagineJobReattaching
     private let sourceReader: @Sendable (URL) throws -> Data
-    private var task: Task<Void, Never>?
-    private var currentRunID: UUID?
-    private var submittedJob: (runID: UUID, jobID: String)?
+    private let flow = JobFlow()
+    private var cancellables = Set<AnyCancellable>()
     private var isApplyingPrefill = false
     private var bpmWasManuallyEdited = false
     private var keyWasManuallyEdited = false
@@ -68,9 +61,12 @@ final class ReimagineViewModel: ObservableObject {
         self.canceller = api
         self.reattacher = reattacher
         self.sourceReader = sourceReader
+        flow.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
-    var isRunning: Bool { phase == .running }
+    var isRunning: Bool { flow.isRunning }
 
     func prefill(from analysis: LocalMusicAnalysis) {
         isApplyingPrefill = true
@@ -87,60 +83,22 @@ final class ReimagineViewModel: ObservableObject {
     func start() -> Bool {
         guard !isRunning else { return false }
         guard let sourceURL else {
-            fail("SELECT AN AUDIO FILE")
+            flow.reject("SELECT AN AUDIO FILE")
             return false
         }
         let operation = self.operation
         let prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else {
-            fail("ENTER A PROMPT")
+            flow.reject("ENTER A PROMPT")
             return false
         }
 
-        let trimmedSeed = seedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let seed: UInt32?
-        if trimmedSeed.isEmpty {
-            seed = nil
-        } else if let parsed = UInt32(trimmedSeed) {
-            seed = parsed
-        } else {
-            fail("SEED MUST BE 0–4,294,967,295")
-            return false
-        }
-        guard (1...4).contains(variationCount) else {
-            fail("VARIATIONS MUST BE 1–4")
-            return false
-        }
-
+        guard let settings = validatedSettings(for: operation) else { return false }
+        let seed = settings.seed
+        let bpm = settings.bpm
         let durationSeconds = self.durationSeconds
-        let trimmedBPM = bpmText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let bpm: Int?
-        if operation == .reference {
-            guard durationSeconds.isFinite, (10...600).contains(durationSeconds) else {
-                fail("DURATION MUST BE 10–600 SECONDS")
-                return false
-            }
-            if trimmedBPM.isEmpty {
-                bpm = nil
-            } else if let parsed = Int(trimmedBPM), (30...300).contains(parsed) {
-                bpm = parsed
-            } else {
-                fail("BPM MUST BE 30–300")
-                return false
-            }
-        } else {
-            bpm = nil
-        }
-
         let startSeconds = self.startSeconds
         let endSeconds = self.endSeconds
-        if operation == .repaint {
-            let interval = endSeconds - startSeconds
-            guard startSeconds.isFinite, endSeconds.isFinite, (3...90).contains(interval) else {
-                fail("REPAINT RANGE MUST BE 3–90 SECONDS")
-                return false
-            }
-        }
 
         let api = self.api
         let canceller = self.canceller
@@ -154,114 +112,122 @@ final class ReimagineViewModel: ObservableObject {
         let vocalLanguage = self.vocalLanguage
         let sourceStrength = self.sourceStrength
         let repaintStrength = self.repaintStrength
-        let runID = UUID()
-        currentRunID = runID
-        phase = .running
-        errorMessage = nil
-        results = []
 
-        task = Task {
-            do {
-                let data = try await Task.detached(priority: .userInitiated) {
-                    try sourceReader(sourceURL)
-                }.value
-                let asset = try await api.uploadAsset(
-                    data: data,
-                    filename: sourceURL.lastPathComponent,
-                    mediaType: Self.mediaType(for: sourceURL)
+        return flow.start { run in
+            let data = try await Task.detached(priority: .userInitiated) {
+                try sourceReader(sourceURL)
+            }.value
+            let asset = try await api.uploadAsset(
+                data: data,
+                filename: sourceURL.lastPathComponent,
+                mediaType: Self.mediaType(for: sourceURL)
+            )
+            let request: ReimagineRequest
+            switch operation {
+            case .reference:
+                request = .reference(
+                    prompt: prompt,
+                    lyrics: lyrics,
+                    preset: preset,
+                    seed: seed,
+                    variationCount: variationCount,
+                    durationSeconds: durationSeconds,
+                    bpm: bpm,
+                    key: key,
+                    timeSignature: timeSignature,
+                    vocalLanguage: vocalLanguage,
+                    sourceAssetID: asset.id
                 )
-                let request: ReimagineRequest
-                switch operation {
-                case .reference:
-                    request = .reference(
-                        prompt: prompt,
-                        lyrics: lyrics,
-                        preset: preset,
-                        seed: seed,
-                        variationCount: variationCount,
-                        durationSeconds: durationSeconds,
-                        bpm: bpm,
-                        key: key,
-                        timeSignature: timeSignature,
-                        vocalLanguage: vocalLanguage,
-                        sourceAssetID: asset.id
-                    )
-                case .remix:
-                    request = .remix(
-                        prompt: prompt,
-                        lyrics: lyrics,
-                        preset: preset,
-                        seed: seed,
-                        variationCount: variationCount,
-                        sourceStrength: sourceStrength,
-                        sourceAssetID: asset.id
-                    )
-                case .repaint:
-                    request = .repaint(
-                        prompt: prompt,
-                        lyrics: lyrics,
-                        preset: preset,
-                        seed: seed,
-                        variationCount: variationCount,
-                        startSeconds: startSeconds,
-                        endSeconds: endSeconds,
-                        repaintStrength: repaintStrength,
-                        sourceAssetID: asset.id
-                    )
-                }
-                let job = try await api.submitReimagine(request)
-                try reattacher.track(job)
-                guard currentRunID == runID, !Task.isCancelled else {
-                    Task { try? await canceller.cancel(jobID: job.id) }
-                    return
-                }
-                submittedJob = (runID, job.id)
-                let recovered = try await reattacher.recoverSubmittedJob(id: job.id)
-                guard currentRunID == runID, !Task.isCancelled else { return }
-                results = recovered
-                submittedJob = nil
-                currentRunID = nil
-                task = nil
-                phase = .done
-            } catch {
-                guard currentRunID == runID else { return }
-                submittedJob = nil
-                currentRunID = nil
-                task = nil
-                if Self.isCancellation(error) {
-                    errorMessage = nil
-                    phase = .cancelled
-                } else {
-                    let message = (error as? MicromixAPIError)?.errorDescription
-                        ?? error.localizedDescription
-                    fail(message)
-                }
+            case .remix:
+                request = .remix(
+                    prompt: prompt,
+                    lyrics: lyrics,
+                    preset: preset,
+                    seed: seed,
+                    variationCount: variationCount,
+                    sourceStrength: sourceStrength,
+                    sourceAssetID: asset.id
+                )
+            case .repaint:
+                request = .repaint(
+                    prompt: prompt,
+                    lyrics: lyrics,
+                    preset: preset,
+                    seed: seed,
+                    variationCount: variationCount,
+                    startSeconds: startSeconds,
+                    endSeconds: endSeconds,
+                    repaintStrength: repaintStrength,
+                    sourceAssetID: asset.id
+                )
+            }
+            let job = try await api.submitReimagine(request)
+            guard run.isCurrent() else {
+                Task { try? await canceller.cancel(jobID: job.id) }
+                return []
+            }
+            run.accept(job.id)
+            try reattacher.track(job)
+            return try await reattacher.recoverSubmittedJob(id: job.id)
+        }
+    }
+
+    /// Numeric control validation shared by every operation. Rejects the run
+    /// through `flow` and returns nil when a value is out of range.
+    private func validatedSettings(for operation: ReimagineOperation) -> ValidatedSettings? {
+        let trimmedSeed = seedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let seed: UInt32?
+        if trimmedSeed.isEmpty {
+            seed = nil
+        } else if let parsed = UInt32(trimmedSeed) {
+            seed = parsed
+        } else {
+            flow.reject("SEED MUST BE 0–4,294,967,295")
+            return nil
+        }
+        guard (1...4).contains(variationCount) else {
+            flow.reject("VARIATIONS MUST BE 1–4")
+            return nil
+        }
+
+        let trimmedBPM = bpmText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bpm: Int?
+        if operation == .reference {
+            guard durationSeconds.isFinite, (10...600).contains(durationSeconds) else {
+                flow.reject("DURATION MUST BE 10–600 SECONDS")
+                return nil
+            }
+            if trimmedBPM.isEmpty {
+                bpm = nil
+            } else if let parsed = Int(trimmedBPM), (30...300).contains(parsed) {
+                bpm = parsed
+            } else {
+                flow.reject("BPM MUST BE 30–300")
+                return nil
+            }
+        } else {
+            bpm = nil
+        }
+
+        if operation == .repaint {
+            let interval = endSeconds - startSeconds
+            guard startSeconds.isFinite, endSeconds.isFinite, (3...90).contains(interval) else {
+                flow.reject("REPAINT RANGE MUST BE 3–90 SECONDS")
+                return nil
             }
         }
-        return true
+        return ValidatedSettings(seed: seed, bpm: bpm)
+    }
+
+    private struct ValidatedSettings {
+        let seed: UInt32?
+        let bpm: Int?
     }
 
     func cancel() {
-        let cancelledRunID = currentRunID
-        let acceptedJobID = submittedJob.flatMap { submitted in
-            submitted.runID == cancelledRunID ? submitted.jobID : nil
-        }
-        currentRunID = nil
-        submittedJob = nil
-        task?.cancel()
-        task = nil
-        if isRunning {
-            errorMessage = nil
-            phase = .cancelled
-        }
-        if let acceptedJobID {
+        if let acceptedJobID = flow.cancel() {
             Task { try? await canceller.cancel(jobID: acceptedJobID) }
         }
-    }
-
-    private func fail(_ message: String) {
-        errorMessage = message
-        phase = .error(message)
     }
 
     private static func mediaType(for url: URL) -> String {
@@ -277,10 +243,5 @@ final class ReimagineViewModel: ObservableObject {
     private static func optionalTrimmed(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private static func isCancellation(_ error: Error) -> Bool {
-        error is CancellationError
-            || (error as? URLError)?.code == .cancelled
     }
 }

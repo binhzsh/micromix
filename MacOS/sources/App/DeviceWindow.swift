@@ -139,7 +139,7 @@ private struct ScreenRegion: View {
             if generate.phase == .done { return "GENERATED" }
             if generate.phase == .cancelled { return "CANCELLED" }
         case .reimagine:
-            if reimagine.isRunning { return "REIMAGINING" }
+            if reimagine.isRunning { return format(elapsed: reimagine.elapsed) }
             if let message = reimagine.errorMessage { return shorten(message) }
             if reimagine.phase == .done { return "REIMAGINED" }
             if reimagine.phase == .cancelled { return "CANCELLED" }

@@ -137,6 +137,17 @@ struct GenerateScreen: View {
                     cancelButton
                 }
             }
+
+            if let error = viewModel.errorMessage {
+                Text(error)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Palette.accentRed)
+            }
+            if viewModel.phase == .done {
+                Text("Saved \(viewModel.results.count) result(s) to Library.")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Palette.ink.opacity(0.72))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }

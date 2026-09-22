@@ -173,6 +173,17 @@ struct ReimagineScreen: View {
                         .foregroundColor(Palette.ink.opacity(0.72))
                         .buttonStyle(.borderless)
                 }
+
+                if let error = viewModel.errorMessage {
+                    Text(error)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Palette.accentRed)
+                }
+                if viewModel.phase == .done {
+                    Text("Saved \(viewModel.results.count) result(s) to Library.")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Palette.ink.opacity(0.72))
+                }
             }
         }
     }

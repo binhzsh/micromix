@@ -19,3 +19,6 @@ evaluations/private/
 
 # SourceKit-LSP / xcode-build-server project context (machine-generated)
 buildServer.json
+
+# xcode-build-server compile database (machine-generated)
+.compile
