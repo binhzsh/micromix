@@ -198,9 +198,14 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
     the saved asset through the shared `AudioPlayer`, so only one stream plays
     at a time. Transcribe results are MIDI and keep using the Library preview.
 
-- [ ] **5.2 Compare alternatives**
+- [x] **5.2 Compare alternatives**
   - Select multiple variations, A/B compare
   - Simple toggle between two playing sources
+  - Landed 2026-10-16 in the Library ALTERNATIVES row: pin the selected
+    variation into slots A and B, then a single A⇄B toggle switches playback
+    between the two pinned sources through the shared AudioPlayer. Pins are
+    validated against the current alternatives group, so stale pins from
+    another job never appear.
 
 - [ ] **5.3 Waveform peek**
   - Show mini waveform in result rows
@@ -255,13 +260,12 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ## Next Action
 
-Phase 5.1 (inline play/pause chips on result rows) is landed and covered by
-the headless test suite. The next implementation increment, when resumed, is
-Phase 5.2: compare alternatives — a simple A/B toggle between two playing
-sources, building on the shared `AudioPlayer` and the alternatives grouping
-from Phase 3.2.
+Phase 5.2 (A/B compare toggle between two pinned alternatives) is landed and
+covered by the headless test suite. The next implementation increment, when
+resumed, is Phase 5.3: waveform peek — a mini waveform in result rows so the
+user can visually confirm an asset before chaining it into the next operation.
 
-Phases 1–4 and 5.1 are landed and covered by headless tests (113 native tests
-in 19 suites pass; visual `DeviceWindowTests` still excluded). The Phase 0
-manual quality gate — listening, Logic import, bilingual review — remains the
-user's manual acceptance step.
+Phases 1–4, 5.1, and 5.2 are landed and covered by headless tests (117 native
+tests in 20 suites pass; visual `DeviceWindowTests` still excluded). The Phase
+0 manual quality gate — listening, Logic import, bilingual review — remains
+the user's manual acceptance step.

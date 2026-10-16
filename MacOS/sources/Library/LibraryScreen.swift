@@ -14,6 +14,8 @@ struct LibraryScreen: View {
     @State private var collection: LibraryCollection = .all
     @State private var searchText = ""
     @State private var showsTrail = false
+    @State private var compareA: LibraryItem?
+    @State private var compareB: LibraryItem?
 
     private let columns = [
         GridItem(.fixed(44), alignment: .leading),
@@ -401,6 +403,7 @@ struct LibraryScreen: View {
                             .font(.system(size: 9, weight: .semibold, design: .monospaced))
                             .foregroundColor(Palette.ink.opacity(0.68))
                             .disabled(library.items.nextAlternative(after: item) == nil)
+                            abCompareControls(for: item, group: alternatives(for: item))
                         }
                     }
                     if let provenance = item.provenance {
@@ -533,6 +536,50 @@ struct LibraryScreen: View {
 
     private func alternatives(for item: LibraryItem) -> [LibraryItem] {
         library.items.alternatives(for: item)
+    }
+
+    /// A/B compare controls (Phase 5.2): pin the selected item into one of two
+    /// slots, then toggle playback between the pinned alternatives. Pins are
+    /// validated against the current alternatives group, so stale pins from a
+    /// different job simply disappear until re-pinned.
+    @ViewBuilder private func abCompareControls(for item: LibraryItem, group: [LibraryItem]) -> some View {
+        let pinnedA = compareA.flatMap { pinned in group.first { $0.id == pinned.id } }
+        let pinnedB = compareB.flatMap { pinned in group.first { $0.id == pinned.id } }
+        Button("A") { compareA = item }
+            .buttonStyle(.borderless)
+            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .foregroundColor(pinnedA?.id == item.id ? Palette.accentOrange : Palette.ink.opacity(0.68))
+            .accessibilityLabel("Pin this alternative as A")
+        Button("B") { compareB = item }
+            .buttonStyle(.borderless)
+            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .foregroundColor(pinnedB?.id == item.id ? Palette.accentOrange : Palette.ink.opacity(0.68))
+            .accessibilityLabel("Pin this alternative as B")
+        if let a = pinnedA, let b = pinnedB, a.id != b.id {
+            Button("A⇄B") { toggleCompare(a: a, b: b) }
+                .buttonStyle(.borderless)
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .foregroundColor(Self.isCompareLoaded(a: a, b: b, loadedID: player.currentItem?.id)
+                    ? Palette.accentGreen : Palette.ink.opacity(0.68))
+                .accessibilityLabel("Toggle playback between the two pinned alternatives")
+        }
+    }
+
+    /// Decides which pinned item a compare toggle should play next. Pure so it
+    /// can be tested headlessly: swaps to the other slot when one is loaded,
+    /// otherwise starts with A.
+    static func compareNext(currentID: UUID?, a: LibraryItem, b: LibraryItem) -> LibraryItem {
+        currentID == a.id ? b : a
+    }
+
+    private func toggleCompare(a: LibraryItem, b: LibraryItem) {
+        let next = Self.compareNext(currentID: player.currentItem?.id, a: a, b: b)
+        player.load(url: library.resolvedURL(for: next), item: next)
+        player.play()
+    }
+
+    static func isCompareLoaded(a: LibraryItem, b: LibraryItem, loadedID: UUID?) -> Bool {
+        loadedID == a.id || loadedID == b.id
     }
 
     private func select(_ item: LibraryItem) {
