@@ -183,6 +183,72 @@ final class LocalLibrary: ObservableObject {
         reload()
     }
 
+    /// Copies the item together with its job siblings and any child assets
+    /// into one export folder with a provenance manifest, ready for a DAW
+    /// import. Returns the created folder URL.
+    func exportBundle(for item: LibraryItem) throws -> URL {
+        guard FileManager.default.fileExists(atPath: resolvedURL(for: item).path) else {
+            throw BundleExportError(description: "The asset file is missing on disk")
+        }
+
+        let lineage = RelatedAssetsResolver.related(for: item, in: items)
+        var grouped: [LibraryItem] = [item]
+        for candidate in lineage.siblings + lineage.children
+        where !grouped.contains(where: { $0.id == candidate.id }) {
+            grouped.append(candidate)
+        }
+        grouped = grouped.filter { FileManager.default.fileExists(atPath: resolvedURL(for: $0).path) }
+
+        let jobID = item.provenance?.jobID ?? item.id.uuidString
+        let folderName = Self.sanitized("\(String(jobID.suffix(8)))-\(item.title)")
+        let exportsRoot = rootDirectory.appendingPathComponent("Exports", isDirectory: true)
+        try FileManager.default.createDirectory(at: exportsRoot, withIntermediateDirectories: true)
+
+        let destination = Self.unusedDirectory(named: folderName, in: exportsRoot)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+
+        var lines: [String] = []
+        lines.append("MICROMIX EXPORT — \(Self.timestamp())")
+        lines.append("JOB \(jobID.suffix(8))\(item.provenance?.operation.map { " · OPERATION \($0)" } ?? "")")
+        lines.append("SOURCE: \(item.promptOrSource.isEmpty ? "(none)" : item.promptOrSource)")
+        lines.append("")
+        for (index, entry) in grouped.enumerated() {
+            let fileURL = resolvedURL(for: entry)
+            let role = entry.provenance?.output.name ?? "result"
+            let base = Self.sanitized("\(String(format: "%02d", index + 1))-\(role)-\(entry.title)")
+            let name = fileURL.pathExtension.isEmpty ? base : "\(base).\(fileURL.pathExtension)"
+            try FileManager.default.copyItem(at: fileURL, to: destination.appendingPathComponent(name))
+            let operation = entry.provenance?.operation ?? entry.kind.rawValue.uppercased()
+            lines.append("\(name) — \(operation) · \(role)")
+        }
+        let manifest = (lines.joined(separator: "\n") + "\n").data(using: .utf8) ?? Data()
+        try manifest.write(to: destination.appendingPathComponent("manifest.txt"), options: .atomic)
+        return destination
+    }
+
+    private static func unusedDirectory(named folderName: String, in exportsRoot: URL) -> URL {
+        var destination = exportsRoot.appendingPathComponent(folderName, isDirectory: true)
+        var suffix = 2
+        while FileManager.default.fileExists(atPath: destination.path) {
+            destination = exportsRoot.appendingPathComponent("\(folderName) \(suffix)", isDirectory: true)
+            suffix += 1
+        }
+        return destination
+    }
+
+    private static func sanitized(_ raw: String) -> String {
+        let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>")
+        let cleaned = raw.components(separatedBy: invalid).joined(separator: "-")
+        let squeezed = cleaned.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
+        return squeezed.isEmpty ? "export" : String(squeezed.prefix(80))
+    }
+
+    private static func timestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.string(from: Date())
+    }
+
     private func reload() {
         let descriptor = FetchDescriptor<LibraryRecord>(
             sortBy: [SortDescriptor(\LibraryRecord.createdAt, order: .reverse)]
@@ -231,3 +297,9 @@ final class LocalLibrary: ObservableObject {
 }
 
 extension LocalLibrary: LibraryStoring {}
+
+/// Failure raised directly by the library export bundle, not by SwiftData.
+struct BundleExportError: LocalizedError {
+    let description: String
+    var errorDescription: String? { description }
+}

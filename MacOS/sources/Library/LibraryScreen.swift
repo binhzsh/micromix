@@ -16,6 +16,7 @@ struct LibraryScreen: View {
     @State private var showsTrail = false
     @State private var compareA: LibraryItem?
     @State private var compareB: LibraryItem?
+    @State private var exportStatus: String?
 
     private let columns = [
         GridItem(.fixed(44), alignment: .leading),
@@ -35,6 +36,13 @@ struct LibraryScreen: View {
             provenance
             related
             transport
+            if let exportStatus {
+                Text(exportStatus)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundColor(Palette.ink.opacity(0.7))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
         }
         .onChange(of: collection) { _, _ in clearHiddenSelection() }
         .onChange(of: searchText) { _, _ in clearHiddenSelection() }
@@ -272,6 +280,16 @@ struct LibraryScreen: View {
             button("OPEN", color: Palette.accentBlue, disabled: selectedItem == nil) {
                 guard let item = selectedItem else { return }
                 NSWorkspace.shared.open(library.resolvedURL(for: item))
+            }
+            button("EXPORT", color: Palette.accentOrange, disabled: selectedItem == nil) {
+                guard let item = selectedItem else { return }
+                do {
+                    let url = try library.exportBundle(for: item)
+                    exportStatus = "EXPORTED — \(url.path)"
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                } catch {
+                    exportStatus = "EXPORT FAILED — \(error.localizedDescription)"
+                }
             }
             button("COPY PROVENANCE", color: Palette.accentOrange, disabled: selectedItem?.provenance == nil) {
                 guard let copyText = selectedItem?.provenance?.copyText else { return }

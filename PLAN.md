@@ -225,6 +225,24 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ---
 
+## Phase 6: Export & Handoff
+
+**Goal:** Move finished assets into the DAW (Logic) without manual file hunting.
+
+### Tasks
+
+- [x] **6.1 Job bundle export**
+  - One action gathers the asset, its job siblings, and any child assets into
+    a single Finder folder with a provenance manifest
+  - Landed 2026-10-16 as `LocalLibrary.exportBundle(for:)` plus an EXPORT
+    button in the Library transport row: files are copied under
+    `<library>/Exports/<jobid8>-<title> [ N]` with numbered, role-prefixed
+    names and a manifest.txt (job, operation, source, per-file roles); the
+    folder is revealed in Finder. Missing source files fail with a visible
+    error. Covered by `BundleExportTests` (3 tests).
+
+---
+
 ## Implementation Notes
 
 ### Architecture Changes
@@ -272,14 +290,14 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ## Next Action
 
-Phase 5 is complete (5.1 inline play/pause chips, 5.2 A/B compare toggle, and
-5.3 waveform peek all landed). The next implementation increment, when resumed,
-should be chosen after the user's manual acceptance pass over the Phase 5
-preview features; candidates are deeper analysis handoffs, export/import
-conveniences, or any gaps surfaced by manual testing.
+Phase 6.1 (job bundle export for DAW handoff) is landed and covered by the
+headless test suite. The next implementation increment, when resumed, should
+be chosen after the user's manual acceptance pass; candidates are deeper
+analysis handoffs, export/import refinements surfaced by real Logic imports,
+or any gaps from testing.
 
-Phases 1–5 are landed, including all four guided workflows (cover, remix,
-transcribe+remix, vocal swap), and covered by headless tests (125 native
-tests in 22 suites pass; visual `DeviceWindowTests` still excluded). The
-Phase 0 manual quality gate — listening, Logic import, bilingual review —
-remains the user's manual acceptance step.
+Phases 1–5, all four guided workflows, and Phase 6.1 are landed and covered
+by headless tests (128 native tests in 23 suites pass; visual
+`DeviceWindowTests` still excluded). The Phase 0 manual quality gate —
+listening, Logic import, bilingual review — remains the user's manual
+acceptance step.
