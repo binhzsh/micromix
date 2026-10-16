@@ -183,9 +183,11 @@ final class LocalLibrary: ObservableObject {
         reload()
     }
 
-    /// Copies the item together with its job siblings and any child assets
-    /// into one export folder with a provenance manifest, ready for a DAW
-    /// import. Returns the created folder URL.
+    /// Copies the item together with its job siblings, any child assets, and
+    /// the parent sources it was created from into one export folder with a
+    /// provenance manifest, ready for a DAW import. Returns the folder URL.
+    /// Parents come last so the kit leads with the selected result and its
+    /// chains, then carries the original as reference material.
     func exportBundle(for item: LibraryItem) throws -> URL {
         guard FileManager.default.fileExists(atPath: resolvedURL(for: item).path) else {
             throw BundleExportError(description: "The asset file is missing on disk")
@@ -193,7 +195,7 @@ final class LocalLibrary: ObservableObject {
 
         let lineage = RelatedAssetsResolver.related(for: item, in: items)
         var grouped: [LibraryItem] = [item]
-        for candidate in lineage.siblings + lineage.children
+        for candidate in lineage.siblings + lineage.children + lineage.parents
         where !grouped.contains(where: { $0.id == candidate.id }) {
             grouped.append(candidate)
         }

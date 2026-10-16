@@ -70,6 +70,53 @@ struct BundleExportTests {
         }
     }
 
+    @Test("bundle includes parent sources alongside siblings and children")
+    func copiesParentsWithBundle() throws {
+        try withLibrary { lib in
+            let parent = item(
+                title: "source-song", relativePath: "audio/\(UUID().uuidString).wav",
+                jobID: "jobid-source-77", operation: "generate", outputName: "result"
+            )
+            let target = item(
+                title: "lead-vocal", relativePath: "audio/\(UUID().uuidString).wav",
+                jobID: "jobid-split-01", operation: "stem_split", outputName: "target",
+                inputs: [
+                    RemoteAssetLink(
+                        name: "source", position: 0,
+                        asset: RemoteAsset(
+                            id: parent.remoteOutputAssetID ?? "", filename: parent.title,
+                            mediaType: "audio/wav", sizeBytes: 10,
+                            sha256: "sha-jobid-source-77-result", downloadUrl: "/v1/assets/x"
+                        )
+                    )
+                ]
+            )
+            let residual = item(
+                title: "backing", relativePath: "midi/\(UUID().uuidString).mid",
+                jobID: "jobid-split-01", operation: "stem_split", outputName: "residual"
+            )
+            let unrelated = item(
+                title: "elsewhere", relativePath: "audio/\(UUID().uuidString).wav",
+                jobID: "jobid-other-99", operation: "generate", outputName: "result"
+            )
+            for entry in [parent, target, residual, unrelated] {
+                try lib.add(entry, bytes: Data([0x52, 0x49, 0x46, 0x46]))
+            }
+
+            let folder = try lib.exportBundle(for: target)
+            let names = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
+            #expect(names.count == 4)
+            #expect(names.contains { $0.contains("source-song") })
+
+            let manifest = try String(contentsOf: folder.appendingPathComponent("manifest.txt"), encoding: .utf8)
+            #expect(manifest.contains("01-target"))
+            #expect(manifest.contains("02-residual"))
+            #expect(manifest.contains("03-result-source-song"))
+            #expect(!manifest.contains("elsewhere"))
+            #expect(!names.contains { $0.contains("elsewhere") })
+        }
+    }
+
     @Test("re-exporting the same asset creates a fresh numbered folder")
     func reExportNumbered() throws {
         try withLibrary { lib in
@@ -100,7 +147,8 @@ struct BundleExportTests {
     }
 
     private func item(
-        title: String, relativePath: String, jobID: String, operation: String, outputName: String
+        title: String, relativePath: String, jobID: String, operation: String, outputName: String,
+        inputs: [RemoteAssetLink] = []
     ) -> LibraryItem {
         let asset = RemoteAsset(
             id: "as-\(outputName)-\(jobID)", filename: title, mediaType: "audio/wav",
@@ -112,7 +160,7 @@ struct BundleExportTests {
             durationSeconds: nil, relativePath: relativePath,
             provenance: LibraryProvenance(
                 jobID: jobID, operation: operation, parameters: [:],
-                inputs: [], output: RemoteAssetLink(name: outputName, position: 0, asset: asset)
+                inputs: inputs, output: RemoteAssetLink(name: outputName, position: 0, asset: asset)
             ),
             remoteOutputAssetID: asset.id
         )

@@ -242,7 +242,16 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
     `<library>/Exports/<jobid8>-<title> [ N]` with numbered, role-prefixed
     names and a manifest.txt (job, operation, source, per-file roles); the
     folder is revealed in Finder. Missing source files fail with a visible
-    error. Covered by `BundleExportTests` (3 tests).
+    error. Covered by `BundleExportTests`.
+
+- [x] **6.2 Bundle export carries parent sources**
+  - Include the original (parent) assets so a Logic session kit holds the
+    source alongside its stems
+  - Landed 2026-10-16: `exportBundle(for:)` appends the resolved parent
+    sources after siblings and children, so the selected result and its
+    chains keep the leading numbers and the original lands as trailing
+    reference material; a missing parent file is silently skipped like any
+    other grouped entry. Covered by `BundleExportTests` (4 tests).
 
 ---
 
@@ -293,14 +302,14 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ## Next Action
 
-Phase 6.1 (job bundle export for DAW handoff) is landed and covered by the
-headless test suite. The next implementation increment, when resumed, should
-be chosen after the user's manual acceptance pass; candidates are deeper
-analysis handoffs, export/import refinements surfaced by real Logic imports,
-or any gaps from testing.
+Phases 6.1–6.2 (bundle export, now including parent sources) are landed and
+covered by the headless test suite. The next implementation increment, when
+resumed, should be chosen after the user's manual acceptance pass; candidates
+are deeper analysis handoffs, export/import refinements surfaced by real
+Logic imports, or any gaps from testing.
 
-Phases 1–5, all four guided workflows, and Phase 6.1 are landed and covered
-by headless tests (128 native tests in 23 suites pass; visual
+Phases 1–5, all four guided workflows, and Phases 6.1–6.2 are landed and
+covered by headless tests (129 native tests in 23 suites pass; visual
 `DeviceWindowTests` still excluded). The Phase 0 manual quality gate —
 listening, Logic import, bilingual review — remains the user's manual
 acceptance step.
