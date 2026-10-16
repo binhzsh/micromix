@@ -131,19 +131,24 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ### Tasks
 
-- [ ] **3.1 Enhance Library provenance display**
+- [x] **3.1 Enhance Library provenance display**
   - Show parent job ID, source asset, operation chain
   - Collapsible trail: Source → Operation → Output
+  - Landed 2026-10-16 as the SHOW TRAIL toggle in the provenance panel
 
-- [ ] **3.2 Group alternatives in Library**
+- [x] **3.2 Group alternatives in Library**
   - Variations from same job shown as expandable group
   - Select any variation, see siblings
+  - Landed as the PREV/NEXT/ALT-n alternatives row
 
-- [ ] **3.3 Add "Related" section**
+- [x] **3.3 Add "Related" section**
   - For any asset, show:
     - Siblings (same job, other variations)
     - Parent (source asset)
     - Children (assets derived from this)
+  - Landed 2026-10-16 as the RELATED ASSETS panel; lineage resolves from
+    durable provenance (remote output ids, then sha256 checksums, since
+    re-uploaded sources always receive a fresh sidecar id)
 
 ---
 
@@ -233,11 +238,11 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ## Next Action
 
-Start Phase 3.1: deepen the Library provenance display into a collapsible
-Source → Operation → Output trail, then add the Related section (siblings,
-parent, children).
+Start Phase 4: pick one guided chain (AI cover first — import → analyze →
+stem split → vocal swap → library) and add a stepper-style guided entry point
+without removing the free-form workspaces.
 
-Phases 1–2 are landed and covered by headless tests (91 native suites pass;
+Phases 1–3 are landed and covered by headless tests (98 native suites pass;
 visual `DeviceWindowTests` still excluded). The Phase 0 manual quality gate —
 listening, Logic import, bilingual review — remains the user's manual
 acceptance step.

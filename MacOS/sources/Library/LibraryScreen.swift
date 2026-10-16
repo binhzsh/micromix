@@ -13,6 +13,7 @@ struct LibraryScreen: View {
     var onStartTranscribe: () -> Void = {}
     @State private var collection: LibraryCollection = .all
     @State private var searchText = ""
+    @State private var showsTrail = false
 
     private let columns = [
         GridItem(.fixed(44), alignment: .leading),
@@ -29,6 +30,7 @@ struct LibraryScreen: View {
             listOrEmpty
             assetInspector
             provenance
+            related
             transport
         }
         .onChange(of: collection) { _, _ in clearHiddenSelection() }
@@ -360,8 +362,17 @@ struct LibraryScreen: View {
         if let item = selectedItem {
             DeckPanel {
                 VStack(alignment: .leading, spacing: 4) {
-                    Typography.monoLabel("PROVENANCE", size: 10)
-                        .foregroundColor(Palette.ink.opacity(0.64))
+                    HStack {
+                        Typography.monoLabel("PROVENANCE", size: 10)
+                            .foregroundColor(Palette.ink.opacity(0.64))
+                        Spacer()
+                        if item.provenance != nil {
+                            Button(showsTrail ? "HIDE TRAIL" : "SHOW TRAIL") { showsTrail.toggle() }
+                                .buttonStyle(.borderless)
+                                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                .foregroundColor(Palette.accentBlue)
+                        }
+                    }
                     if alternatives(for: item).count > 1 {
                         HStack(spacing: 5) {
                             Typography.monoLabel("ALTERNATIVES", size: 9)
@@ -393,12 +404,16 @@ struct LibraryScreen: View {
                         }
                     }
                     if let provenance = item.provenance {
-                        Text("OPERATION: \(provenance.operation ?? item.kind.rawValue.uppercased()) · JOB \(provenance.jobID.suffix(8)) · OUTPUT #\(provenance.output.position + 1)")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundColor(Palette.ink)
-                        Text("SOURCE: \(provenance.inputs.sorted { $0.position < $1.position }.map { "\($0.name) — \($0.asset.filename)" }.joined(separator: ", ").ifEmpty("(none)"))")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(Palette.ink.opacity(0.72))
+                        if showsTrail {
+                            trail(for: item, provenance: provenance)
+                        } else {
+                            Text("OPERATION: \(provenance.operation ?? item.kind.rawValue.uppercased()) · JOB \(provenance.jobID.suffix(8)) · OUTPUT #\(provenance.output.position + 1)")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundColor(Palette.ink)
+                            Text("SOURCE: \(provenance.inputs.sorted { $0.position < $1.position }.map { "\($0.name) — \($0.asset.filename)" }.joined(separator: ", ").ifEmpty("(none)"))")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(Palette.ink.opacity(0.72))
+                        }
                         Text("SUBMITTED: \(["seed", "variation_count"].compactMap { key in provenance.parameters[key].map { "\(key)=\($0.displayText)" } }.joined(separator: ", ").ifEmpty("(not specified)"))")
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(Palette.ink.opacity(0.72))
@@ -414,6 +429,105 @@ struct LibraryScreen: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
+
+    /// Collapsible Source → Operation → Output chain for the selected asset.
+    private func trail(for item: LibraryItem, provenance: LibraryProvenance) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            let inputs = provenance.inputs.sorted { $0.position < $1.position }
+            if inputs.isEmpty {
+                trailStage("SOURCE", "(none)")
+            } else {
+                ForEach(Array(inputs.enumerated()), id: \.offset) { _, link in
+                    trailStage("SOURCE", "\(link.name) — \(link.asset.filename)")
+                }
+            }
+            trailArrow
+            trailStage(
+                "OPERATION",
+                "\(provenance.operation ?? item.kind.rawValue.uppercased()) · JOB \(provenance.jobID.suffix(8))"
+            )
+            trailArrow
+            trailStage(
+                "OUTPUT",
+                "#\(provenance.output.position + 1) \(provenance.output.name) — \(provenance.output.asset.filename)"
+            )
+        }
+    }
+
+    private func trailStage(_ label: String, _ detail: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Typography.monoLabel(label, size: 9)
+                .foregroundColor(Palette.ink.opacity(0.6))
+                .frame(width: 64, alignment: .leading)
+            Text(detail)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(Palette.ink.opacity(0.86))
+                .lineLimit(1)
+        }
+    }
+
+    private var trailArrow: some View {
+        Typography.monoLabel("▼", size: 8)
+            .foregroundColor(Palette.ink.opacity(0.34))
+            .frame(width: 64, alignment: .leading)
+    }
+
+    /// Siblings, parents, and children of the selected asset, resolved from
+    /// durable provenance. Selecting a row navigates to that asset.
+    @ViewBuilder private var related: some View {
+        if let item = selectedItem {
+            let related = RelatedAssetsResolver.related(for: item, in: library.items)
+            if !related.isEmpty {
+                DeckPanel {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Typography.monoLabel("RELATED ASSETS", size: 10)
+                            .foregroundColor(Palette.ink.opacity(0.64))
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(related.parents) { relationRow("PARENT", $0) }
+                                ForEach(related.siblings) { relationRow("SIBLING", $0) }
+                                ForEach(related.children) { relationRow("CHILD", $0) }
+                            }
+                        }
+                        .frame(maxHeight: 96)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    private func relationRow(_ relation: String, _ item: LibraryItem) -> some View {
+        Button {
+            select(item)
+        } label: {
+            HStack(spacing: 8) {
+                Typography.monoLabel(relation, size: 9)
+                    .foregroundColor(relationColor(relation))
+                    .frame(width: 50, alignment: .leading)
+                Text(item.title)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(Palette.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Typography.monoLabel(item.kind == .audio ? "WAV" : "MID", size: 9)
+                    .foregroundColor(item.kind == .audio ? Palette.accentGreen : Palette.accentBlue)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(Palette.ink.opacity(0.45))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func relationColor(_ relation: String) -> Color {
+        switch relation {
+        case "PARENT": return Palette.accentOrange
+        case "SIBLING": return Palette.accentBlue
+        default: return Palette.accentGreen
         }
     }
 
