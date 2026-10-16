@@ -6,6 +6,8 @@ struct GenerateScreen: View {
     @ObservedObject var viewModel: GenerateViewModel
     var localInferenceAvailable: Bool = true
     var router: WorkflowRouter? = nil
+    var player: AudioPlayer? = nil
+    var library: LocalLibrary? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -145,9 +147,15 @@ struct GenerateScreen: View {
                     .foregroundStyle(Palette.accentRed)
             }
             if viewModel.phase == .done {
-                Text("Saved \(viewModel.results.count) result(s) to Library.")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Palette.ink.opacity(0.72))
+                HStack(spacing: 10) {
+                    Text("Saved \(viewModel.results.count) result(s) to Library.")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Palette.ink.opacity(0.72))
+                    if let player, let library,
+                       let audio = viewModel.results.first(where: { $0.kind == .audio }) {
+                        InlinePlayButton(player: player, item: audio, library: library)
+                    }
+                }
                 if let router, let latest = viewModel.results.last {
                     NextActionsRow(router: router, item: latest)
                 }

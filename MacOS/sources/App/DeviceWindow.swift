@@ -286,7 +286,13 @@ private struct DeckRegion: View {
     @ViewBuilder private var modeControls: some View {
         switch mode {
         case .generate:
-            GenerateScreen(viewModel: generate, localInferenceAvailable: connection.isConnected, router: router)
+            GenerateScreen(
+                viewModel: generate,
+                localInferenceAvailable: connection.isConnected,
+                router: router,
+                player: player,
+                library: library
+            )
         case .reimagine:
             ReimagineScreen(
                 viewModel: reimagine,
@@ -298,7 +304,9 @@ private struct DeckRegion: View {
                     mode = .analyze
                 },
                 onOpenLibrary: { mode = .library },
-                router: router
+                router: router,
+                player: player,
+                library: library
             )
         case .analyze:
             AnalyzeScreen(viewModel: analyze, router: router)
@@ -315,7 +323,9 @@ private struct DeckRegion: View {
                 voices: connection.vocalModels,
                 localInferenceAvailable: connection.isConnected,
                 onOpenLibrary: { mode = .library },
-                router: router
+                router: router,
+                player: player,
+                library: library
             )
         case .guide:
             WorkflowGuideView(
@@ -327,7 +337,9 @@ private struct DeckRegion: View {
                 localInferenceAvailable: connection.isConnected,
                 onOpenLibrary: { mode = .library },
                 onOpenReimagine: { mode = .reimagine },
-                router: router
+                router: router,
+                player: player,
+                library: library
             )
         case .library:
             LibraryScreen(

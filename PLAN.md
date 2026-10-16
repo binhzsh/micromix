@@ -175,9 +175,13 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
     then hands the source and direction to Reimagine via the router; the
     creative direction itself stays in Reimagine.
 
-- [ ] **4.3 "Transcribe and Remix" workflow**
+- [x] **4.3 "Transcribe and Remix" workflow**
   - Import → Transcribe (get MIDI) → Reimagine (use original audio)
   - Keep both MIDI and new audio
+  - Landed 2026-10-16 as the GUIDE tab's TRANSCRIBE STUDIO: one source and a
+    strict-tempo toggle, then a durable transcription job runs; the MIDI lands
+    in the Library and the original audio is handed to Reimagine via the
+    router, so both the notation and the remix source move forward together.
 
 ---
 
@@ -187,8 +191,12 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ### Tasks
 
-- [ ] **5.1 Inline player in result cards**
+- [x] **5.1 Inline player in result cards**
   - Every result row shows play/pause without opening full player
+  - Landed 2026-10-16 as a shared `InlinePlayButton` chip on the Generate,
+    Reimagine, Vocal Swap/Stem Split, and guided cover result rows; it loads
+    the saved asset through the shared `AudioPlayer`, so only one stream plays
+    at a time. Transcribe results are MIDI and keep using the Library preview.
 
 - [ ] **5.2 Compare alternatives**
   - Select multiple variations, A/B compare
@@ -247,11 +255,13 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ## Next Action
 
-Start Phase 4.3: add a "Transcribe and Remix" guided entry (import →
-transcribe → Reimagine on the original audio, keeping both MIDI and new
-audio), reusing the studio pattern.
+Phase 5.1 (inline play/pause chips on result rows) is landed and covered by
+the headless test suite. The next implementation increment, when resumed, is
+Phase 5.2: compare alternatives — a simple A/B toggle between two playing
+sources, building on the shared `AudioPlayer` and the alternatives grouping
+from Phase 3.2.
 
-Phases 1–3, 4.1, and 4.2 are landed and covered by headless tests (108 native
-suites pass; visual `DeviceWindowTests` still excluded). The Phase 0 manual
-quality gate — listening, Logic import, bilingual review — remains the user's
-manual acceptance step.
+Phases 1–4 and 5.1 are landed and covered by headless tests (113 native tests
+in 19 suites pass; visual `DeviceWindowTests` still excluded). The Phase 0
+manual quality gate — listening, Logic import, bilingual review — remains the
+user's manual acceptance step.

@@ -15,6 +15,8 @@ struct WorkflowGuideView: View {
     var onOpenLibrary: () -> Void = {}
     var onOpenReimagine: () -> Void = {}
     var router: WorkflowRouter? = nil
+    var player: AudioPlayer? = nil
+    var library: LocalLibrary? = nil
     @State private var tab: GuideTab = .cover
 
     enum GuideTab: String, CaseIterable, Identifiable {
@@ -60,7 +62,9 @@ struct WorkflowGuideView: View {
                             voices: voices,
                             localInferenceAvailable: localInferenceAvailable,
                             onOpenLibrary: onOpenLibrary,
-                            router: router
+                            router: router,
+                            player: player,
+                            library: library
                         )
                     }
                 case .remixStudio:

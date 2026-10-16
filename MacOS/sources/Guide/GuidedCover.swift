@@ -275,6 +275,8 @@ struct GuidedCoverView: View {
     var localInferenceAvailable = true
     var onOpenLibrary: () -> Void = {}
     var router: WorkflowRouter? = nil
+    var player: AudioPlayer? = nil
+    var library: LocalLibrary? = nil
     @State private var isImporting = false
 
     var body: some View {
@@ -330,10 +332,13 @@ struct GuidedCoverView: View {
             if !model.results.isEmpty {
                 Text("Saved \(model.results.count) output(s) to Library.")
                 ForEach(model.results) { item in
-                    if let router {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Typography.monoLabel(item.title, size: 9)
-                                .foregroundColor(Palette.ink.opacity(0.64))
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Typography.monoLabel(item.title, size: 9)
+                            .foregroundColor(Palette.ink.opacity(0.64))
+                        if item.kind == .audio, let player, let library {
+                            InlinePlayButton(player: player, item: item, library: library)
+                        }
+                        if let router {
                             NextActionsRow(router: router, item: item)
                         }
                     }

@@ -7,6 +7,8 @@ struct SourceProcessingScreen: View {
     var localInferenceAvailable = true
     var onOpenLibrary: () -> Void = {}
     var router: WorkflowRouter? = nil
+    var player: AudioPlayer? = nil
+    var library: LocalLibrary? = nil
     @State private var isImporting = false
 
     private var canStart: Bool {
@@ -57,13 +59,16 @@ struct SourceProcessingScreen: View {
             if viewModel.phase == .done {
                 Text("Saved \(viewModel.results.count) output(s) to Library.")
                 ForEach(viewModel.results) { item in
-                    if let router {
-                        // One row per output: stem-split returns a target and a
-                        // residual whose useful chains differ (swap the vocal,
-                        // remix the residual), so the latest result is not enough.
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Typography.monoLabel(item.title, size: 9)
-                                .foregroundColor(Palette.ink.opacity(0.64))
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Typography.monoLabel(item.title, size: 9)
+                            .foregroundColor(Palette.ink.opacity(0.64))
+                        if item.kind == .audio, let player, let library {
+                            InlinePlayButton(player: player, item: item, library: library)
+                        }
+                        if let router {
+                            // One row per output: stem-split returns a target and a
+                            // residual whose useful chains differ (swap the vocal,
+                            // remix the residual), so the latest result is not enough.
                             NextActionsRow(router: router, item: item)
                         }
                     }
