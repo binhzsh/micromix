@@ -26,3 +26,5 @@ buildServer.json
 # SwiftPM artifacts from the language-server manifest (MacOS/Package.swift)
 .build/
 .swiftpm/
+.openbitfun/
+/.openbitfun/search/flashgrep-index/
