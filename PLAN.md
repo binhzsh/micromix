@@ -302,14 +302,20 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ## Next Action
 
-Phases 6.1–6.2 (bundle export, now including parent sources) are landed and
-covered by the headless test suite. The next implementation increment, when
-resumed, should be chosen after the user's manual acceptance pass; candidates
-are deeper analysis handoffs, export/import refinements surfaced by real
-Logic imports, or any gaps from testing.
+The full plan is implemented: Phases 1–5, all four guided workflows, and
+Phases 6.1–6.2 (129 native tests in 23 suites pass; visual `DeviceWindowTests`
+still excluded). The sidecar half was verified ready for the manual pass on
+2026-10-16: its 39 lightweight tests pass, `/v1/health` reports ready with all
+five model engines' dependencies present, and the running LaunchAgent process
+predates no sidecar code change (started 2026-10-06, last sidecar commit
+2026-09-18), so the app tests against current backend code.
 
-Phases 1–5, all four guided workflows, and Phases 6.1–6.2 are landed and
-covered by headless tests (129 native tests in 23 suites pass; visual
-`DeviceWindowTests` still excluded). The Phase 0 manual quality gate —
-listening, Logic import, bilingual review — remains the user's manual
-acceptance step.
+The next implementation increment should be chosen after the user's manual
+acceptance pass. Remaining candidates, in the order they were scouted:
+
+1. MIDI audition in the Library — MIDI rows currently show a dash in WAVE and
+   get no play chip; an `AVMIDIPlayer` path with the system DLS soundbank
+   would let transcribe/split results be heard in place.
+2. Export/import polish surfaced by real Logic imports (folder naming,
+   manifest wording) once the user has run an actual handoff.
+3. Any gaps from the user's testing notes.
