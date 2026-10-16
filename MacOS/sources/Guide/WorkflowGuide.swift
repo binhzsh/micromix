@@ -10,6 +10,7 @@ struct WorkflowGuideView: View {
     var cover: GuidedCoverModel? = nil
     var remix: GuidedRemixModel? = nil
     var transcribeStudio: GuidedTranscribeModel? = nil
+    var vocalSwapStudio: GuidedVocalSwapModel? = nil
     var voices: [String] = []
     var localInferenceAvailable = true
     var onOpenLibrary: () -> Void = {}
@@ -26,6 +27,7 @@ struct WorkflowGuideView: View {
         case studio = "COVER STUDIO"
         case remixStudio = "REMIX STUDIO"
         case transcribeStudio = "TRANSCRIBE STUDIO"
+        case vocalSwapStudio = "VOCAL SWAP STUDIO"
 
         var id: String { rawValue }
     }
@@ -82,6 +84,18 @@ struct WorkflowGuideView: View {
                             localInferenceAvailable: localInferenceAvailable,
                             onOpenReimagine: onOpenReimagine,
                             onOpenLibrary: onOpenLibrary
+                        )
+                    }
+                case .vocalSwapStudio:
+                    if let vocalSwapStudio {
+                        GuidedVocalSwapView(
+                            model: vocalSwapStudio,
+                            voices: voices,
+                            localInferenceAvailable: localInferenceAvailable,
+                            onOpenLibrary: onOpenLibrary,
+                            router: router,
+                            player: player,
+                            library: library
                         )
                     }
                 }

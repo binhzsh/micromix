@@ -183,6 +183,14 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
     in the Library and the original audio is handed to Reimagine via the
     router, so both the notation and the remix source move forward together.
 
+- [x] **4.4 "Vocal Swap Studio" workflow**
+  - Import → optional Stem Split → Vocal Swap → Library
+  - Landed 2026-10-16 as the GUIDE tab's VOCAL SWAP STUDIO: a SPLIT VOCALS
+    FIRST toggle decides between an isolated-stem swap (the split's registered
+    vocal asset feeds the swap without a re-upload) and a direct swap of the
+    source; the skipped split stage shows as SKIPPED in the stepper. Voice,
+    pitch, cancellation, and result next-actions match the other studios.
+
 ---
 
 ## Phase 5: In-Context Preview
@@ -270,7 +278,8 @@ should be chosen after the user's manual acceptance pass over the Phase 5
 preview features; candidates are deeper analysis handoffs, export/import
 conveniences, or any gaps surfaced by manual testing.
 
-Phases 1–5 are landed and covered by headless tests (120 native tests in 21
-suites pass; visual `DeviceWindowTests` still excluded). The Phase 0 manual
-quality gate — listening, Logic import, bilingual review — remains the user's
-manual acceptance step.
+Phases 1–5 are landed, including all four guided workflows (cover, remix,
+transcribe+remix, vocal swap), and covered by headless tests (125 native
+tests in 22 suites pass; visual `DeviceWindowTests` still excluded). The
+Phase 0 manual quality gate — listening, Logic import, bilingual review —
+remains the user's manual acceptance step.

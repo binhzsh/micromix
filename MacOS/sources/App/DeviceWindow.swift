@@ -55,6 +55,7 @@ struct DeviceWindow: View {
     @ObservedObject var cover: GuidedCoverModel
     @ObservedObject var remix: GuidedRemixModel
     @ObservedObject var transcribeStudio: GuidedTranscribeModel
+    @ObservedObject var vocalSwapStudio: GuidedVocalSwapModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -86,6 +87,7 @@ struct DeviceWindow: View {
                 cover: cover,
                 remix: remix,
                 transcribeStudio: transcribeStudio,
+                vocalSwapStudio: vocalSwapStudio,
                 selectedID: $selectedID
             )
         }
@@ -232,6 +234,7 @@ private struct DeckRegion: View {
     @ObservedObject var cover: GuidedCoverModel
     @ObservedObject var remix: GuidedRemixModel
     @ObservedObject var transcribeStudio: GuidedTranscribeModel
+    @ObservedObject var vocalSwapStudio: GuidedVocalSwapModel
 
     @Binding var selectedID: UUID?
 
@@ -333,6 +336,7 @@ private struct DeckRegion: View {
                 cover: cover,
                 remix: remix,
                 transcribeStudio: transcribeStudio,
+                vocalSwapStudio: vocalSwapStudio,
                 voices: connection.vocalModels,
                 localInferenceAvailable: connection.isConnected,
                 onOpenLibrary: { mode = .library },

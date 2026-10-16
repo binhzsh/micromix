@@ -21,6 +21,7 @@ struct MicromixApp: App {
         let cover = GuidedCoverModel(api: api, reattacher: reattacher)
         let remix = GuidedRemixModel(api: api, reattacher: reattacher)
         let transcribeStudio = GuidedTranscribeModel(api: api, reattacher: reattacher)
+        let vocalSwapStudio = GuidedVocalSwapModel(api: api, reattacher: reattacher)
 
         // Workflow router for chaining operations
         let router = WorkflowRouter(
@@ -69,7 +70,8 @@ struct MicromixApp: App {
             router: router,
             cover: cover,
             remix: remix,
-            transcribeStudio: transcribeStudio
+            transcribeStudio: transcribeStudio,
+            vocalSwapStudio: vocalSwapStudio
         )
     }
 
@@ -90,7 +92,8 @@ struct MicromixApp: App {
                 router: root.router,
                 cover: root.cover,
                 remix: root.remix,
-                transcribeStudio: root.transcribeStudio
+                transcribeStudio: root.transcribeStudio,
+                vocalSwapStudio: root.vocalSwapStudio
             )
             .frame(minWidth: 900, minHeight: 640)
         }
@@ -115,4 +118,5 @@ struct AppRoot: Sendable {
     let cover: GuidedCoverModel
     let remix: GuidedRemixModel
     let transcribeStudio: GuidedTranscribeModel
+    let vocalSwapStudio: GuidedVocalSwapModel
 }
