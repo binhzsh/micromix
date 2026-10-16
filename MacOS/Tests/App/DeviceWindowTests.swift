@@ -133,7 +133,8 @@ struct DeviceWindowTests {
             midiPreview: MidiPreview(),
             connection: connection,
             router: router,
-            cover: GuidedCoverModel(api: api, reattacher: reattacher)
+            cover: GuidedCoverModel(api: api, reattacher: reattacher),
+            remix: GuidedRemixModel(api: api, reattacher: reattacher)
         )
         .frame(width: width, height: height)
 

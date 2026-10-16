@@ -2,6 +2,16 @@ import Combine
 import Foundation
 import SwiftUI
 
+/// Terminal states for one guided stage, shared by the guided flows.
+enum GuidedStageState: Equatable {
+    case pending
+    case running
+    case done
+    case skipped
+    case failed(String)
+    case cancelled
+}
+
 /// Guided "AI COVER" run: one song in, a new-voice cover out.
 ///
 /// Runs two durable jobs back to back — stem split to isolate the vocal stem,
@@ -19,18 +29,10 @@ final class GuidedCoverModel: ObservableObject {
         var id: String { rawValue }
     }
 
-    enum StageState: Equatable {
-        case pending
-        case running
-        case done
-        case failed(String)
-        case cancelled
-    }
-
     @Published var sourceURL: URL?
     @Published var voiceModel = ""
     @Published var pitchShift = 0
-    @Published private(set) var states: [Stage: StageState] = [:]
+    @Published private(set) var states: [Stage: GuidedStageState] = [:]
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var results: [LibraryItem] = []
     @Published private(set) var errorMessage: String?
@@ -116,7 +118,7 @@ final class GuidedCoverModel: ObservableObject {
         isRunning = false
     }
 
-    func state(of stage: Stage) -> StageState {
+    func state(of stage: Stage) -> GuidedStageState {
         states[stage] ?? .pending
     }
 
@@ -219,7 +221,7 @@ final class GuidedCoverModel: ObservableObject {
         acceptedJobID = nil
     }
 
-    private func set(_ stage: Stage, _ state: StageState) {
+    private func set(_ stage: Stage, _ state: GuidedStageState) {
         states[stage] = state
     }
 
@@ -379,31 +381,34 @@ struct GuidedCoverView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private static func statusText(for state: GuidedCoverModel.StageState) -> String {
+    private static func statusText(for state: GuidedStageState) -> String {
         switch state {
         case .pending: "QUEUED"
         case .running: "RUNNING…"
         case .done: "DONE"
+        case .skipped: "SKIPPED"
         case .failed(let message): "FAILED — \(message)"
         case .cancelled: "CANCELLED"
         }
     }
 
-    private static func color(for state: GuidedCoverModel.StageState) -> Color {
+    private static func color(for state: GuidedStageState) -> Color {
         switch state {
         case .pending: Palette.ink.opacity(0.5)
         case .running: Palette.accentBlue
         case .done: Palette.accentGreen
+        case .skipped: Palette.ink.opacity(0.42)
         case .failed: Palette.accentRed
         case .cancelled: Palette.ink.opacity(0.6)
         }
     }
 
-    private static func symbol(for state: GuidedCoverModel.StageState) -> String {
+    private static func symbol(for state: GuidedStageState) -> String {
         switch state {
         case .pending: "circle.dotted"
         case .running: "circle.dotted"
         case .done: "checkmark.circle"
+        case .skipped: "circle.dashed"
         case .failed: "xmark.circle"
         case .cancelled: "minus.circle"
         }

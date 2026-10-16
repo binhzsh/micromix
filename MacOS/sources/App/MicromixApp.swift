@@ -19,6 +19,7 @@ struct MicromixApp: App {
         let vocalSwap = SourceProcessingViewModel(operation: .vocalSwap, api: api, reattacher: reattacher)
         let stemSplit = SourceProcessingViewModel(operation: .stemSplit, api: api, reattacher: reattacher)
         let cover = GuidedCoverModel(api: api, reattacher: reattacher)
+        let remix = GuidedRemixModel(api: api, reattacher: reattacher)
 
         // Workflow router for chaining operations
         let router = WorkflowRouter(
@@ -30,6 +31,15 @@ struct MicromixApp: App {
             stemSplit: stemSplit,
             analyze: analyze
         )
+
+        // Guided remix hands its prepared source to Reimagine through the router.
+        remix.onDeliver = { item, url, derived in
+            if let item {
+                router.execute(.remix, on: item, derived: derived)
+            } else {
+                router.reimagineRemix(url: url, derived: derived)
+            }
+        }
 
         // Kick off a connection health check; the monitor polls every 15 s.
         monitor.start()
@@ -50,7 +60,8 @@ struct MicromixApp: App {
             midiPreview: MidiPreview(),
             connection: monitor,
             router: router,
-            cover: cover
+            cover: cover,
+            remix: remix
         )
     }
 
@@ -69,7 +80,8 @@ struct MicromixApp: App {
                 midiPreview: root.midiPreview,
                 connection: root.connection,
                 router: root.router,
-                cover: root.cover
+                cover: root.cover,
+                remix: root.remix
             )
             .frame(minWidth: 900, minHeight: 640)
         }
@@ -92,4 +104,5 @@ struct AppRoot: Sendable {
     let connection: ConnectionMonitor
     let router: WorkflowRouter
     let cover: GuidedCoverModel
+    let remix: GuidedRemixModel
 }

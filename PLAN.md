@@ -167,9 +167,13 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
     live stage stepper, cancellation, and result next-actions. Analyze stays a
     separate optional step; the stepper covers the transformation core.
 
-- [ ] **4.2 "Remix My Track" workflow**
+- [x] **4.2 "Remix My Track" workflow**
   - Import → Analyze → Reimagine (with pre-filled metadata)
   - Optional: Stem Split first for isolated remixing
+  - Landed 2026-10-16 as the GUIDE tab's REMIX STUDIO: optional split-first
+    (delivers the instrumental residual) and optional on-device BPM/key read,
+    then hands the source and direction to Reimagine via the router; the
+    creative direction itself stays in Reimagine.
 
 - [ ] **4.3 "Transcribe and Remix" workflow**
   - Import → Transcribe (get MIDI) → Reimagine (use original audio)
@@ -243,11 +247,11 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ## Next Action
 
-Start Phase 4.2: add a "Remix My Track" guided entry (import → analyze →
-Reimagine with pre-filled direction, optional stem split first), reusing the
-COVER STUDIO pattern.
+Start Phase 4.3: add a "Transcribe and Remix" guided entry (import →
+transcribe → Reimagine on the original audio, keeping both MIDI and new
+audio), reusing the studio pattern.
 
-Phases 1–3 and guided cover (4.1) are landed and covered by headless tests
-(102 native suites pass; visual `DeviceWindowTests` still excluded). The
-Phase 0 manual quality gate — listening, Logic import, bilingual review —
-remains the user's manual acceptance step.
+Phases 1–3, 4.1, and 4.2 are landed and covered by headless tests (108 native
+suites pass; visual `DeviceWindowTests` still excluded). The Phase 0 manual
+quality gate — listening, Logic import, bilingual review — remains the user's
+manual acceptance step.

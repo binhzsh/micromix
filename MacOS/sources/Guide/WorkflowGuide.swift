@@ -8,9 +8,11 @@ import SwiftUI
 struct WorkflowGuideView: View {
     @Binding var mode: DeviceMode
     var cover: GuidedCoverModel? = nil
+    var remix: GuidedRemixModel? = nil
     var voices: [String] = []
     var localInferenceAvailable = true
     var onOpenLibrary: () -> Void = {}
+    var onOpenReimagine: () -> Void = {}
     var router: WorkflowRouter? = nil
     @State private var tab: GuideTab = .cover
 
@@ -19,6 +21,7 @@ struct WorkflowGuideView: View {
         case reimagine = "REIMAGINE"
         case fromScratch = "FROM SCRATCH"
         case studio = "COVER STUDIO"
+        case remixStudio = "REMIX STUDIO"
 
         var id: String { rawValue }
     }
@@ -56,6 +59,14 @@ struct WorkflowGuideView: View {
                             localInferenceAvailable: localInferenceAvailable,
                             onOpenLibrary: onOpenLibrary,
                             router: router
+                        )
+                    }
+                case .remixStudio:
+                    if let remix {
+                        GuidedRemixView(
+                            model: remix,
+                            localInferenceAvailable: localInferenceAvailable,
+                            onOpenReimagine: onOpenReimagine
                         )
                     }
                 }

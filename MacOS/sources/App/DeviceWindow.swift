@@ -53,6 +53,7 @@ struct DeviceWindow: View {
     @ObservedObject var connection: ConnectionMonitor
     @ObservedObject var router: WorkflowRouter
     @ObservedObject var cover: GuidedCoverModel
+    @ObservedObject var remix: GuidedRemixModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -82,6 +83,7 @@ struct DeviceWindow: View {
                 connection: connection,
                 router: router,
                 cover: cover,
+                remix: remix,
                 selectedID: $selectedID
             )
         }
@@ -226,6 +228,7 @@ private struct DeckRegion: View {
     @ObservedObject var connection: ConnectionMonitor
     @ObservedObject var router: WorkflowRouter
     @ObservedObject var cover: GuidedCoverModel
+    @ObservedObject var remix: GuidedRemixModel
 
     @Binding var selectedID: UUID?
 
@@ -315,9 +318,11 @@ private struct DeckRegion: View {
             WorkflowGuideView(
                 mode: $mode,
                 cover: cover,
+                remix: remix,
                 voices: connection.vocalModels,
                 localInferenceAvailable: connection.isConnected,
                 onOpenLibrary: { mode = .library },
+                onOpenReimagine: { mode = .reimagine },
                 router: router
             )
         case .library:

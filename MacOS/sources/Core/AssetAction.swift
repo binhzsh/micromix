@@ -222,6 +222,18 @@ final class WorkflowRouter: ObservableObject {
         onSwitchMode?(.reimagine)
         reimagine?.acceptSource(context)
     }
+
+    /// Route an audio file into Reimagine remix with optional derived metadata
+    /// pre-filled; the source has no LibraryItem yet.
+    func reimagineRemix(url: URL, derived: DerivedMetadata? = nil) {
+        let context = AssetActionContext(
+            sourceURL: url,
+            action: .remix,
+            derivedMetadata: derived
+        )
+        onSwitchMode?(.reimagine)
+        reimagine?.acceptSource(context)
+    }
     
     /// Pre-fill Generate's musical direction from an analysis without a source
     /// file; text-to-music generation takes no audio reference.
