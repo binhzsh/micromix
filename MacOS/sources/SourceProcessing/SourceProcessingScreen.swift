@@ -6,6 +6,7 @@ struct SourceProcessingScreen: View {
     var voices: [String] = []
     var localInferenceAvailable = true
     var onOpenLibrary: () -> Void = {}
+    var router: WorkflowRouter? = nil
     @State private var isImporting = false
 
     private var canStart: Bool {
@@ -53,7 +54,21 @@ struct SourceProcessingScreen: View {
                 Button("OPEN LIBRARY", action: onOpenLibrary)
             }
             if let error = viewModel.errorMessage { Text(error).foregroundStyle(Palette.accentRed) }
-            if viewModel.phase == .done { Text("Saved \(viewModel.results.count) output(s) to Library.") }
+            if viewModel.phase == .done {
+                Text("Saved \(viewModel.results.count) output(s) to Library.")
+                ForEach(viewModel.results) { item in
+                    if let router {
+                        // One row per output: stem-split returns a target and a
+                        // residual whose useful chains differ (swap the vocal,
+                        // remix the residual), so the latest result is not enough.
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Typography.monoLabel(item.title, size: 9)
+                                .foregroundColor(Palette.ink.opacity(0.64))
+                            NextActionsRow(router: router, item: item)
+                        }
+                    }
+                }
+            }
         }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.audio]) { result in
             if case .success(let url) = result { viewModel.sourceURL = url }

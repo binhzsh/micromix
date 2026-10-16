@@ -24,6 +24,21 @@ private final class NoopReattacher: ReimagineJobReattaching {
     func recoverSubmittedJob(id: String) async throws -> [LibraryItem] { [] }
 }
 
+private struct NoopSourceProcessingAPI: DurableSourceProcessing {
+    func uploadAsset(data: Data, filename: String, mediaType: String) async throws -> RemoteAsset {
+        RemoteAsset(id: "src", filename: filename, mediaType: mediaType, sizeBytes: data.count, sha256: String(repeating: "0", count: 64), downloadUrl: "/v1/assets/src")
+    }
+
+    func submitSourceProcessing(_ request: SourceProcessingRequest) async throws -> RemoteJob {
+        try JSONDecoder().decode(
+            RemoteJob.self,
+            from: Data(#"{"id":"job-1","kind":"stem_split","state":"queued"}"#.utf8)
+        )
+    }
+
+    func cancel(jobID: String) async throws {}
+}
+
 @Suite("WorkflowRouter chaining")
 @MainActor
 struct WorkflowRouterTests {
@@ -66,6 +81,28 @@ struct WorkflowRouterTests {
         ))
         #expect(reimagine.operation == .remix)
         #expect(reimagine.timeSignature == "4")
+    }
+
+    @Test("stem-split and vocal-swap actions deliver the source to SourceProcessing flows")
+    func routesSourceProcessingActions() {
+        let library = LocalLibrary(directory: nil)
+        let vocalSwap = SourceProcessingViewModel(operation: .vocalSwap, api: NoopSourceProcessingAPI(), reattacher: NoopReattacher())
+        let stemSplit = SourceProcessingViewModel(operation: .stemSplit, api: NoopSourceProcessingAPI(), reattacher: NoopReattacher())
+        let router = WorkflowRouter(library: library, vocalSwap: vocalSwap, stemSplit: stemSplit)
+        var switched: [DeviceMode] = []
+        router.onSwitchMode = { switched.append($0) }
+
+        let item = LibraryItem(
+            id: UUID(), kind: .audio, title: "song", createdAt: Date(),
+            promptOrSource: "song", durationSeconds: nil, relativePath: "audio/song.wav"
+        )
+        router.execute(.stemSplit, on: item)
+        router.execute(.vocalSwap, on: item)
+
+        #expect(switched == [.stemSplit, .vocalSwap])
+        let resolved = library.resolvedURL(for: item)
+        #expect(stemSplit.sourceURL == resolved)
+        #expect(vocalSwap.sourceURL == resolved)
     }
 }
 

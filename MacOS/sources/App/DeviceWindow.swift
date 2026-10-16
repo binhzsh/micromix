@@ -305,7 +305,8 @@ private struct DeckRegion: View {
                 viewModel: mode == .vocalSwap ? vocalSwap : stemSplit,
                 voices: connection.vocalModels,
                 localInferenceAvailable: connection.isConnected,
-                onOpenLibrary: { mode = .library }
+                onOpenLibrary: { mode = .library },
+                router: router
             )
         case .guide:
             WorkflowGuideView(mode: $mode)
