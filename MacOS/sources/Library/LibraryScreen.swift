@@ -172,14 +172,23 @@ struct LibraryScreen: View {
 
     private func row(index: Int, item: LibraryItem) -> some View {
         let selected = item.id == selectedID
+        let sounding = (player.currentItem?.id == item.id && player.isPlaying)
+            || (midiPreview.currentItem?.id == item.id && midiPreview.isPlaying)
         return LazyVGrid(columns: columns, spacing: 8) {
             Text("\(index)")
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundColor(Palette.ink.opacity(0.68))
-            Text(item.title)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(Palette.ink)
-                .lineLimit(1)
+            HStack(spacing: 5) {
+                if sounding {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(Palette.accentGreen)
+                }
+                Text(item.title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Palette.ink)
+                    .lineLimit(1)
+            }
             Text(item.kind == .audio ? "WAV" : "MID")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(item.kind == .audio ? Palette.accentGreen : Palette.accentBlue)
@@ -254,7 +263,9 @@ struct LibraryScreen: View {
                     }
                 } else {
                     player.stop()
-                    if midiPreview.load(url: url, item: item) {
+                    if midiPreview.shouldResume(for: item) {
+                        midiPreview.play()
+                    } else if midiPreview.load(url: url, item: item) {
                         midiPreview.play()
                     }
                 }

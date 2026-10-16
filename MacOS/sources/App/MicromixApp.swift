@@ -55,6 +55,13 @@ struct MicromixApp: App {
         Task { await monitor.refreshInstruments() }
         reattacher.startRecovery()
 
+        // Only one preview stream is audible at a time: starting audio stops
+        // the MIDI synth and vice versa.
+        let player = AudioPlayer()
+        let midiPreview = MidiPreview()
+        player.onStart = { midiPreview.stop() }
+        midiPreview.onStart = { player.stop() }
+
         return AppRoot(
             generate: generate,
             reimagine: reimagine,
@@ -64,8 +71,8 @@ struct MicromixApp: App {
             analyze: analyze,
             library: library,
             reattacher: reattacher,
-            player: AudioPlayer(),
-            midiPreview: MidiPreview(),
+            player: player,
+            midiPreview: midiPreview,
             connection: monitor,
             router: router,
             cover: cover,

@@ -24,6 +24,17 @@ final class MidiPreview: ObservableObject {
     @Published private(set) var currentItem: LibraryItem?
 
     private var player: AVMIDIPlayer?
+    private var pausedAt: TimeInterval?
+
+    /// Invoked whenever a preview is about to sound; the composition root stops
+    /// the audio player with it so only one stream is audible at a time.
+    var onStart: (@MainActor () -> Void)?
+
+    /// Whether pressing play for `item` should resume a paused preview rather
+    /// than load the file again (which would restart from the top).
+    func shouldResume(for item: LibraryItem) -> Bool {
+        currentItem?.id == item.id && state == .paused
+    }
 
     /// Load a MIDI result at `url` for preview. Returns false if the file can't
     /// be opened (e.g. corrupt or unsupported).
@@ -45,8 +56,20 @@ final class MidiPreview: ObservableObject {
         }
     }
 
+    func toggle() {
+        switch state {
+        case .playing: pause()
+        default: play()
+        }
+    }
+
     func play() {
         guard let player else { return }
+        onStart?()
+        if let pausedAt {
+            player.currentPosition = pausedAt
+            self.pausedAt = nil
+        }
         player.play { [weak self] in
             Task { @MainActor in
                 self?.state = .idle
@@ -56,13 +79,16 @@ final class MidiPreview: ObservableObject {
     }
 
     func pause() {
-        player?.stop()
+        guard let player else { return }
+        pausedAt = player.currentPosition
+        player.stop()
         state = .paused
     }
 
     func stop() {
         player?.stop()
         player = nil
+        pausedAt = nil
         currentItem = nil
         state = .idle
     }

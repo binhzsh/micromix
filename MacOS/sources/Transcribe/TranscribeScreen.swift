@@ -6,6 +6,8 @@ struct TranscribeScreen: View {
     let instruments: [String]
     var localInferenceAvailable: Bool = true
     var router: WorkflowRouter? = nil
+    var midiPreview: MidiPreview? = nil
+    var library: LocalLibrary? = nil
 
     private var canTranscribe: Bool {
         viewModel.hasSelection && !viewModel.isBlocked && localInferenceAvailable
@@ -58,8 +60,15 @@ struct TranscribeScreen: View {
                 }
             }
 
-            if viewModel.phase == .done, let router, let latest = viewModel.lastItem {
-                NextActionsRow(router: router, item: latest)
+            if viewModel.phase == .done, let latest = viewModel.lastItem {
+                HStack(spacing: 8) {
+                    if let midiPreview, let library {
+                        InlineMidiButton(midiPreview: midiPreview, item: latest, library: library)
+                    }
+                    if let router {
+                        NextActionsRow(router: router, item: latest)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

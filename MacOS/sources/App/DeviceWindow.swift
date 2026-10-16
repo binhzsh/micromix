@@ -318,7 +318,9 @@ private struct DeckRegion: View {
                 viewModel: transcribe,
                 instruments: connection.instruments,
                 localInferenceAvailable: connection.isConnected,
-                router: router
+                router: router,
+                midiPreview: midiPreview,
+                library: library
             )
         case .vocalSwap, .stemSplit:
             SourceProcessingScreen(
@@ -328,6 +330,7 @@ private struct DeckRegion: View {
                 onOpenLibrary: { mode = .library },
                 router: router,
                 player: player,
+                midiPreview: midiPreview,
                 library: library
             )
         case .guide:
@@ -343,6 +346,7 @@ private struct DeckRegion: View {
                 onOpenReimagine: { mode = .reimagine },
                 router: router,
                 player: player,
+                midiPreview: midiPreview,
                 library: library
             )
         case .library:

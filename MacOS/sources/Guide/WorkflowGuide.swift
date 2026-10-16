@@ -17,6 +17,7 @@ struct WorkflowGuideView: View {
     var onOpenReimagine: () -> Void = {}
     var router: WorkflowRouter? = nil
     var player: AudioPlayer? = nil
+    var midiPreview: MidiPreview? = nil
     var library: LocalLibrary? = nil
     @State private var tab: GuideTab = .cover
 
@@ -83,7 +84,9 @@ struct WorkflowGuideView: View {
                             model: transcribeStudio,
                             localInferenceAvailable: localInferenceAvailable,
                             onOpenReimagine: onOpenReimagine,
-                            onOpenLibrary: onOpenLibrary
+                            onOpenLibrary: onOpenLibrary,
+                            midiPreview: midiPreview,
+                            library: library
                         )
                     }
                 case .vocalSwapStudio:

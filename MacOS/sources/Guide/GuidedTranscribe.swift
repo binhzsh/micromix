@@ -213,6 +213,8 @@ struct GuidedTranscribeView: View {
     var localInferenceAvailable = true
     var onOpenReimagine: () -> Void = {}
     var onOpenLibrary: () -> Void = {}
+    var midiPreview: MidiPreview? = nil
+    var library: LocalLibrary? = nil
     @State private var isImporting = false
 
     var body: some View {
@@ -258,9 +260,14 @@ struct GuidedTranscribeView: View {
                 Text(error).foregroundStyle(Palette.accentRed)
             }
             if let item = model.transcribedItem {
-                Text("MIDI SAVED — \(item.title).")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(Palette.accentGreen)
+                HStack(spacing: 8) {
+                    if let midiPreview, let library {
+                        InlineMidiButton(midiPreview: midiPreview, item: item, library: library)
+                    }
+                    Text("MIDI SAVED — \(item.title).")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Palette.accentGreen)
+                }
             }
             if let delivered = model.deliveredSource {
                 Text("READY IN REIMAGINE — \(delivered). Adjust the direction and render there.")

@@ -234,6 +234,18 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ### Tasks
 
+- [x] **5.4 MIDI audition in place**
+  - Play/pause chips on MIDI result rows and a sounding indicator in Library
+  - Landed 2026-10-16: `InlineMidiButton` mirrors the audio chip and plays
+    transcribed/split MIDI through `MidiPreview` (General-MIDI software
+    synth) on the Transcribe screen, the source-processing result rows, and
+    the guided transcribe studio. `MidiPreview` gained real pause/resume
+    (`toggle`/`shouldResume`), and `AudioPlayer`/`MidiPreview` cross-stop via
+    an `onStart` hook so only one stream is audible at a time. Library rows
+    show a speaker glyph while their item is sounding, and the transport PLAY
+    resumes a paused MIDI instead of restarting. Covered by `MidiPreviewTests`
+    (6 tests).
+
 - [x] **6.1 Job bundle export**
   - One action gathers the asset, its job siblings, and any child assets into
     a single Finder folder with a provenance manifest
@@ -302,20 +314,18 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ## Next Action
 
-The full plan is implemented: Phases 1–5, all four guided workflows, and
-Phases 6.1–6.2 (129 native tests in 23 suites pass; visual `DeviceWindowTests`
-still excluded). The sidecar half was verified ready for the manual pass on
-2026-10-16: its 39 lightweight tests pass, `/v1/health` reports ready with all
-five model engines' dependencies present, and the running LaunchAgent process
-predates no sidecar code change (started 2026-10-06, last sidecar commit
-2026-09-18), so the app tests against current backend code.
+The full plan is implemented: Phases 1–5 (including 5.4 MIDI audition), all
+four guided workflows, and Phases 6.1–6.2 (132 native tests in 23 suites
+pass; visual `DeviceWindowTests` still excluded). The sidecar half was
+verified ready for the manual pass on 2026-10-16: its 39 lightweight tests
+pass, `/v1/health` reports ready with all five model engines' dependencies
+present, and the running LaunchAgent process predates no sidecar code change
+(started 2026-10-06, last sidecar commit 2026-09-18), so the app tests
+against current backend code.
 
 The next implementation increment should be chosen after the user's manual
 acceptance pass. Remaining candidates, in the order they were scouted:
 
-1. MIDI audition in the Library — MIDI rows currently show a dash in WAVE and
-   get no play chip; an `AVMIDIPlayer` path with the system DLS soundbank
-   would let transcribe/split results be heard in place.
-2. Export/import polish surfaced by real Logic imports (folder naming,
+1. Export/import polish surfaced by real Logic imports (folder naming,
    manifest wording) once the user has run an actual handoff.
-3. Any gaps from the user's testing notes.
+2. Any gaps from the user's testing notes.

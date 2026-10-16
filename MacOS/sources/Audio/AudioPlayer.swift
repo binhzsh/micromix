@@ -30,6 +30,10 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var currentItem: LibraryItem?
     @Published private(set) var currentDuration: Double?
 
+    /// Invoked whenever playback is about to sound; the composition root stops
+    /// the MIDI preview with it so only one stream is audible at a time.
+    var onStart: (@MainActor () -> Void)?
+
     private var player: AVAudioPlayer?
     private lazy var completionDelegate = AudioPlayerCompletionDelegate { [weak self] in
         Task { @MainActor in
@@ -68,6 +72,7 @@ final class AudioPlayer: ObservableObject {
 
     func play() {
         guard let player else { return }
+        onStart?()
         player.prepareToPlay()
         player.play()
         state = .playing
