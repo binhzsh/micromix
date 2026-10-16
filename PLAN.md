@@ -1,7 +1,7 @@
 # Micromix: Cohesive Workflow Design Plan
 
 **Status:** Active — replaces all prior plans  
-**Last updated:** 2026-10-15  
+**Last updated:** 2026-10-16  
 **Scope:** Chain the seven tools into one flowing app experience
 
 ---
@@ -73,23 +73,28 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ### Tasks
 
-- [ ] **1.1 Define AssetAction types**
+- [x] **1.1 Define AssetAction types**
   - `remix`, `repaint`, `stemSplit`, `vocalSwap`, `transcribe`, `analyze`, `referenceGenerate`
   - Each action knows its source asset ID and pre-fills target workspace
+  - Landed in `MacOS/sources/Core/AssetAction.swift`
 
-- [ ] **1.2 Add actions to Library items**
+- [x] **1.2 Add actions to Library items**
   - Library row shows available actions as small icon buttons
   - Clicking an action switches to target workspace with pre-filled source
+  - Landed via `router.availableActions(for:)` / `router.execute` in `LibraryScreen`
 
-- [ ] **1.3 Add actions to result screens**
+- [x] **1.3 Add actions to result screens**
   - Generate/Reimagine/Vocal Swap/Stem Split results show "Continue to..." chips
   - Single tap chains to next operation
+  - Landed via `NextActionsRow`; Vocal Swap and Stem Split were completed 2026-10-16,
+    with one chip row per output so both stem-split outputs are chainable
 
-- [ ] **1.4 Pre-fill target workspaces**
+- [x] **1.4 Pre-fill target workspaces**
   - When navigating with a source asset, the target workspace:
     - Shows source filename
     - Pre-fills any derived metadata (BPM from analysis, etc.)
     - Ready to run immediately or adjust first
+  - Landed via `acceptSource(_:)` on every workspace view model
 
 ---
 
@@ -99,19 +104,22 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ### Tasks
 
-- [ ] **2.1 Analysis → Generation**
+- [x] **2.1 Analysis → Generation**
   - Analyze results populate Generate's BPM/key fields
   - Add "Use these settings" button in Analyze
+  - Landed as "USE IN GENERATE" plus "USE IN REIMAGINE" chips in `AnalyzeScreen`
 
-- [ ] **2.2 Stem Split → Vocal Swap**
+- [x] **2.2 Stem Split → Vocal Swap**
   - Stem Split producing "vocals" target offers direct "Swap Voice" action
   - Pre-fills the vocal stem as source
+  - Landed via the target output's `SWAP VOICE` chip
 
-- [ ] **2.3 Any Audio → Reimagine**
+- [x] **2.3 Any Audio → Reimagine**
   - All audio outputs can become Reimagine source
   - Operation selector (reference/remix/repaint) shown before switching
+  - Landed via `USE AS REFERENCE` / `REMIX` / `REPAINT` chips on every audio result
 
-- [ ] **2.4 Generate → Reimagine**
+- [x] **2.4 Generate → Reimagine**
   - Generated variations offer "Remix this" and "Repaint section" actions
   - Seed/variation metadata preserved in provenance
 
@@ -225,4 +233,11 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ## Next Action
 
-Start Phase 1.1: Define `AssetAction` types and routing contract.
+Start Phase 3.1: deepen the Library provenance display into a collapsible
+Source → Operation → Output trail, then add the Related section (siblings,
+parent, children).
+
+Phases 1–2 are landed and covered by headless tests (91 native suites pass;
+visual `DeviceWindowTests` still excluded). The Phase 0 manual quality gate —
+listening, Logic import, bilingual review — remains the user's manual
+acceptance step.

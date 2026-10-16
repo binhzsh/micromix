@@ -310,7 +310,8 @@ review passes.
 
 ## Next action
 
-Define and implement local job persistence/recovery next. Coordinate the
-installed app and sidecar update, then follow the [manual acceptance checklist](evaluations/local-migration.md).
-Do not declare the migration complete before bilingual listening and Logic
-import evaluation passes.
+Local job persistence/recovery is implemented (SQLite-backed durable jobs;
+see the 2026-09-18 migration). Run the [manual acceptance checklist](evaluations/local-migration.md)
+next — bilingual listening, UI review, and Logic import on the private corpus —
+before declaring the local migration complete. In parallel, workflow chaining
+continues per `PLAN.md` Phase 3 (provenance trail and related assets).

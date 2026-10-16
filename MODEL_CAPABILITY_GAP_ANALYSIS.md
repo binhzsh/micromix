@@ -1,6 +1,8 @@
 # Model Capability Gap Analysis
 
-This report reflects the current on-disk implementation, including the present workspace changes that complete native Reimagine and job-reattachment work.
+This report reflects the current on-disk implementation as of 2026-10-16, after
+the local-migration, creative-controls, and asset-chaining work. All inference
+runs through the local sidecar in `services/local-inference`.
 
 ## ACE-Step 1.5 XL Turbo — 8 steps
 
@@ -10,18 +12,17 @@ This report reflects the current on-disk implementation, including the present w
 - Reference-audio generation.
 - Remix/Cover and time-range Repaint.
 - Duration, BPM, key, time signature, source strength, and repaint strength controls.
+- English/Vietnamese vocal-language intent with automatic fallback, exposed in Generate and Reimagine.
 - Deterministic seeds and one to four variations.
 - WAV output, cancellation, recovery, provenance, and local-library import.
-- Turbo/Quality selection is wired in [`services/micromix-api/micromix_api/adapters.py`](services/micromix-api/micromix_api/adapters.py); native Reimagine controls are in [`MacOS/sources/Reimagine/ReimagineViewModel.swift`](MacOS/sources/Reimagine/ReimagineViewModel.swift).
+- Turbo/Quality selection is wired in [`services/local-inference/local_inference/engines.py`](services/local-inference/local_inference/engines.py); native Reimagine controls are in [`MacOS/sources/Reimagine/ReimagineViewModel.swift`](MacOS/sources/Reimagine/ReimagineViewModel.swift).
 
 ### Model capabilities not implemented
 
 - Output-format selection: FLAC, MP3, Opus, AAC, and WAV32.
-- Explicit vocal-language selection and broader multilingual UX.
 - Advanced audio-code reuse and variant workflows.
 - User controls for guidance, sampling, inference steps, language-model behavior, and other low-level parameters.
 - LoRA/LoKr loading and private style training.
-- The Generate screen lacks seed, variations, BPM, key, and time-signature controls even though Reimagine and the API support them.
 - Lego, Extract, and Complete are unavailable with Turbo; these require an appropriate non-Turbo model.
 
 Upstream reference: [ACE-Step musician guide](https://github.com/ace-step/ACE-Step-1.5/blob/main/docs/en/ace_step_musicians_guide.md)
@@ -32,7 +33,7 @@ Upstream reference: [ACE-Step musician guide](https://github.com/ace-step/ACE-St
 
 - The same implemented workflows and controls as Turbo, using slower 50-step inference.
 - Text/lyrics generation, reference generation, Remix, Repaint, variations, deterministic seeds, musical metadata, durable jobs, and provenance.
-- Checkpoint configuration is pinned in [`docker-compose.yml`](docker-compose.yml).
+- Checkpoint configuration is pinned by the local sidecar presets in [`services/local-inference/local_inference/engines.py`](services/local-inference/local_inference/engines.py) (`turbo` → `acestep-v15-xl-turbo`, `quality` → `acestep-v15-xl-sft`).
 
 ### Model capabilities not implemented
 
@@ -52,7 +53,7 @@ Upstream reference: [ACE-Step inference documentation](https://github.com/ace-st
 - Loaded for both ACE checkpoints.
 - Thinking is enabled automatically for text and reference generation, but disabled for Remix and Repaint.
 - Provides internal generation planning without direct user configuration.
-- Implementation: [`services/micromix-api/micromix_api/adapters.py`](services/micromix-api/micromix_api/adapters.py).
+- Implementation: [`services/local-inference/local_inference/engines.py`](services/local-inference/local_inference/engines.py).
 
 ### Model capabilities not implemented
 
@@ -71,7 +72,7 @@ Upstream reference: [ACE-Step inference documentation](https://github.com/ace-st
 - Optional or best-effort tempo detection and beat-grid-adjusted MIDI.
 - Broad input decoding through FFmpeg.
 - Durable jobs, cancellation/recovery, and MIDI library import.
-- Model size is server-configurable but defaults to `medium`; see [`docker-compose.yml`](docker-compose.yml) and [`services/muscriptor-worker/muscriptor_worker/main.py`](services/muscriptor-worker/muscriptor_worker/main.py).
+- Model size is sidecar-configurable via `MICROMIX_MUSCRIPTOR_MODEL` (small, medium default, large, or a local checkpoint path); see [`services/local-inference/local_inference/engines.py`](services/local-inference/local_inference/engines.py).
 
 ### Model capabilities not implemented
 
