@@ -75,7 +75,9 @@ struct WorkflowGuideView: View {
                         GuidedRemixView(
                             model: remix,
                             localInferenceAvailable: localInferenceAvailable,
-                            onOpenReimagine: onOpenReimagine
+                            onOpenReimagine: onOpenReimagine,
+                            player: player,
+                            library: library
                         )
                     }
                 case .transcribeStudio:

@@ -78,6 +78,7 @@ struct GuidedRemixTests {
         #expect(model.state(of: .splitVocals) == .done)
         #expect(model.state(of: .analyze) == .done)
         #expect(model.deliveredSource == "residual.wav")
+        #expect(model.deliveredItem == residual)
         #expect(!model.isRunning)
     }
 

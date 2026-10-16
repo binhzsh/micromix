@@ -26,6 +26,9 @@ final class GuidedRemixModel: ObservableObject {
     @Published private(set) var isRunning = false
     /// Set once the source was handed to Reimagine; names the prepared source.
     @Published private(set) var deliveredSource: String?
+    /// The prepared source item (the split's instrumental residual) so the
+    /// studio can audition it in place before jumping to Reimagine.
+    @Published private(set) var deliveredItem: LibraryItem?
 
     /// Called with (source item if the split produced one, fallback URL,
     /// derived metadata) when the run finishes.
@@ -76,6 +79,7 @@ final class GuidedRemixModel: ObservableObject {
         cancelRequested = false
         errorMessage = nil
         deliveredSource = nil
+        deliveredItem = nil
         states = [:]
         set(.splitVocals, splitFirst ? .pending : .skipped)
         set(.analyze, analyzeFirst ? .pending : .skipped)
@@ -193,6 +197,7 @@ final class GuidedRemixModel: ObservableObject {
         task = nil
         isRunning = false
         deliveredSource = item?.title ?? sourceURL.lastPathComponent
+        deliveredItem = item
         runID = nil
         acceptedJobID = nil
         onDeliver?(item, sourceURL, derived)
@@ -264,6 +269,8 @@ struct GuidedRemixView: View {
     @ObservedObject var model: GuidedRemixModel
     var localInferenceAvailable = true
     var onOpenReimagine: () -> Void = {}
+    var player: AudioPlayer? = nil
+    var library: LocalLibrary? = nil
     @State private var isImporting = false
 
     var body: some View {
@@ -311,9 +318,14 @@ struct GuidedRemixView: View {
                 Text(error).foregroundStyle(Palette.accentRed)
             }
             if let delivered = model.deliveredSource {
-                Text("READY IN REIMAGINE — \(delivered). Adjust the direction and render there.")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(Palette.accentGreen)
+                HStack(spacing: 8) {
+                    if let item = model.deliveredItem, let player, let library {
+                        InlinePlayButton(player: player, item: item, library: library)
+                    }
+                    Text("READY IN REIMAGINE — \(delivered). Adjust the direction and render there.")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Palette.accentGreen)
+                }
             }
         }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.audio]) { result in
