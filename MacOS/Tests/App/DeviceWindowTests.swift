@@ -110,6 +110,15 @@ struct DeviceWindowTests {
         }
         let connection = ConnectionMonitor(api: api)
         connection.connected = true
+        let router = WorkflowRouter(
+            library: library,
+            generate: generate,
+            reimagine: ReimagineViewModel(api: api, reattacher: reattacher),
+            transcribe: TranscribeViewModel(api: api, library: library),
+            vocalSwap: SourceProcessingViewModel(operation: .vocalSwap, api: api, reattacher: reattacher),
+            stemSplit: SourceProcessingViewModel(operation: .stemSplit, api: api, reattacher: reattacher),
+            analyze: AnalyzeViewModel()
+        )
 
         let view = DeviceWindow(
             generate: generate,
@@ -122,7 +131,8 @@ struct DeviceWindowTests {
             reattacher: reattacher,
             player: AudioPlayer(),
             midiPreview: MidiPreview(),
-            connection: connection
+            connection: connection,
+            router: router
         )
         .frame(width: width, height: height)
 

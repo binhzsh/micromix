@@ -2,7 +2,7 @@ import Combine
 import Foundation
 
 @MainActor
-final class SourceProcessingViewModel: ObservableObject {
+final class SourceProcessingViewModel: ObservableObject, AssetAccepting {
     let operation: SourceProcessingOperation
     @Published var sourceURL: URL?
     @Published var voiceModel = ""
@@ -81,6 +81,15 @@ final class SourceProcessingViewModel: ObservableObject {
         if let acceptedJobID = flow.cancel() {
             Task { try? await api.cancel(jobID: acceptedJobID) }
         }
+    }
+
+    // MARK: - AssetAccepting
+
+    var canAcceptSource: Bool { !isRunning }
+
+    func acceptSource(_ context: AssetActionContext) {
+        guard canAcceptSource else { return }
+        sourceURL = context.sourceURL
     }
 
     private static func mediaType(for url: URL) -> String {

@@ -10,7 +10,7 @@ protocol ReimagineJobReattaching: AnyObject {
 extension JobReattacher: ReimagineJobReattaching {}
 
 @MainActor
-final class ReimagineViewModel: ObservableObject {
+final class ReimagineViewModel: ObservableObject, AssetAccepting {
     @Published var operation: ReimagineOperation = .reference
     @Published var sourceURL: URL?
     @Published var prompt = ""
@@ -227,6 +227,49 @@ final class ReimagineViewModel: ObservableObject {
     func cancel() {
         if let acceptedJobID = flow.cancel() {
             Task { try? await canceller.cancel(jobID: acceptedJobID) }
+        }
+    }
+
+    // MARK: - AssetAccepting
+
+    var canAcceptSource: Bool { !isRunning }
+
+    func acceptSource(_ context: AssetActionContext) {
+        guard canAcceptSource else { return }
+        sourceURL = context.sourceURL
+
+        // Set operation based on action
+        switch context.action {
+        case .referenceGenerate:
+            operation = .reference
+        case .remix:
+            operation = .remix
+        case .repaint:
+            operation = .repaint
+        default:
+            break
+        }
+
+        // Pre-fill metadata if available
+        if let derived = context.derivedMetadata {
+            prefill(from: derived)
+        }
+    }
+
+    private func prefill(from derived: DerivedMetadata) {
+        isApplyingPrefill = true
+        defer { isApplyingPrefill = false }
+        if !bpmWasManuallyEdited, let bpm = derived.beatsPerMinute {
+            bpmText = String(Int(bpm.rounded()))
+        }
+        if !keyWasManuallyEdited, let key = derived.key {
+            self.key = key
+        }
+        if let timeSignature = derived.timeSignature {
+            self.timeSignature = timeSignature
+        }
+        if let language = derived.detectedLanguage {
+            vocalLanguage = language
         }
     }
 

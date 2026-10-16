@@ -51,6 +51,7 @@ struct DeviceWindow: View {
     @ObservedObject var player: AudioPlayer
     @ObservedObject var midiPreview: MidiPreview
     @ObservedObject var connection: ConnectionMonitor
+    @ObservedObject var router: WorkflowRouter
 
     var body: some View {
         VStack(spacing: 0) {
@@ -78,6 +79,7 @@ struct DeviceWindow: View {
                 player: player,
                 midiPreview: midiPreview,
                 connection: connection,
+                router: router,
                 selectedID: $selectedID
             )
         }
@@ -220,6 +222,7 @@ private struct DeckRegion: View {
     @ObservedObject var player: AudioPlayer
     @ObservedObject var midiPreview: MidiPreview
     @ObservedObject var connection: ConnectionMonitor
+    @ObservedObject var router: WorkflowRouter
 
     @Binding var selectedID: UUID?
 
@@ -261,6 +264,12 @@ private struct DeckRegion: View {
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.deck)
+        .onAppear {
+            // Wire up the router's mode switch callback
+            router.onSwitchMode = { newMode in
+                mode = newMode
+            }
+        }
     }
 
     // MARK: - Mode controls
@@ -303,28 +312,10 @@ private struct DeckRegion: View {
                 library: library,
                 player: player,
                 midiPreview: midiPreview,
+                router: router,
                 selectedID: $selectedID,
                 onGenerate: { mode = .generate },
-                onStartTranscribe: { mode = .transcribe },
-                onReimagine: { url in
-                    reimagine.sourceURL = url
-                    reimagine.operation = .remix
-                    mode = .reimagine
-                },
-                onStemSplit: { url in
-                    stemSplit.sourceURL = url
-                    mode = .stemSplit
-                },
-                onVocalSwap: { url in
-                    vocalSwap.sourceURL = url
-                    mode = .vocalSwap
-                },
-                onTranscribe: { url in
-                    Task {
-                        guard await transcribe.select(url: url) else { return }
-                        mode = .transcribe
-                    }
-                }
+                onStartTranscribe: { mode = .transcribe }
             )
         }
     }

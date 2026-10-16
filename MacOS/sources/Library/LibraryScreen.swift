@@ -7,13 +7,10 @@ struct LibraryScreen: View {
     @ObservedObject var library: LocalLibrary
     @ObservedObject var player: AudioPlayer
     @ObservedObject var midiPreview: MidiPreview
+    @ObservedObject var router: WorkflowRouter
     @Binding var selectedID: UUID?
     var onGenerate: () -> Void = {}
     var onStartTranscribe: () -> Void = {}
-    var onReimagine: (URL) -> Void = { _ in }
-    var onStemSplit: (URL) -> Void = { _ in }
-    var onVocalSwap: (URL) -> Void = { _ in }
-    var onTranscribe: (URL) -> Void = { _ in }
     @State private var collection: LibraryCollection = .all
     @State private var searchText = ""
 
@@ -211,10 +208,11 @@ struct LibraryScreen: View {
                         .lineLimit(1)
                     if item.kind == .audio {
                         HStack(spacing: 7) {
-                            actionButton("REMIX", color: Palette.accentOrange) { onReimagine(library.resolvedURL(for: item)) }
-                            actionButton("SPLIT", color: Palette.accentBlue) { onStemSplit(library.resolvedURL(for: item)) }
-                            actionButton("SWAP", color: Palette.accentGreen) { onVocalSwap(library.resolvedURL(for: item)) }
-                            actionButton("TRANSCRIBE", color: Palette.accentBlue) { onTranscribe(library.resolvedURL(for: item)) }
+                            ForEach(router.availableActions(for: item)) { action in
+                                actionButton(action.label, color: actionColor(for: action)) {
+                                    router.execute(action, on: item)
+                                }
+                            }
                         }
                     }
                 }
@@ -298,6 +296,23 @@ struct LibraryScreen: View {
                 .overlay(RoundedRectangle(cornerRadius: 4).stroke(color, lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+
+    private func actionColor(for action: AssetAction) -> Color {
+        switch action {
+        case .referenceGenerate:
+            return Palette.accentOrange
+        case .remix, .repaint:
+            return Palette.accentOrange
+        case .stemSplit:
+            return Palette.accentBlue
+        case .vocalSwap:
+            return Palette.accentGreen
+        case .transcribe:
+            return Palette.accentBlue
+        case .analyze:
+            return Palette.accentBlue
+        }
     }
 
     private func col(_ text: String) -> some View {

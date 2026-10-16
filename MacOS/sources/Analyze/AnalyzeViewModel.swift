@@ -2,7 +2,7 @@ import Combine
 import Foundation
 
 @MainActor
-final class AnalyzeViewModel: ObservableObject {
+final class AnalyzeViewModel: ObservableObject, AssetAccepting {
     @Published private(set) var sourceURL: URL?
     @Published private(set) var sourceName = ""
     @Published private(set) var analysis: LocalMusicAnalysis?
@@ -25,5 +25,14 @@ final class AnalyzeViewModel: ObservableObject {
             }
             isRunning = false
         }
+    }
+
+    // MARK: - AssetAccepting
+
+    var canAcceptSource: Bool { !isRunning }
+
+    func acceptSource(_ context: AssetActionContext) {
+        guard canAcceptSource else { return }
+        analyze(url: context.sourceURL)
     }
 }

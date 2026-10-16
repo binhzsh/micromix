@@ -19,6 +19,17 @@ struct MicromixApp: App {
         let vocalSwap = SourceProcessingViewModel(operation: .vocalSwap, api: api, reattacher: reattacher)
         let stemSplit = SourceProcessingViewModel(operation: .stemSplit, api: api, reattacher: reattacher)
 
+        // Workflow router for chaining operations
+        let router = WorkflowRouter(
+            library: library,
+            generate: generate,
+            reimagine: reimagine,
+            transcribe: transcribe,
+            vocalSwap: vocalSwap,
+            stemSplit: stemSplit,
+            analyze: analyze
+        )
+
         // Kick off a connection health check; the monitor polls every 15 s.
         monitor.start()
         // Fetch the transcribe instrument list once at launch.
@@ -36,7 +47,8 @@ struct MicromixApp: App {
             reattacher: reattacher,
             player: AudioPlayer(),
             midiPreview: MidiPreview(),
-            connection: monitor
+            connection: monitor,
+            router: router
         )
     }
 
@@ -53,7 +65,8 @@ struct MicromixApp: App {
                 reattacher: root.reattacher,
                 player: root.player,
                 midiPreview: root.midiPreview,
-                connection: root.connection
+                connection: root.connection,
+                router: root.router
             )
             .frame(minWidth: 900, minHeight: 640)
         }
@@ -74,4 +87,5 @@ struct AppRoot: Sendable {
     let player: AudioPlayer
     let midiPreview: MidiPreview
     let connection: ConnectionMonitor
+    let router: WorkflowRouter
 }

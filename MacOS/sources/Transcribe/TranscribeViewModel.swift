@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 /// fakes can stand in for the real actor / `@MainActor` store (same pattern as
 /// `GenerateViewModel`).
 @MainActor
-final class TranscribeViewModel: ObservableObject {
+final class TranscribeViewModel: ObservableObject, AssetAccepting {
     private actor SubmittedJobReference {
         private var id: String?
         func set(_ id: String) { self.id = id }
@@ -252,6 +252,18 @@ final class TranscribeViewModel: ObservableObject {
         runner.cancel()
         if phase == .running {
             phase = .cancelled
+        }
+    }
+
+    // MARK: - AssetAccepting
+
+    var canAcceptSource: Bool { !isRunning }
+
+    func acceptSource(_ context: AssetActionContext) {
+        guard canAcceptSource else { return }
+        let url = context.sourceURL
+        Task {
+            _ = await select(url: url)
         }
     }
 
