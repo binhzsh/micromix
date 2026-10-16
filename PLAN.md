@@ -243,11 +243,12 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
     (`toggle`/`shouldResume`), and `AudioPlayer`/`MidiPreview` cross-stop via
     an `onStart` hook so only one stream is audible at a time. Library rows
     show a speaker glyph while their item is sounding, and the transport PLAY
-    resumes a paused MIDI instead of restarting. The REMIX STUDIO now keeps the
-    delivered instrumental item and offers a play chip beside its READY IN
-    REIMAGINE line, so the prepared source can be auditioned before jumping
-    to Reimagine. Covered by `MidiPreviewTests` (6 tests) and the extended
-    `GuidedRemixTests` delivery assertion.
+    resumes a paused audio or MIDI item instead of restarting (the transport
+    follows the same `shouldResume` parity the chips use). The REMIX STUDIO
+    now keeps the delivered instrumental item and offers a play chip beside
+    its READY IN REIMAGINE line, so the prepared source can be auditioned
+    before jumping to Reimagine. Covered by `MidiPreviewTests` (6 tests) and
+    the extended `GuidedRemixTests` delivery assertion.
 
 - [x] **6.1 Job bundle export**
   - One action gathers the asset, its job siblings, and any child assets into

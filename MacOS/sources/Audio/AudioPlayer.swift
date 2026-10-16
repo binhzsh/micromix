@@ -41,6 +41,12 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
+    /// Whether pressing play for `item` should resume a paused playback rather
+    /// than load the file again (which would restart from the top).
+    func shouldResume(for item: LibraryItem) -> Bool {
+        currentItem?.id == item.id && state == .paused
+    }
+
     /// Load audio at `url` for playback. Returns derived duration (seconds),
     /// or nil if the file cannot be opened.
     @discardableResult

@@ -258,7 +258,9 @@ struct LibraryScreen: View {
                 let url = library.resolvedURL(for: item)
                 if item.kind == .audio {
                     midiPreview.stop()
-                    if player.load(url: url, item: item) != nil {
+                    if player.shouldResume(for: item) {
+                        player.play()
+                    } else if player.load(url: url, item: item) != nil {
                         player.play()
                     }
                 } else {
