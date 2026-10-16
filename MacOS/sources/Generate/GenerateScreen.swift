@@ -153,6 +153,7 @@ struct GenerateScreen: View {
                         .foregroundStyle(Palette.ink.opacity(0.72))
                     if let player, let library,
                        let audio = viewModel.results.first(where: { $0.kind == .audio }) {
+                        MiniWaveform(item: audio, library: library)
                         InlinePlayButton(player: player, item: audio, library: library)
                     }
                 }

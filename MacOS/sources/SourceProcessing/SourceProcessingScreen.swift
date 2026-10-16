@@ -59,9 +59,12 @@ struct SourceProcessingScreen: View {
             if viewModel.phase == .done {
                 Text("Saved \(viewModel.results.count) output(s) to Library.")
                 ForEach(viewModel.results) { item in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    HStack(alignment: .center, spacing: 8) {
                         Typography.monoLabel(item.title, size: 9)
                             .foregroundColor(Palette.ink.opacity(0.64))
+                        if item.kind == .audio, let library {
+                            MiniWaveform(item: item, library: library)
+                        }
                         if item.kind == .audio, let player, let library {
                             InlinePlayButton(player: player, item: item, library: library)
                         }

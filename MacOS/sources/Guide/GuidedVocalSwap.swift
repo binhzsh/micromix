@@ -329,9 +329,12 @@ struct GuidedVocalSwapView: View {
             if !model.results.isEmpty {
                 Text("Saved \(model.results.count) output(s) to Library.")
                 ForEach(model.results) { item in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    HStack(alignment: .center, spacing: 8) {
                         Typography.monoLabel(item.title, size: 9)
                             .foregroundColor(Palette.ink.opacity(0.64))
+                        if item.kind == .audio, let library {
+                            MiniWaveform(item: item, library: library)
+                        }
                         if item.kind == .audio, let player, let library {
                             InlinePlayButton(player: player, item: item, library: library)
                         }

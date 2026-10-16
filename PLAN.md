@@ -220,8 +220,11 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
   - Visual confirmation before chaining
   - Landed 2026-10-16 as a WAVE column in the Library list: audio rows render
     a 24-bar mini waveform (computed off-main and cached per item); MIDI rows
-    show a dash. Also gates the Phase 5.2 A/B compare pins to audio items so
-    MIDI can never route through the audio player.
+    show a dash. The same waveform now sits beside the inline play chip on the
+    Generate, Reimagine, Vocal Swap/Stem Split, and guided-studio result rows,
+    so the shape is visible right where chaining decisions are made. Also
+    gates the Phase 5.2 A/B compare pins to audio items so MIDI can never
+    route through the audio player.
 
 ---
 
