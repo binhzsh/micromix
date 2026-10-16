@@ -56,11 +56,12 @@ struct MicromixApp: App {
         reattacher.startRecovery()
 
         // Only one preview stream is audible at a time: starting audio stops
-        // the MIDI synth and vice versa.
+        // the MIDI synth and vice versa. Weak captures avoid a retain cycle
+        // between the two app-lifetime players.
         let player = AudioPlayer()
         let midiPreview = MidiPreview()
-        player.onStart = { midiPreview.stop() }
-        midiPreview.onStart = { player.stop() }
+        player.onStart = { [weak midiPreview] in midiPreview?.stop() }
+        midiPreview.onStart = { [weak player] in player?.stop() }
 
         return AppRoot(
             generate: generate,

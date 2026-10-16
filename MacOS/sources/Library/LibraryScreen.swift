@@ -212,6 +212,9 @@ struct LibraryScreen: View {
         .contentShape(Rectangle())
         .background(selected ? Palette.accentBlue.opacity(0.10) : Color.clear)
         .onTapGesture {
+            // Same policy as select(): a row change ends any sounding or
+            // paused session so a later PLAY starts the new selection fresh.
+            player.stop()
             midiPreview.stop()
             selectedID = item.id
         }
@@ -274,11 +277,17 @@ struct LibraryScreen: View {
             }
             button("PAUSE", color: Palette.ink, disabled: !player.isPlaying && !midiPreview.isPlaying) {
                 if player.isPlaying { player.pause() }
-                if midiPreview.isPlaying { midiPreview.stop() }
+                // Pausing the MIDI preview preserves its position for a later
+                // resume; `stop` would discard it.
+                if midiPreview.isPlaying { midiPreview.pause() }
             }
-            button("STOP", color: Palette.ink, disabled: !player.isPlaying && !midiPreview.isPlaying) {
-                if player.isPlaying { player.stop() }
-                if midiPreview.isPlaying { midiPreview.stop() }
+            button(
+                "STOP",
+                color: Palette.ink,
+                disabled: player.state == .idle && midiPreview.state == .idle
+            ) {
+                if player.state != .idle { player.stop() }
+                if midiPreview.state != .idle { midiPreview.stop() }
             }
             button("DELETE", color: Palette.accentRed, disabled: selectedItem == nil) {
                 guard let item = selectedItem else { return }

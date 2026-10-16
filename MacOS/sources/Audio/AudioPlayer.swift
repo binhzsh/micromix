@@ -79,6 +79,11 @@ final class AudioPlayer: ObservableObject {
     func play() {
         guard let player else { return }
         onStart?()
+        if state == .idle {
+            // Replaying a finished (or freshly loaded) item starts from the
+            // top; resuming a paused one keeps its currentTime.
+            player.currentTime = 0
+        }
         player.prepareToPlay()
         player.play()
         state = .playing

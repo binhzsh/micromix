@@ -32,12 +32,13 @@ struct InlineMidiButton: View {
     }
 
     private func toggle() {
-        if midiPreview.shouldResume(for: item) {
+        if midiPreview.currentItem?.id != item.id {
+            guard midiPreview.load(url: library.resolvedURL(for: item), item: item) else { return }
             midiPreview.play()
-        } else if midiPreview.currentItem?.id != item.id {
-            if midiPreview.load(url: library.resolvedURL(for: item), item: item) {
-                midiPreview.play()
-            }
+        } else {
+            // Same item: pause while playing, resume while paused, restart
+            // after a natural completion (MidiPreview.play rewinds).
+            midiPreview.toggle()
         }
     }
 }

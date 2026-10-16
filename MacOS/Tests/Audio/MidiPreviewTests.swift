@@ -80,6 +80,29 @@ struct MidiPreviewTests {
         #expect(!preview.shouldResume(for: item))
     }
 
+    @Test("a paused preview keeps its state after the stopped playback's completion lands")
+    func pauseSurvivesStoppedPlaybackCompletion() async throws {
+        let url = try makeMidiFile(noteTicks: 384)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let preview = MidiPreview()
+        let item = LibraryItem(
+            id: UUID(), kind: .midi, title: "Preview", createdAt: Date(),
+            promptOrSource: "test", durationSeconds: nil, relativePath: "midi/test.mid"
+        )
+        #expect(preview.load(url: url, item: item))
+        preview.play()
+        preview.pause()
+        #expect(preview.state == .paused)
+
+        // AVMIDIPlayer fires its play completion when playback is stopped as
+        // well as when it finishes; the queued main-actor task must be
+        // recognized as stale instead of overwriting `.paused` with `.idle`.
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(preview.state == .paused)
+        #expect(preview.shouldResume(for: item))
+        #expect(preview.currentItem?.id == item.id)
+    }
+
     @Test("toggle alternates playing and paused")
     func toggleAlternatesStates() throws {
         let url = try makeMidiFile(noteTicks: 384)

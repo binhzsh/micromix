@@ -18,6 +18,12 @@ struct AudioPlayerTests {
 
         try await Task.sleep(for: .milliseconds(300))
         #expect(player.state == .idle)
+
+        // Replaying a finished item is playable again (the chip's PLAY after
+        // a natural completion must not be a dead click).
+        player.play()
+        #expect(player.state == .playing)
+        player.stop()
     }
 
     @Test("failed load clears duration from the previous item")

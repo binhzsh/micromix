@@ -25,6 +25,10 @@ final class MidiPreview: ObservableObject {
 
     private var player: AVMIDIPlayer?
     private var pausedAt: TimeInterval?
+    /// Rises on every load/stop/pause. AVMIDIPlayer's play completion fires
+    /// when playback stops as well as when it finishes, so a completion from a
+    /// superseded playback must be recognized as stale and ignored.
+    private var generation = 0
 
     /// Invoked whenever a preview is about to sound; the composition root stops
     /// the audio player with it so only one stream is audible at a time.
@@ -69,10 +73,18 @@ final class MidiPreview: ObservableObject {
         if let pausedAt {
             player.currentPosition = pausedAt
             self.pausedAt = nil
+        } else if state == .idle {
+            // Replaying a finished preview restarts from the top; resuming a
+            // paused one keeps its position via `pausedAt` above.
+            player.currentPosition = 0
         }
+        generation += 1
+        let token = generation
         player.play { [weak self] in
-            Task { @MainActor in
-                self?.state = .idle
+            Task { @MainActor [weak self] in
+                guard let self, self.generation == token else { return }
+                self.pausedAt = nil
+                self.state = .idle
             }
         }
         state = .playing
@@ -81,11 +93,15 @@ final class MidiPreview: ObservableObject {
     func pause() {
         guard let player else { return }
         pausedAt = player.currentPosition
+        // Bump the generation so the stopped playback's completion (which
+        // AVMIDIPlayer fires on stop) cannot overwrite `.paused` with `.idle`.
+        generation += 1
         player.stop()
         state = .paused
     }
 
     func stop() {
+        generation += 1
         player?.stop()
         player = nil
         pausedAt = nil

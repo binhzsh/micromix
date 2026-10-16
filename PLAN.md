@@ -247,8 +247,18 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
     follows the same `shouldResume` parity the chips use). The REMIX STUDIO
     now keeps the delivered instrumental item and offers a play chip beside
     its READY IN REIMAGINE line, so the prepared source can be auditioned
-    before jumping to Reimagine. Covered by `MidiPreviewTests` (6 tests) and
+    before jumping to Reimagine. Covered by `MidiPreviewTests` (7 tests) and
     the extended `GuidedRemixTests` delivery assertion.
+
+  - Hardened after an adversarial review of the branch: `MidiPreview` now
+    stamps each playback with a generation token so the `AVMIDIPlayer`
+    completion (which Apple fires on `stop()` too) cannot asynchronously
+    overwrite a paused or stopped state; the MIDI chip pauses via `toggle()`
+    like the audio chip instead of being a no-op while playing; the Library
+    transport PAUSE preserves the MIDI position and STOP handles paused
+    sessions; replaying a finished audio or MIDI item restarts from the top;
+    row taps stop both players (the same policy as selection); and the
+    cross-stop hooks capture their counterpart weakly.
 
 - [x] **6.1 Job bundle export**
   - One action gathers the asset, its job siblings, and any child assets into
