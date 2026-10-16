@@ -52,6 +52,7 @@ struct DeviceWindow: View {
     @ObservedObject var midiPreview: MidiPreview
     @ObservedObject var connection: ConnectionMonitor
     @ObservedObject var router: WorkflowRouter
+    @ObservedObject var cover: GuidedCoverModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,6 +81,7 @@ struct DeviceWindow: View {
                 midiPreview: midiPreview,
                 connection: connection,
                 router: router,
+                cover: cover,
                 selectedID: $selectedID
             )
         }
@@ -223,6 +225,7 @@ private struct DeckRegion: View {
     @ObservedObject var midiPreview: MidiPreview
     @ObservedObject var connection: ConnectionMonitor
     @ObservedObject var router: WorkflowRouter
+    @ObservedObject var cover: GuidedCoverModel
 
     @Binding var selectedID: UUID?
 
@@ -309,7 +312,14 @@ private struct DeckRegion: View {
                 router: router
             )
         case .guide:
-            WorkflowGuideView(mode: $mode)
+            WorkflowGuideView(
+                mode: $mode,
+                cover: cover,
+                voices: connection.vocalModels,
+                localInferenceAvailable: connection.isConnected,
+                onOpenLibrary: { mode = .library },
+                router: router
+            )
         case .library:
             LibraryScreen(
                 library: library,

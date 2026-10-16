@@ -2,17 +2,23 @@ import SwiftUI
 
 /// End-to-end workflow guide shown from the GUIDE deck button.
 ///
-/// Static, self-contained: no view models or network access. The cover
-/// walkthrough uses the real mode buttons so a user can follow it while
-/// switching workspaces.
+/// Static walkthroughs explain the flows; the COVER STUDIO tab actually runs
+/// the guided AI-cover chain (source → stem split → vocal swap) through its
+/// own view model.
 struct WorkflowGuideView: View {
     @Binding var mode: DeviceMode
+    var cover: GuidedCoverModel? = nil
+    var voices: [String] = []
+    var localInferenceAvailable = true
+    var onOpenLibrary: () -> Void = {}
+    var router: WorkflowRouter? = nil
     @State private var tab: GuideTab = .cover
 
     enum GuideTab: String, CaseIterable, Identifiable {
         case cover = "AI COVER"
         case reimagine = "REIMAGINE"
         case fromScratch = "FROM SCRATCH"
+        case studio = "COVER STUDIO"
 
         var id: String { rawValue }
     }
@@ -42,6 +48,16 @@ struct WorkflowGuideView: View {
                 case .cover: coverFlow
                 case .reimagine: reimagineFlow
                 case .fromScratch: fromScratchFlow
+                case .studio:
+                    if let cover {
+                        GuidedCoverView(
+                            model: cover,
+                            voices: voices,
+                            localInferenceAvailable: localInferenceAvailable,
+                            onOpenLibrary: onOpenLibrary,
+                            router: router
+                        )
+                    }
                 }
             }
         }

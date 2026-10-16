@@ -158,9 +158,14 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ### Tasks
 
-- [ ] **4.1 "Make a Cover" workflow**
+- [x] **4.1 "Make a Cover" workflow**
   - Import song → Analyze → Stem Split → Vocal Swap → Library
   - Guided stepper UI showing progress
+  - Landed 2026-10-16 as the GUIDE tab's COVER STUDIO: one source and voice
+    choice, then durable stem-split → vocal-swap jobs run back to back (the
+    vocal stem's registered asset feeds the swap without a re-upload), with a
+    live stage stepper, cancellation, and result next-actions. Analyze stays a
+    separate optional step; the stepper covers the transformation core.
 
 - [ ] **4.2 "Remix My Track" workflow**
   - Import → Analyze → Reimagine (with pre-filled metadata)
@@ -238,11 +243,11 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ## Next Action
 
-Start Phase 4: pick one guided chain (AI cover first — import → analyze →
-stem split → vocal swap → library) and add a stepper-style guided entry point
-without removing the free-form workspaces.
+Start Phase 4.2: add a "Remix My Track" guided entry (import → analyze →
+Reimagine with pre-filled direction, optional stem split first), reusing the
+COVER STUDIO pattern.
 
-Phases 1–3 are landed and covered by headless tests (98 native suites pass;
-visual `DeviceWindowTests` still excluded). The Phase 0 manual quality gate —
-listening, Logic import, bilingual review — remains the user's manual
-acceptance step.
+Phases 1–3 and guided cover (4.1) are landed and covered by headless tests
+(102 native suites pass; visual `DeviceWindowTests` still excluded). The
+Phase 0 manual quality gate — listening, Logic import, bilingual review —
+remains the user's manual acceptance step.

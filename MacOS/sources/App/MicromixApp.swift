@@ -18,6 +18,7 @@ struct MicromixApp: App {
         let analyze = AnalyzeViewModel()
         let vocalSwap = SourceProcessingViewModel(operation: .vocalSwap, api: api, reattacher: reattacher)
         let stemSplit = SourceProcessingViewModel(operation: .stemSplit, api: api, reattacher: reattacher)
+        let cover = GuidedCoverModel(api: api, reattacher: reattacher)
 
         // Workflow router for chaining operations
         let router = WorkflowRouter(
@@ -48,7 +49,8 @@ struct MicromixApp: App {
             player: AudioPlayer(),
             midiPreview: MidiPreview(),
             connection: monitor,
-            router: router
+            router: router,
+            cover: cover
         )
     }
 
@@ -66,7 +68,8 @@ struct MicromixApp: App {
                 player: root.player,
                 midiPreview: root.midiPreview,
                 connection: root.connection,
-                router: root.router
+                router: root.router,
+                cover: root.cover
             )
             .frame(minWidth: 900, minHeight: 640)
         }
@@ -88,4 +91,5 @@ struct AppRoot: Sendable {
     let midiPreview: MidiPreview
     let connection: ConnectionMonitor
     let router: WorkflowRouter
+    let cover: GuidedCoverModel
 }

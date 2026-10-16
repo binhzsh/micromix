@@ -132,7 +132,8 @@ struct DeviceWindowTests {
             player: AudioPlayer(),
             midiPreview: MidiPreview(),
             connection: connection,
-            router: router
+            router: router,
+            cover: GuidedCoverModel(api: api, reattacher: reattacher)
         )
         .frame(width: width, height: height)
 
