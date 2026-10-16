@@ -207,9 +207,13 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
     validated against the current alternatives group, so stale pins from
     another job never appear.
 
-- [ ] **5.3 Waveform peek**
+- [x] **5.3 Waveform peek**
   - Show mini waveform in result rows
   - Visual confirmation before chaining
+  - Landed 2026-10-16 as a WAVE column in the Library list: audio rows render
+    a 24-bar mini waveform (computed off-main and cached per item); MIDI rows
+    show a dash. Also gates the Phase 5.2 A/B compare pins to audio items so
+    MIDI can never route through the audio player.
 
 ---
 
@@ -260,12 +264,13 @@ Any Audio ──► Stem Split ──┬──► Vocal Swap
 
 ## Next Action
 
-Phase 5.2 (A/B compare toggle between two pinned alternatives) is landed and
-covered by the headless test suite. The next implementation increment, when
-resumed, is Phase 5.3: waveform peek — a mini waveform in result rows so the
-user can visually confirm an asset before chaining it into the next operation.
+Phase 5 is complete (5.1 inline play/pause chips, 5.2 A/B compare toggle, and
+5.3 waveform peek all landed). The next implementation increment, when resumed,
+should be chosen after the user's manual acceptance pass over the Phase 5
+preview features; candidates are deeper analysis handoffs, export/import
+conveniences, or any gaps surfaced by manual testing.
 
-Phases 1–4, 5.1, and 5.2 are landed and covered by headless tests (117 native
-tests in 20 suites pass; visual `DeviceWindowTests` still excluded). The Phase
-0 manual quality gate — listening, Logic import, bilingual review — remains
-the user's manual acceptance step.
+Phases 1–5 are landed and covered by headless tests (120 native tests in 21
+suites pass; visual `DeviceWindowTests` still excluded). The Phase 0 manual
+quality gate — listening, Logic import, bilingual review — remains the user's
+manual acceptance step.
