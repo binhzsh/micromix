@@ -9,6 +9,7 @@ struct WorkflowGuideView: View {
     @Binding var mode: DeviceMode
     var cover: GuidedCoverModel? = nil
     var remix: GuidedRemixModel? = nil
+    var transcribeStudio: GuidedTranscribeModel? = nil
     var voices: [String] = []
     var localInferenceAvailable = true
     var onOpenLibrary: () -> Void = {}
@@ -22,6 +23,7 @@ struct WorkflowGuideView: View {
         case fromScratch = "FROM SCRATCH"
         case studio = "COVER STUDIO"
         case remixStudio = "REMIX STUDIO"
+        case transcribeStudio = "TRANSCRIBE STUDIO"
 
         var id: String { rawValue }
     }
@@ -67,6 +69,15 @@ struct WorkflowGuideView: View {
                             model: remix,
                             localInferenceAvailable: localInferenceAvailable,
                             onOpenReimagine: onOpenReimagine
+                        )
+                    }
+                case .transcribeStudio:
+                    if let transcribeStudio {
+                        GuidedTranscribeView(
+                            model: transcribeStudio,
+                            localInferenceAvailable: localInferenceAvailable,
+                            onOpenReimagine: onOpenReimagine,
+                            onOpenLibrary: onOpenLibrary
                         )
                     }
                 }

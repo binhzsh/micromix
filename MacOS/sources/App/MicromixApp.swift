@@ -20,6 +20,7 @@ struct MicromixApp: App {
         let stemSplit = SourceProcessingViewModel(operation: .stemSplit, api: api, reattacher: reattacher)
         let cover = GuidedCoverModel(api: api, reattacher: reattacher)
         let remix = GuidedRemixModel(api: api, reattacher: reattacher)
+        let transcribeStudio = GuidedTranscribeModel(api: api, reattacher: reattacher)
 
         // Workflow router for chaining operations
         let router = WorkflowRouter(
@@ -39,6 +40,12 @@ struct MicromixApp: App {
             } else {
                 router.reimagineRemix(url: url, derived: derived)
             }
+        }
+
+        // Guided transcribe studio hands the original audio to Reimagine as a
+        // remix source once the MIDI lands in the Library.
+        transcribeStudio.onDeliver = { url in
+            router.reimagineRemix(url: url)
         }
 
         // Kick off a connection health check; the monitor polls every 15 s.
@@ -61,7 +68,8 @@ struct MicromixApp: App {
             connection: monitor,
             router: router,
             cover: cover,
-            remix: remix
+            remix: remix,
+            transcribeStudio: transcribeStudio
         )
     }
 
@@ -81,7 +89,8 @@ struct MicromixApp: App {
                 connection: root.connection,
                 router: root.router,
                 cover: root.cover,
-                remix: root.remix
+                remix: root.remix,
+                transcribeStudio: root.transcribeStudio
             )
             .frame(minWidth: 900, minHeight: 640)
         }
@@ -105,4 +114,5 @@ struct AppRoot: Sendable {
     let router: WorkflowRouter
     let cover: GuidedCoverModel
     let remix: GuidedRemixModel
+    let transcribeStudio: GuidedTranscribeModel
 }

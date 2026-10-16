@@ -134,7 +134,8 @@ struct DeviceWindowTests {
             connection: connection,
             router: router,
             cover: GuidedCoverModel(api: api, reattacher: reattacher),
-            remix: GuidedRemixModel(api: api, reattacher: reattacher)
+            remix: GuidedRemixModel(api: api, reattacher: reattacher),
+            transcribeStudio: GuidedTranscribeModel(api: api, reattacher: reattacher)
         )
         .frame(width: width, height: height)
 

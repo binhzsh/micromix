@@ -54,6 +54,7 @@ struct DeviceWindow: View {
     @ObservedObject var router: WorkflowRouter
     @ObservedObject var cover: GuidedCoverModel
     @ObservedObject var remix: GuidedRemixModel
+    @ObservedObject var transcribeStudio: GuidedTranscribeModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -84,6 +85,7 @@ struct DeviceWindow: View {
                 router: router,
                 cover: cover,
                 remix: remix,
+                transcribeStudio: transcribeStudio,
                 selectedID: $selectedID
             )
         }
@@ -229,6 +231,7 @@ private struct DeckRegion: View {
     @ObservedObject var router: WorkflowRouter
     @ObservedObject var cover: GuidedCoverModel
     @ObservedObject var remix: GuidedRemixModel
+    @ObservedObject var transcribeStudio: GuidedTranscribeModel
 
     @Binding var selectedID: UUID?
 
@@ -319,6 +322,7 @@ private struct DeckRegion: View {
                 mode: $mode,
                 cover: cover,
                 remix: remix,
+                transcribeStudio: transcribeStudio,
                 voices: connection.vocalModels,
                 localInferenceAvailable: connection.isConnected,
                 onOpenLibrary: { mode = .library },

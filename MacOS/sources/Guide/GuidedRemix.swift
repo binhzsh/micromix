@@ -148,7 +148,7 @@ final class GuidedRemixModel: ObservableObject {
                     token: token, api: api, reattacher: reattacher
                 )
                 guard let residual = split.first(where: { $0.provenance?.output.name == "residual" }) else {
-                    throw FlowError(description: "Stem split did not return an instrumental stem")
+                    throw GuidedFlowError(description: "Stem split did not return an instrumental stem")
                 }
                 item = residual
                 set(.splitVocals, .done)
@@ -256,12 +256,6 @@ final class GuidedRemixModel: ObservableObject {
         default: "application/octet-stream"
         }
     }
-}
-
-/// Failure raised directly by the guided flow, not by the API transport.
-private struct FlowError: LocalizedError {
-    let description: String
-    var errorDescription: String? { description }
 }
 
 /// REMIX STUDIO tab: optional vocal split and analysis, then a handoff to

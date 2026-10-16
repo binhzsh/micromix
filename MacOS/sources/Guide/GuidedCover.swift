@@ -153,7 +153,7 @@ final class GuidedCoverModel: ObservableObject {
             )
             guard let vocal = split.first(where: { $0.provenance?.output.name == "target" }),
                   let vocalAssetID = vocal.remoteOutputAssetID else {
-                throw FlowError(description: "Stem split did not return a vocal stem")
+                throw GuidedFlowError(description: "Stem split did not return a vocal stem")
             }
             set(.splitVocals, .done)
 
@@ -261,8 +261,8 @@ final class GuidedCoverModel: ObservableObject {
     }
 }
 
-/// Failure raised directly by the guided flow, not by the API transport.
-private struct FlowError: LocalizedError {
+/// Failure raised directly by a guided flow, not by the API transport.
+struct GuidedFlowError: LocalizedError {
     let description: String
     var errorDescription: String? { description }
 }
