@@ -7,7 +7,7 @@ import Combine
 /// Test seams: `api` and `library` are injected as `Sendable` protocols so
 /// fakes can stand in for the real actor / `@MainActor` store.
 @MainActor
-final class GenerateViewModel: ObservableObject {
+final class GenerateViewModel: ObservableObject, AssetAccepting {
     // Editor state
     @Published var prompt: String = ""
     @Published var lyrics: String = ""
@@ -120,6 +120,31 @@ final class GenerateViewModel: ObservableObject {
         guard let acceptedJobID = flow.cancel() else { return }
         guard let cancelling = api as? any DurableJobCancelling else { return }
         Task { try? await cancelling.cancel(jobID: acceptedJobID) }
+    }
+
+    // MARK: - AssetAccepting
+
+    /// Text-to-music generation takes no audio reference; a chained source only
+    /// pre-fills the musical direction (BPM/key/meter/language).
+    var canAcceptSource: Bool { !isRunning }
+
+    func acceptSource(_ context: AssetActionContext) {
+        guard canAcceptSource else { return }
+        guard let derived = context.derivedMetadata else { return }
+        if bpmText.trimmingCharacters(in: .whitespaces).isEmpty,
+           let bpm = derived.beatsPerMinute {
+            bpmText = String(Int(bpm.rounded()))
+        }
+        if key.trimmingCharacters(in: .whitespaces).isEmpty, let key = derived.key {
+            self.key = key
+        }
+        if timeSignature.trimmingCharacters(in: .whitespaces).isEmpty,
+           let meter = derived.timeSignature {
+            timeSignature = meter
+        }
+        if vocalLanguage == .automatic, let language = derived.detectedLanguage {
+            vocalLanguage = language
+        }
     }
 
     private static func title(from input: String) -> String {

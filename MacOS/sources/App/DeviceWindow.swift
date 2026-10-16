@@ -277,7 +277,7 @@ private struct DeckRegion: View {
     @ViewBuilder private var modeControls: some View {
         switch mode {
         case .generate:
-            GenerateScreen(viewModel: generate, localInferenceAvailable: connection.isConnected)
+            GenerateScreen(viewModel: generate, localInferenceAvailable: connection.isConnected, router: router)
         case .reimagine:
             ReimagineScreen(
                 viewModel: reimagine,
@@ -288,15 +288,17 @@ private struct DeckRegion: View {
                     analyze.analyze(url: url)
                     mode = .analyze
                 },
-                onOpenLibrary: { mode = .library }
+                onOpenLibrary: { mode = .library },
+                router: router
             )
         case .analyze:
-            AnalyzeScreen(viewModel: analyze)
+            AnalyzeScreen(viewModel: analyze, router: router)
         case .transcribe:
             TranscribeScreen(
                 viewModel: transcribe,
                 instruments: connection.instruments,
-                localInferenceAvailable: connection.isConnected
+                localInferenceAvailable: connection.isConnected,
+                router: router
             )
         case .vocalSwap, .stemSplit:
             SourceProcessingScreen(

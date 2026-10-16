@@ -9,6 +9,7 @@ struct ReimagineScreen: View {
     var analysisAvailable: Bool = true
     var onAnalyzeSource: (URL) -> Void = { _ in }
     var onOpenLibrary: () -> Void = {}
+    var router: WorkflowRouter? = nil
 
     @State private var isImporting = false
 
@@ -183,6 +184,9 @@ struct ReimagineScreen: View {
                     Text("Saved \(viewModel.results.count) result(s) to Library.")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(Palette.ink.opacity(0.72))
+                    if let router, let latest = viewModel.results.last {
+                        NextActionsRow(router: router, item: latest)
+                    }
                 }
             }
         }

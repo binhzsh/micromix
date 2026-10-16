@@ -5,6 +5,7 @@ struct TranscribeScreen: View {
     @ObservedObject var viewModel: TranscribeViewModel
     let instruments: [String]
     var localInferenceAvailable: Bool = true
+    var router: WorkflowRouter? = nil
 
     private var canTranscribe: Bool {
         viewModel.hasSelection && !viewModel.isBlocked && localInferenceAvailable
@@ -55,6 +56,10 @@ struct TranscribeScreen: View {
                     }
                     .buttonStyle(.plain)
                 }
+            }
+
+            if viewModel.phase == .done, let router, let latest = viewModel.lastItem {
+                NextActionsRow(router: router, item: latest)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

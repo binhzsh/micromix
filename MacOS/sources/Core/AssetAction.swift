@@ -85,13 +85,13 @@ enum AssetAction: String, CaseIterable, Identifiable, Sendable {
 
 /// Context passed when routing to a workspace with a source asset
 struct AssetActionContext: Sendable {
-    let sourceItem: LibraryItem
+    let sourceItem: LibraryItem?
     let sourceURL: URL  // Resolved file URL from LocalLibrary
     let action: AssetAction
     /// Optional pre-filled values derived from source analysis
     let derivedMetadata: DerivedMetadata?
     
-    init(sourceItem: LibraryItem, sourceURL: URL, action: AssetAction, derivedMetadata: DerivedMetadata? = nil) {
+    init(sourceItem: LibraryItem? = nil, sourceURL: URL, action: AssetAction, derivedMetadata: DerivedMetadata? = nil) {
         self.sourceItem = sourceItem
         self.sourceURL = sourceURL
         self.action = action
@@ -119,6 +119,14 @@ struct DerivedMetadata: Sendable {
     }
     
     static let empty = DerivedMetadata()
+    
+    /// Musical direction learned by the on-device analyzer.
+    init(from analysis: LocalMusicAnalysis) {
+        self.init(
+            beatsPerMinute: analysis.beatsPerMinute,
+            key: analysis.key
+        )
+    }
 }
 
 /// Protocol for view models that can accept a source asset for chaining
@@ -200,5 +208,30 @@ final class WorkflowRouter: ObservableObject {
     /// Get available actions for a library item
     func availableActions(for item: LibraryItem) -> [AssetAction] {
         AssetAction.available(for: item.kind)
+    }
+    
+    /// Route an analyzed file into Reimagine reference generation with its
+    /// derived BPM/key pre-filled. The source has no LibraryItem yet, so the
+    /// context carries the resolved URL only.
+    func reimagineReference(url: URL, derived: DerivedMetadata? = nil) {
+        let context = AssetActionContext(
+            sourceURL: url,
+            action: .referenceGenerate,
+            derivedMetadata: derived
+        )
+        onSwitchMode?(.reimagine)
+        reimagine?.acceptSource(context)
+    }
+    
+    /// Pre-fill Generate's musical direction from an analysis without a source
+    /// file; text-to-music generation takes no audio reference.
+    func prefillGenerate(with derived: DerivedMetadata) {
+        let context = AssetActionContext(
+            sourceURL: URL(fileURLWithPath: "/dev/null"),
+            action: .referenceGenerate,
+            derivedMetadata: derived
+        )
+        onSwitchMode?(.generate)
+        generate?.acceptSource(context)
     }
 }

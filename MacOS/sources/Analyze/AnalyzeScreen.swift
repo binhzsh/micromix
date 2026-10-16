@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct AnalyzeScreen: View {
     @ObservedObject var viewModel: AnalyzeViewModel
+    var router: WorkflowRouter? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -35,6 +36,18 @@ struct AnalyzeScreen: View {
                             .font(.system(size: 14, weight: .semibold, design: .monospaced))
                             .foregroundColor(Palette.accentBlue)
                             .textSelection(.enabled)
+                        if let router, let url = viewModel.sourceURL {
+                            HStack(spacing: 7) {
+                                Typography.monoLabel("NEXT ACTIONS", size: 9)
+                                    .foregroundColor(Palette.ink.opacity(0.64))
+                                chainedAction("USE IN REIMAGINE", color: Palette.accentOrange) {
+                                    router.reimagineReference(url: url, derived: DerivedMetadata(from: analysis))
+                                }
+                                chainedAction("USE IN GENERATE", color: Palette.accentOrange) {
+                                    router.prefillGenerate(with: DerivedMetadata(from: analysis))
+                                }
+                            }
+                        }
                     }
                 }
             } else if let error = viewModel.error {
@@ -101,6 +114,17 @@ struct AnalyzeScreen: View {
                     .foregroundColor(Palette.ink.opacity(0.64))
             }
         }
+    }
+
+    private func chainedAction(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Typography.monoLabel(title, size: 9)
+                .foregroundColor(color)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(color, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private func previewChip(_ title: String) -> some View {

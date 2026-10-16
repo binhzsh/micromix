@@ -276,6 +276,38 @@ struct GenerateViewModelTests {
         #expect(vm.phase == .cancelled)
     }
 
+    @Test("acceptSource pre-fills direction from derived metadata without clobbering edits")
+    func acceptSourcePrefillsDirection() {
+        let vm = GenerateViewModel(api: FakeGenerator(), library: FakeLibrary())
+        vm.bpmText = "120"
+        vm.acceptSource(AssetActionContext(
+            sourceURL: URL(fileURLWithPath: "/tmp/x.wav"),
+            action: .referenceGenerate,
+            derivedMetadata: DerivedMetadata(
+                beatsPerMinute: 96,
+                key: "F minor",
+                timeSignature: "4",
+                detectedLanguage: .english
+            )
+        ))
+        #expect(vm.bpmText == "120")
+        #expect(vm.key == "F minor")
+        #expect(vm.timeSignature == "4")
+        #expect(vm.vocalLanguage == .english)
+        #expect(vm.phase == .idle)
+    }
+
+    @Test("acceptSource without derived metadata is a no-op")
+    func acceptSourceEmpty() {
+        let vm = GenerateViewModel(api: FakeGenerator(), library: FakeLibrary())
+        vm.acceptSource(AssetActionContext(
+            sourceURL: URL(fileURLWithPath: "/tmp/x.wav"),
+            action: .referenceGenerate
+        ))
+        #expect(vm.bpmText.isEmpty)
+        #expect(vm.key.isEmpty)
+    }
+
     // MARK: - helper
 
     private func waitUntil(timeout: TimeInterval = 3, _ condition: () -> Bool) async {
