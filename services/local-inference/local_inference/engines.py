@@ -225,7 +225,14 @@ def _minimax(manifest: dict, directory: Path) -> dict:
     from mlx_audio.music.utils import load_model
     from mlx_audio.audio_io import write
     import mlx.core as mx
-    model = load_model('mlx-community/MiniMax-Music3-mxfp8')
+    try:
+        model = load_model('mlx-community/MiniMax-Music3-mxfp8')
+    except Exception as exc:
+        if type(exc).__name__ in ('LocalEntryNotFoundError', 'OfflineModeIsEnabled'):
+            raise RuntimeError('MiniMax weights are not in the local HF cache; download '
+                'mlx-community/MiniMax-Music3-mxfp8 once, then renders stay offline. '
+                'See services/local-inference/MODELS.md') from exc
+        raise
     chunks = list(model.generate(text=p['prompt'], lyrics=p.get('lyrics') or '[instrumental]',
         duration=p.get('duration_seconds', 30), seed=variation_seeds(p)[0], steps=30))
     if not chunks:

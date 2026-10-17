@@ -33,7 +33,13 @@ def execute(manifest_path: Path) -> None:
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit('usage: python -m local_inference.worker manifest.json')
-    execute(Path(sys.argv[1]))
+    try:
+        execute(Path(sys.argv[1]))
+    except (RuntimeError, ValueError) as exc:
+        # Deliberate engine failures print one clean line so the job error stays
+        # readable; unexpected bugs still propagate for the full traceback.
+        print(exc, file=sys.stderr)
+        raise SystemExit(1)
 
 
 if __name__ == '__main__':
