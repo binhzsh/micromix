@@ -154,7 +154,12 @@ def _decode_audio(source: str, directory: Path, *,
 
 def _load_muscriptor():
     from muscriptor import TranscriptionModel
-    return TranscriptionModel.load_model(os.environ.get('MICROMIX_MUSCRIPTOR_MODEL', 'medium'), device='mps')
+    # Prefer the local model store so an offline worker never reaches HuggingFace.
+    # A size keyword maps to ~/models/muscriptor-<size>; anything else (an explicit
+    # path or URL) is passed through unchanged.
+    requested = os.environ.get('MICROMIX_MUSCRIPTOR_MODEL', 'medium')
+    local = MODELS_DIR / f'muscriptor-{requested}' / 'model.safetensors'
+    return TranscriptionModel.load_model(str(local) if local.is_file() else requested, device='mps')
 
 
 def _transcription(manifest: dict, directory: Path) -> dict:
