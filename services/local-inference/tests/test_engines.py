@@ -162,7 +162,8 @@ class EngineTests(unittest.TestCase):
             return SimpleNamespace(audios=audios, descriptions=descriptions)
         def save(audio, path, sample_rate):
             Path(path).write_bytes(audio)
-        with patch.object(engines, '_load_sam', return_value=(Model(), processor, save)):
+        with patch.object(engines, '_load_sam', return_value=(Model(), processor, save)), \
+             patch.object(engines, '_decode_audio', return_value=self.source):
             result = engines.run_manifest(self.manifest('stem-split', description='drums'))
         self.assertEqual([x['name'] for x in result['outputs']], ['target', 'residual'])
         self.assertEqual([Path(x['path']).read_bytes() for x in result['outputs']], [b'target', b'residual'])

@@ -217,13 +217,47 @@ def _vocal_swap(manifest: dict, directory: Path) -> dict:
 def _load_sam():
     from mlx_audio.sts import SAMAudio, SAMAudioProcessor, save_audio
     model_path = str(MODELS_DIR / 'sam-audio-large')
-    return SAMAudio.from_pretrained(model_path), SAMAudioProcessor.from_pretrained(model_path), save_audio
+    model = SAMAudio.from_pretrained(model_path)
+    # SAM's T5 text encoder lazily downloads t5-base from HuggingFace; with the
+    # offline policy that fails. Pre-populate both parts from the local snapshot.
+    t5_dir = MODELS_DIR / 't5-base'
+    if (t5_dir / 'model.safetensors').is_file():
+        import json as _json
+        import mlx.core as _mx
+        import transformers as _transformers
+        from mlx_audio.sts.models.sam_audio.text_encoder import T5Config, T5Encoder
+        enc = model.text_encoder
+        if getattr(enc, 'model', None) is None:
+            hf_config = _json.loads((t5_dir / 'config.json').read_text())
+            config = T5Config(
+                vocab_size=hf_config.get('vocab_size', 32128),
+                d_model=hf_config.get('d_model', 768),
+                d_kv=hf_config.get('d_kv', 64),
+                d_ff=hf_config.get('d_ff', 3072),
+                num_layers=hf_config.get('num_layers', 12),
+                num_heads=hf_config.get('num_heads', 12),
+                relative_attention_num_buckets=hf_config.get('relative_attention_num_buckets', 32),
+                relative_attention_max_distance=hf_config.get('relative_attention_max_distance', 128),
+                dropout_rate=hf_config.get('dropout_rate', 0.1),
+                layer_norm_epsilon=hf_config.get('layer_norm_epsilon', 1e-6),
+                is_gated_act=hf_config.get('is_gated_act', False),
+                dense_act_fn=hf_config.get('dense_act_fn', 'relu'))
+            t5 = T5Encoder(config)
+            t5.load_weights(list(T5Encoder.sanitize(_mx.load(str(t5_dir / 'model.safetensors'))).items()))
+            _mx.eval(t5.parameters())
+            t5.eval()
+            enc.model = t5
+            enc.tokenizer = _transformers.AutoTokenizer.from_pretrained(str(t5_dir))
+    return model, SAMAudioProcessor.from_pretrained(model_path), save_audio
 
 
 def _stem_split(manifest: dict, directory: Path) -> dict:
     model, processor, save = _load_sam()
     p = manifest['parameters']
-    batch = processor(descriptions=[p['description']], audios=[_source(manifest)])
+    # SAM's loader infers format from the file extension; asset files are stored
+    # extension-less, so decode to a proper WAV first (stereo/44.1k preserved).
+    decoded = _decode_audio(_source(manifest), directory, channels=2, sample_rate=44100)
+    batch = processor(descriptions=[p['description']], audios=[str(decoded)])
     result = model.separate_long(audios=batch.audios, descriptions=batch.descriptions,
         chunk_seconds=10.0, overlap_seconds=3.0, ode_decode_chunk_size=50, seed=p.get('seed', 42))
     outputs = []
