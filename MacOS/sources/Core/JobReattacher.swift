@@ -3,9 +3,18 @@ import Foundation
 
 @MainActor
 final class JobReattacher: ObservableObject {
-    private enum ReattachmentError: Error {
+    private enum ReattachmentError: LocalizedError {
         case checksumMismatch
         case terminalJob(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .checksumMismatch:
+                "A downloaded result failed its checksum and was not saved to Library"
+            case .terminalJob(let reason):
+                reason
+            }
+        }
     }
     private enum RecoveryOutcome {
         case recovered
@@ -100,7 +109,7 @@ final class JobReattacher: ObservableObject {
         }
         guard job.state == "succeeded" else {
             try library.removePendingJob(id: id)
-            throw ReattachmentError.terminalJob(job.error ?? "job \(job.state)")
+            throw ReattachmentError.terminalJob(Self.summary(of: job.error ?? "job \(job.state)"))
         }
         let outputs = try await api.fetchOutputs(for: job)
         guard outputs.allSatisfy(Self.hasValidChecksum) else {
@@ -141,5 +150,19 @@ final class JobReattacher: ObservableObject {
         guard expected.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else { return false }
         let actual = SHA256.hash(data: output.data).map { String(format: "%02x", $0) }.joined()
         return actual == expected
+    }
+
+    /// A failed job carries the worker's trailing log, which for a crash is a
+    /// multi-kilobyte native traceback. Keep the first meaningful line and bound
+    /// its length so the deck reports a readable reason instead of nothing.
+    static func summary(of detail: String, limit: Int = 200) -> String {
+        let firstLine = detail
+            .split(whereSeparator: \.isNewline)
+            .lazy
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty }
+        guard let firstLine else { return "" }
+        guard firstLine.count > limit else { return firstLine }
+        return String(firstLine.prefix(limit)).trimmingCharacters(in: .whitespaces) + "…"
     }
 }

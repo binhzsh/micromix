@@ -135,6 +135,37 @@ struct JobReattacherTests {
         #expect(provenance.parameters["variation_count"] == .number(2))
     }
 
+    @Test("a terminal failure surfaces the worker's reason instead of a generic description")
+    func terminalFailureSurfacesWorkerReason() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = LocalLibrary(directory: directory)
+        try library.trackPendingJob(id: "job-1")
+        let failed = try JSONDecoder().decode(RemoteJob.self, from: Data("""
+        {"id":"job-1","kind":"generation","state":"failed","progress":1,
+         "error":"Local worker exited with status 1: Library not loaded: @rpath/libavutil.57.dylib\\nTraceback (most recent call last):\\n  File \\"handler.py\\""}
+        """.utf8))
+        let reattacher = JobReattacher(api: StubDurableJobs(job: failed, outputs: []), library: library)
+
+        var message: String?
+        do {
+            _ = try await reattacher.recoverSubmittedJob(id: "job-1")
+        } catch {
+            message = error.localizedDescription
+        }
+
+        #expect(message == "Local worker exited with status 1: Library not loaded: @rpath/libavutil.57.dylib")
+        #expect(library.pendingJobIDs.isEmpty)
+        #expect(library.items.isEmpty)
+    }
+
+    @Test("a crash traceback is condensed to its first line and bounded")
+    func failureSummaryIsReadable() {
+        #expect(JobReattacher.summary(of: "\n  first reason  \nTraceback (most recent call last):") == "first reason")
+        #expect(JobReattacher.summary(of: "   ") == "")
+        let summary = JobReattacher.summary(of: String(repeating: "x", count: 500), limit: 10)
+        #expect(summary == String(repeating: "x", count: 10) + "…")
+    }
+
     private static func asset(id: String, filename: String, bytes: Int, sha256: String) -> RemoteAsset {
         RemoteAsset(id: id, filename: filename, mediaType: "audio/wav", sizeBytes: bytes, sha256: sha256, downloadUrl: "/v1/assets/\(id)")
     }
