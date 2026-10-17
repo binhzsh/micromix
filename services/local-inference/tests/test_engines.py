@@ -37,7 +37,8 @@ class EngineTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b'audio')
             return SimpleNamespace(success=True, audios=[{'path': str(path)}])
-        with patch.object(engines, '_load_ace', return_value=(object(), object(), SimpleNamespace, SimpleNamespace, generate)):
+        with patch.object(engines, '_load_ace', return_value=(object(), object(), SimpleNamespace, SimpleNamespace, generate)), \
+             patch.object(engines, '_decode_audio', return_value=self.source):
             for operation, task in [('generation', 'text2music'), ('reference-generation', 'text2music'), ('remix', 'cover'), ('repaint', 'repaint')]:
                 result = engines.run_manifest(self.manifest(operation, preset='quality', variation_count=4,
                     bpm=98, key='C major', time_signature='6/8', vocal_language='en', start_seconds=3, end_seconds=7, source_strength=.65, repaint_strength=.8))
@@ -59,6 +60,38 @@ class EngineTests(unittest.TestCase):
                     self.assertEqual(p.src_audio, str(self.source))
                 if operation == 'repaint':
                     self.assertEqual((p.repainting_start, p.repainting_end), (3, 7))
+
+    def test_ace_conditions_on_decoded_pcm_instead_of_the_original_container(self):
+        """M4A and other containers soundfile cannot open must never reach ACE-Step."""
+        calls = []
+        decoded = self.root / 'decoded-source.wav'
+        decoded.write_bytes(b'decoded')
+        def generate(dit, lm, params, config, save_dir):
+            calls.append(params)
+            path = Path(save_dir) / 'render.wav'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'audio')
+            return SimpleNamespace(success=True, audios=[{'path': str(path)}])
+        with patch.object(engines, '_load_ace', return_value=(object(), object(), SimpleNamespace, SimpleNamespace, generate)), \
+             patch.object(engines, '_decode_audio', return_value=decoded) as decode:
+            for operation in ('reference-generation', 'remix', 'repaint'):
+                engines.run_manifest(self.manifest(operation))
+        self.assertEqual(decode.call_args.args,
+                         (str(self.source), Path(self.manifest('remix')['output_dir']).resolve()))
+        self.assertEqual(decode.call_args.kwargs, {'channels': 2, 'sample_rate': 48000})
+        for params in calls:
+            self.assertIn(str(decoded), (params.reference_audio, params.src_audio))
+
+    def test_ace_ignores_source_audio_for_plain_generation(self):
+        def generate(dit, lm, params, config, save_dir):
+            path = Path(save_dir) / 'render.wav'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'audio')
+            return SimpleNamespace(success=True, audios=[{'path': str(path)}])
+        with patch.object(engines, '_load_ace', return_value=(object(), object(), SimpleNamespace, SimpleNamespace, generate)), \
+             patch.object(engines, '_decode_audio') as decode:
+            engines.run_manifest(self.manifest('generation'))
+        decode.assert_not_called()
 
     def test_transcription_forwards_instruments_and_tempo(self):
         calls = []

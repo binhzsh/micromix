@@ -89,6 +89,12 @@ def _ace(manifest: dict, directory: Path) -> dict:
     p = manifest['parameters']
     operation = manifest['operation']
     thinking = operation in ('generation', 'reference-generation')
+    # ACE-Step reads conditioning audio through soundfile and only falls back to
+    # torchcodec, which cannot link the installed FFmpeg. Decode to the stereo
+    # 48kHz PCM it normalizes to anyway, so the model never reaches that path.
+    # Run it before model initialization so a bad source fails fast.
+    source = None if operation == 'generation' else _decode_audio(
+        _source(manifest), directory, channels=2, sample_rate=48000)
     dit, lm, Params, Config, generate = _load_ace(p.get('preset', 'turbo'), thinking)
     task = {'generation': 'text2music', 'reference-generation': 'text2music',
             'remix': 'cover', 'repaint': 'repaint'}[operation]
@@ -104,8 +110,8 @@ def _ace(manifest: dict, directory: Path) -> dict:
             timesignature=str(p.get('time_signature') or '').split('/')[0],
             vocal_language=p.get('vocal_language') or 'unknown', duration=p.get('duration_seconds', 30),
             inference_steps=8 if p.get('preset', 'turbo') == 'turbo' else 50, seed=seed,
-            reference_audio=_source(manifest) if operation == 'reference-generation' else None,
-            src_audio=_source(manifest) if operation in ('remix', 'repaint') else None,
+            reference_audio=str(source) if operation == 'reference-generation' else None,
+            src_audio=str(source) if operation in ('remix', 'repaint') else None,
             audio_cover_strength=p.get('source_strength', p.get('strength', p.get('audio_cover_strength', 1.0))),
             repaint_strength=p.get('repaint_strength', 0.5),
             repainting_start=p.get('start_seconds', 0), repainting_end=p.get('end_seconds', -1),
@@ -122,14 +128,27 @@ def _ace(manifest: dict, directory: Path) -> dict:
             'seeds': seeds, 'planner': 'acestep-5Hz-lm-4B' if thinking else None}}
 
 
-def _decode_audio(source: str, directory: Path) -> Path:
-    """Use ffmpeg for WAV/MP3/M4A/FLAC/OGG consistently, without a shell."""
+def _decode_audio(source: str, directory: Path, *,
+                  channels: int = 1, sample_rate: int = 16000) -> Path:
+    """Decode WAV/MP3/M4A/FLAC/OGG to PCM WAV with ffmpeg, without a shell.
+
+    Model libraries disagree about container support: soundfile cannot read
+    AAC/M4A, and ACE-Step's torchcodec fallback only links against FFmpeg 4–8,
+    so an M4A source fails on a newer Homebrew FFmpeg. Decoding once here keeps
+    every adapter on a container they all read.
+    """
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:
         raise RuntimeError('ffmpeg is required; install it with brew install ffmpeg')
     target = directory / 'decoded-source.wav'
-    subprocess.run([ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-                    '-i', source, '-vn', '-ac', '1', '-ar', '16000', str(target)], check=True)
+    try:
+        subprocess.run([ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+                        '-i', source, '-vn', '-ac', str(channels), '-ar', str(sample_rate),
+                        str(target)], check=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f'Could not decode the source audio with ffmpeg: {source}') from exc
+    if not target.is_file() or target.stat().st_size == 0:
+        raise RuntimeError(f'ffmpeg produced no audio for the source: {source}')
     return target
 
 
