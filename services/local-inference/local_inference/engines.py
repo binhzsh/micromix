@@ -16,6 +16,8 @@ os.environ.setdefault('HF_HUB_OFFLINE', '1')
 os.environ.setdefault('HF_HUB_DISABLE_TELEMETRY', '1')
 
 ACE_REVISION = 'ca1e85fe9430179831e6bc6be790c332190a3866'
+# Root of the manually managed local model store (see ../MODELS.md).
+MODELS_DIR = Path(os.environ.get('MICROMIX_MODELS_DIR', Path.home() / 'models'))
 MUSCRIPTOR_REVISION = '7f213afecf23bd6a1b8672aa223690ee9807cefb'
 MLX_AUDIO_REVISION = '40b27a2157150bf87a1f25958f049bdcd0861235'
 RVC_REVISION = 'f26633539f1aa935337d8ca5e96c78784698bd7a'
@@ -156,7 +158,14 @@ def _transcription(manifest: dict, directory: Path) -> dict:
 
 def _load_rvc(model_path: str):
     from mlx_rvc import RVCPipeline
-    return RVCPipeline.from_pretrained(model_path)
+    contentvec_path = str(MODELS_DIR / 'mlx-contentvec' / 'contentvec_base.safetensors')
+    pipeline = RVCPipeline.from_pretrained(model_path, contentvec_path=contentvec_path)
+    # Pre-load RMVPE from the local model store so the pipeline never reaches HF.
+    if pipeline._rmvpe_model is None:
+        from mlx_rmvpe import RMVPE
+        pipeline._rmvpe_model = RMVPE.from_pretrained(
+            weights_path=str(MODELS_DIR / 'mlx-rmvpe' / 'rmvpe.safetensors'))
+    return pipeline
 
 
 def _vocal_swap(manifest: dict, directory: Path) -> dict:
@@ -188,8 +197,8 @@ def _vocal_swap(manifest: dict, directory: Path) -> dict:
 
 def _load_sam():
     from mlx_audio.sts import SAMAudio, SAMAudioProcessor, save_audio
-    model_id = 'mlx-community/sam-audio-large'
-    return SAMAudio.from_pretrained(model_id), SAMAudioProcessor.from_pretrained(model_id), save_audio
+    model_path = str(MODELS_DIR / 'sam-audio-large')
+    return SAMAudio.from_pretrained(model_path), SAMAudioProcessor.from_pretrained(model_path), save_audio
 
 
 def _stem_split(manifest: dict, directory: Path) -> dict:
@@ -226,11 +235,11 @@ def _minimax(manifest: dict, directory: Path) -> dict:
     from mlx_audio.audio_io import write
     import mlx.core as mx
     try:
-        model = load_model('mlx-community/MiniMax-Music3-mxfp8')
+        model = load_model(str(MODELS_DIR / 'MiniMax-Music3-mxfp8'))
     except Exception as exc:
         if type(exc).__name__ in ('LocalEntryNotFoundError', 'OfflineModeIsEnabled'):
-            raise RuntimeError('MiniMax weights are not in the local HF cache; download '
-                'mlx-community/MiniMax-Music3-mxfp8 once, then renders stay offline. '
+            raise RuntimeError('MiniMax weights were not found at '
+                f'{MODELS_DIR / "MiniMax-Music3-mxfp8"}; check the local model store. '
                 'See services/local-inference/MODELS.md') from exc
         raise
     chunks = list(model.generate(text=p['prompt'], lyrics=p.get('lyrics') or '[instrumental]',

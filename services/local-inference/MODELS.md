@@ -56,7 +56,7 @@ services/local-inference/.venv-ace/bin/acestep-download --dir "$ACESTEP_CHECKPOI
 
 These are substantial downloads. Default ACE paths match the exports above; custom paths must also be configured in the sidecar's launch environment. Upstream ACE may download missing shared/DiT files at first initialization; the required 4B planner must be explicitly downloaded.
 
-For MuScriptor, accept the model license on [MuScriptor medium](https://huggingface.co/MuScriptor/muscriptor-medium) and authenticate with `uvx hf auth login`. License acceptance and account authentication must be completed by the user. Its weights download on first manual transcription and are cached by upstream. `MICROMIX_MUSCRIPTOR_MODEL` can select `small`, `medium` (default), `large`, or a local checkpoint path. SAM uses `mlx-community/sam-audio-large`; optional MiniMax uses `mlx-community/MiniMax-Music3-mxfp8`. Their weights and RVC's ContentVec/RMVPE helpers download into the Hugging Face cache on first use. Private voice weights/indexes remain in the ignored data directory managed by the API.
+For MuScriptor, accept the model license on [MuScriptor medium](https://huggingface.co/MuScriptor/muscriptor-medium) and authenticate with `uvx hf auth login`. License acceptance and account authentication must be completed by the user. Its weights download on first manual transcription and are cached by upstream. `MICROMIX_MUSCRIPTOR_MODEL` can select `small`, `medium` (default), `large`, or a local checkpoint path. SAM loads `~/models/sam-audio-large` and optional MiniMax loads `~/models/MiniMax-Music3-mxfp8` from the local model store (`MICROMIX_MODELS_DIR` overrides the root); both directories hold complete HF snapshots with config and all weight shards. RVC's ContentVec/RMVPE helpers load from `~/models/mlx-contentvec` and `~/models/mlx-rmvpe` in the local model store. MuScriptor weights resolve from the Hugging Face cache. Private voice weights/indexes remain in the ignored data directory managed by the API.
 
 ## Preflight and acceptance
 
@@ -93,8 +93,8 @@ Heavy inference, listening, performance, and native UI acceptance are manual gat
 
 On 2026-09-18, the following public artifacts were downloaded and checked for
 offline cache use: ACE-Step shared bundle, XL Turbo, XL SFT, and 4B planner in
-`~/.cache/micromix/ace/checkpoints`; `mlx-community/sam-audio-large`;
-`mlx-community/MiniMax-Music3-mxfp8`; the `lexandstuff` ContentVec, RMVPE, and
+`~/.cache/micromix/ace/checkpoints`; `~/models/sam-audio-large`;
+`~/models/MiniMax-Music3-mxfp8`; the `lexandstuff` ContentVec, RMVPE, and
 RVC helper repositories; and `MuScriptor/muscriptor-medium`. The local
 `base.safetensors` private RVC voice is present. All public and approved model
 caches resolve with `HF_HUB_OFFLINE=1`.

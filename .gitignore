@@ -17,6 +17,9 @@ evaluations/private/
 # Isolated local model dependency environments
 .venv-*/
 
+# Runtime progress caches written by the local model libraries
+.cache/
+
 # SourceKit-LSP / xcode-build-server project context (machine-generated)
 buildServer.json
 
