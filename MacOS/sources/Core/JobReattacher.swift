@@ -12,7 +12,10 @@ final class JobReattacher: ObservableObject {
             case .checksumMismatch:
                 "A downloaded result failed its checksum and was not saved to Library"
             case .terminalJob(let reason):
-                reason
+                // `summary(of:)` returns "" when the worker reported nothing but
+                // whitespace. Never hand the deck an empty description: an
+                // unreadable message is what made the failure look silent.
+                reason.isEmpty ? "The local service failed the job without a reason" : reason
             }
         }
     }

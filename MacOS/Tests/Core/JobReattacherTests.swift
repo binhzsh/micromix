@@ -166,6 +166,27 @@ struct JobReattacherTests {
         #expect(summary == String(repeating: "x", count: 10) + "…")
     }
 
+    @Test("a blank worker reason still produces a readable message")
+    func blankWorkerReasonStaysReadable() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = LocalLibrary(directory: directory)
+        try library.trackPendingJob(id: "job-1")
+        let failed = try JSONDecoder().decode(RemoteJob.self, from: Data("""
+        {"id":"job-1","kind":"generation","state":"failed","progress":1,"error":"   "}
+        """.utf8))
+        let reattacher = JobReattacher(api: StubDurableJobs(job: failed, outputs: []), library: library)
+
+        var message: String?
+        do {
+            _ = try await reattacher.recoverSubmittedJob(id: "job-1")
+        } catch {
+            message = error.localizedDescription
+        }
+
+        let reason = try #require(message)
+        #expect(!reason.trimmingCharacters(in: .whitespaces).isEmpty)
+    }
+
     private static func asset(id: String, filename: String, bytes: Int, sha256: String) -> RemoteAsset {
         RemoteAsset(id: id, filename: filename, mediaType: "audio/wav", sizeBytes: bytes, sha256: sha256, downloadUrl: "/v1/assets/\(id)")
     }
