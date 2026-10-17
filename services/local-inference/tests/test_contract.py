@@ -2,6 +2,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 from local_inference.main import create_app
 
@@ -46,6 +47,29 @@ class LocalContractTests(unittest.TestCase):
         self.assertEqual(health['status'], 'ready')
         self.assertIn('ace_step', health['models'])
         self.assertIn('muscriptor', health['models'])
+        # Every engine reports a real dependency + weight verdict, never the old
+        # blanket "unchecked", and missing weights are named for diagnosis.
+        self.assertEqual(set(health['models']),
+                         {'ace_step', 'muscriptor', 'minimax_music3', 'mlx_rvc', 'sam_audio'})
+        self.assertLessEqual(set(health['models'].values()),
+                             {'ready', 'weights_missing', 'unavailable'})
+        for engine, status in health['models'].items():
+            with self.subTest(engine=engine):
+                self.assertEqual(status == 'weights_missing', engine in health['missing_weights'])
+                self.assertTrue(health['missing_weights'].get(engine, ['x']))
+
+    def test_health_names_engines_whose_weights_are_absent(self):
+        '''A missing artifact must degrade that engine, not the whole service.'''
+        absent = {engine: [Path('/nonexistent') / engine] for engine in
+                  ('ace_step', 'muscriptor', 'minimax_music3', 'mlx_rvc', 'sam_audio')}
+        with patch('local_inference.engines.required_weight_paths', return_value=absent):
+            health = self.client.get('/v1/health').json()
+        self.assertEqual(health['status'], 'ready')
+        self.assertEqual(set(health['missing_weights']), set(absent))
+        for engine, status in health['models'].items():
+            with self.subTest(engine=engine):
+                # Dependencies resolve here, so every engine reports the weight gap.
+                self.assertIn(status, {'weights_missing', 'unavailable'})
 
 
 if __name__ == '__main__':

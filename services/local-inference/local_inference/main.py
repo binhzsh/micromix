@@ -242,7 +242,10 @@ def create_app(
 
     @app.get('/v1/health')
     def health():
+        from .engines import required_weight_paths
+        weights = required_weight_paths()
         models = {}
+        missing = {}
         for environment, packages, names in [
             ('.venv-ace', ['acestep', 'torch'], ['ace_step']),
             ('.venv-muscriptor', ['muscriptor', 'torch'], ['muscriptor']),
@@ -260,12 +263,21 @@ def create_app(
                          'for p in sys.argv[1:]))', *packages],
                         capture_output=True, timeout=5, check=False)
                     if result.returncode == 0:
-                        status = 'dependencies_present_weights_unchecked'
+                        status = 'ready'
                 except (OSError, subprocess.TimeoutExpired):
                     pass
-            models.update({name: status for name in names})
+            for name in names:
+                if status != 'ready':
+                    models[name] = status
+                    continue
+                absent = [str(path) for path in weights.get(name, []) if not path.is_file()]
+                if absent:
+                    missing[name] = absent
+                    models[name] = 'weights_missing'
+                else:
+                    models[name] = 'ready'
         return {'service': 'micromix-local-inference', 'status': 'ready',
-                'database': 'ready', 'models': models}
+                'database': 'ready', 'models': models, 'missing_weights': missing}
 
     @app.get('/v1/capabilities')
     def capabilities():

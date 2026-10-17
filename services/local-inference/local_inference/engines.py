@@ -32,6 +32,26 @@ TRANSCRIPTION_INSTRUMENTS = (
 )
 
 
+def required_weight_paths() -> dict[str, list[Path]]:
+    """Marker files proving each engine's local weights are present.
+
+    Filesystem checks only: health must stay cheap and must never load a model
+    or reach the network. ACE lives outside the model store, in its own cache.
+    """
+    ace_root = Path(os.environ.get('MICROMIX_ACE_ROOT', '~/.cache/micromix/ace')).expanduser()
+    checkpoints = Path(os.environ.get('ACESTEP_CHECKPOINTS_DIR', ace_root / 'checkpoints')).expanduser()
+    return {
+        'ace_step': [checkpoints / name / 'config.json' for name in
+                     ('acestep-v15-xl-turbo', 'acestep-v15-xl-sft', 'acestep-5Hz-lm-4B')],
+        'muscriptor': [MODELS_DIR / 'muscriptor-medium' / 'model.safetensors'],
+        'minimax_music3': [MODELS_DIR / 'MiniMax-Music3-mxfp8' / 'model.safetensors.index.json'],
+        'mlx_rvc': [MODELS_DIR / 'mlx-contentvec' / 'contentvec_base.safetensors',
+                    MODELS_DIR / 'mlx-rmvpe' / 'rmvpe.safetensors'],
+        'sam_audio': [MODELS_DIR / 'sam-audio-large' / 'model.safetensors.index.json',
+                      MODELS_DIR / 't5-base' / 'model.safetensors'],
+    }
+
+
 def _output(path: Path, name: str, media_type: str = 'audio/wav') -> dict:
     return {'path': str(path.resolve()), 'filename': path.name,
             'media_type': media_type, 'name': name}
