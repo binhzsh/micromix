@@ -6,6 +6,10 @@
 
 **Direction updated:** 2026-09-18 — Mac-only local inference
 
+**Workflow chaining delivered:** 2026-10-16 — asset-centric next actions,
+metadata handoffs, lineage display, four guided studios, in-context preview,
+and DAW bundle export (see [completed work](#completed-work))
+
 **Product:** private, solo-user native macOS music tooling companion
 
 **Finishing environment:** Logic Pro
@@ -91,11 +95,13 @@ The architecture is now native macOS plus a local FastAPI sidecar at
 `lts1`/Compose stack and its unmerged vocal-foundation branch are historical;
 do not merge that branch wholesale into the local implementation.
 
-Updated on 2026-09-18 after implementing local server-feature parity.
+Updated on 2026-09-18 after implementing local server-feature parity; extended
+2026-10-16 with the chained-workflow delivery.
 
 | Area | Implemented | Remaining |
 | --- | --- | --- |
 | Native | Seven workspaces, source lineage, private voice picker, stem outputs | Manual visual and Logic acceptance |
+| Chaining | Next actions on every result and Library row, analysis/seed handoffs, provenance trail, related assets, four guided studios, inline audio/MIDI preview, DAW bundle export | Manual acceptance with real model output |
 | Generation | Local ACE XL Turbo/SFT, real source conditioning, metadata, language, seeded variations | Weights and listening evaluation |
 | Transcription | Local MuScriptor, instrument filters, tempo detection, FFmpeg formats | Gated model access and MIDI evaluation |
 | Vocal/stems | Selected private RVC weights/index and revision checks; SAM target/residual | Private model setup and listening evaluation |
@@ -105,6 +111,28 @@ See [runtime setup](../services/local-inference/MODELS.md) and
 [acceptance checklist](evaluations/local-migration.md). Later product roadmap items
 (Vocal Improve, automatic song preparation/reference mixing, Mashup, Complete) are
 new product work, not features shipped by the retired server.
+
+## Completed work
+
+Workflow chaining landed on 2026-10-16 and serves Phase 1's exit gate: results
+are now nodes that offer the next operation instead of seven isolated tools.
+
+- Contextual next actions on every result row and every Library row, with the
+  target workspace pre-filled from the source and its derived metadata.
+- Metadata handoffs: analysis supplies BPM/key to Generate and Reimagine, and
+  stem-split outputs feed Vocal Swap without re-uploading the vocal.
+- Lineage in the Library: provenance trail, grouped alternatives, A/B compare,
+  and a related-assets panel resolving siblings, parents and children.
+- Four guided studios in the GUIDE workspace: cover, remix, transcribe, and
+  vocal swap, each running durable jobs back to back with a live stage stepper.
+- In-context preview: inline audio and MIDI play/pause chips on result rows and
+  Library rows, with one audible stream at a time.
+- DAW handoff: a job bundle export that gathers a result, its siblings, children
+  and parent sources into a Finder folder with a provenance manifest.
+
+Phase 1's remaining model-side items — audio-conditioned completion, and output
+format choice — are still open, and Phase 0's manual corpus evaluation remains
+the pre-release quality gate.
 
 ## Phase 0 — Product-quality baseline `[~]`
 
@@ -243,7 +271,7 @@ scope; a user-controlled mastering environment is not.
 **Goal:** retain audio-to-MIDI only where Micromix offers a dependable advantage
 for polyphonic or multi-instrument material.
 
-- [ ] Benchmark the local Basic Pitch integration against Logic's relevant
+- [ ] Benchmark the local MuScriptor integration against Logic's relevant
       audio-to-MIDI workflow; consider other Mac-local models only if needed.
 - [ ] Score note accuracy, timing, instrument assignment, edit burden, runtime,
       unified memory, and failure behavior.
@@ -310,8 +338,10 @@ review passes.
 
 ## Next action
 
-Local job persistence/recovery is implemented (SQLite-backed durable jobs;
-see the 2026-09-18 migration). Run the [manual acceptance checklist](evaluations/local-migration.md)
-next — bilingual listening, UI review, and Logic import on the private corpus —
-before declaring the local migration complete. In parallel, workflow chaining
-continues per `PLAN.md` Phase 3 (provenance trail and related assets).
+Local job persistence/recovery and workflow chaining are implemented (SQLite-backed
+durable jobs from the 2026-09-18 migration; chaining per
+[completed work](#completed-work)). Run the
+[manual acceptance checklist](evaluations/local-migration.md) next — bilingual
+listening, UI review, and Logic import on the private corpus — before declaring
+the local migration complete. That pass also decides which remaining phase is
+next.

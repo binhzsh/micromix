@@ -6,11 +6,14 @@ library; inference runs on-device through a local Apple Silicon (MLX) sidecar.
 All app and inference work runs on this Mac. Dependency and model downloads may
 require internet access.
 
-## Progress (2026-09-18)
+## Progress (2026-10-16)
 
-Local feature parity is implemented; real-model and listening acceptance
-are still pending. Seven native workspaces cover Generate, Reimagine, Analyze,
-Transcribe, Vocal Swap, Stem Split, and Library.
+Local feature parity is implemented and the seven workspaces are chained into
+one flow; real-model and listening acceptance are still pending. Generate,
+Reimagine, Analyze, Transcribe, Vocal Swap, Stem Split, and Library all share
+sources, results, and lineage: every result offers its next operation, and the
+GUIDE workspace runs the cover, remix, transcribe, and vocal-swap chains as
+guided steps.
 
 - ACE-Step XL Turbo/SFT restores audio-conditioned reference, cover and repaint,
   BPM/key/meter, English/Vietnamese language intent, strength, and 1–4 seeded variations.
@@ -21,6 +24,8 @@ Transcribe, Vocal Swap, Stem Split, and Library.
   jobs recover; cancellation terminates worker processes. One disposable worker
   runs at a time, releasing model memory on exit. Uploads are capped at 200 MiB;
   seven-day retention preserves active-job inputs.
+- Lineage display, A/B compare, inline audio and MIDI preview, and job bundle
+  export keep chosen results moving into Logic without file hunting.
 
 See [model setup and exact runtime pins](services/local-inference/MODELS.md) and
 [manual acceptance](docs/evaluations/local-migration.md). Dependency presence does
@@ -59,7 +64,10 @@ cd services/local-inference
 uv sync && .venv/bin/python -m local_inference.main
 ```
 
-Missing weights may download on first use; prepare models using the setup guide before manual acceptance.
+Missing weights may download on first use; SAM-Audio, MiniMax, ContentVec and
+RMVPE instead resolve from the local model store (`~/models` by default, or
+`MICROMIX_MODELS_DIR`), so prepare those directories using the setup guide
+before manual acceptance.
 
 ## API
 
@@ -118,6 +126,9 @@ cd MacOS
 xcodegen generate
 xcodebuild test -project Micromix.xcodeproj -scheme Micromix -destination 'platform=macOS'
 ```
+
+`scripts/micromix.sh` wraps the Release build and launch used during manual
+acceptance: `micromix rebuild`, `micromix start`, `micromix stop`.
 
 The app uses only the loopback local-inference endpoint at `127.0.0.1:8902`.
 

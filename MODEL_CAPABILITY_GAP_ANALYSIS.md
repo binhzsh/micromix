@@ -41,8 +41,10 @@ Upstream reference: [ACE-Step musician guide](https://github.com/ace-step/ACE-St
 - Extract: semantic isolation of vocals or selected instruments.
 - Complete/continuation: create accompaniment for partial tracks or vocals.
 - Output-format choice, vocal-language control, audio captioning, semantic-code reuse, LoRA inference/training, and expert sampling controls.
-- No dedicated “extend this song” or stem-aware native workflow.
-- No production stem or session-bundle export. ACE-Step itself produces rendered audio rather than MIDI or DAW sessions.
+- No dedicated "extend this song" workflow; continuation is not exposed.
+- ACE-Step itself produces rendered audio rather than stems, MIDI or DAW sessions.
+  Separation comes from SAM-Audio, and the session bundle is assembled by the
+  app's job bundle export rather than the model.
 
 Upstream reference: [ACE-Step inference documentation](https://github.com/ace-step/ACE-Step-1.5/blob/main/docs/en/INFERENCE.md)
 
