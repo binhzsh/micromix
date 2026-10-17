@@ -104,6 +104,12 @@ struct MicromixApp: App {
                 vocalSwapStudio: root.vocalSwapStudio
             )
             .frame(minWidth: 900, minHeight: 640)
+            // The device face is a fixed light deck above a recessed dark screen,
+            // drawn entirely from Palette tokens. Micromix does not follow the
+            // system appearance, so window chrome, menus and file importers agree
+            // with the deck instead of leaving its default-coloured text light on
+            // the light deck when the Mac is in dark mode.
+            .preferredColorScheme(.light)
         }
         .defaultSize(width: 980, height: 700)
     }

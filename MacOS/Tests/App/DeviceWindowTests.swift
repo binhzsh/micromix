@@ -47,6 +47,54 @@ struct DeviceWindowTests {
         )
     }
 
+    @Test("deck panels render default-coloured labels dark whatever the host appearance is")
+    func deckPanelContentIgnoresAHostDarkAppearance() throws {
+        // VOCAL SWAP and STEM SPLIT draw their source label and helper text with
+        // SwiftUI's default colours. The deck is a fixed light surface, so those
+        // must stay dark even on a dark-mode Mac, where they previously rendered
+        // white on white and were unreadable.
+        let probe = DeckPanel {
+            VStack(alignment: .leading, spacing: 8) {
+                Typography.monoLabel("SOURCE", size: 11)
+                Text("Saves the extracted sound and the remaining audio to Library.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 320, height: 90)
+        // The deck sits on the device's opaque light chassis; render it that way
+        // so glyph pixels are fully composited.
+        .background(Palette.deck)
+
+        let darkHost = try renderDeck(probe, appearance: .dark)
+        let lightHost = try renderDeck(probe, appearance: .light)
+
+        #expect(darkPixelCount(in: darkHost) > 150, "dark-host deck text was not dark")
+        #expect(darkPixelCount(in: darkHost) == darkPixelCount(in: lightHost))
+    }
+
+    private func renderDeck(_ view: some View, appearance: ColorScheme) throws -> NSBitmapImageRep {
+        let renderer = ImageRenderer(content: view.environment(\.colorScheme, appearance))
+        renderer.scale = 1
+        guard let image = renderer.nsImage,
+              let data = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: data) else {
+            Issue.record("deck panel did not render")
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return bitmap
+    }
+
+    /// Counts deck text: the ink labels and the dimmed helper copy, both of which
+    /// are well below the light deck and panel surfaces.
+    private func darkPixelCount(in bitmap: NSBitmapImageRep) -> Int {
+        pixelCount(in: bitmap) { color in
+            let luminance = 0.2126 * color.redComponent
+                + 0.7152 * color.greenComponent
+                + 0.0722 * color.blueComponent
+            return luminance < 0.6 && color.alphaComponent > 0.9
+        }
+    }
+
     private func reimagineOrangeMaximumY(
         localInferenceAvailable: Bool,
         width: CGFloat,

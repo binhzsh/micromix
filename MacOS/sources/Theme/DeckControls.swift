@@ -1,6 +1,11 @@
 import SwiftUI
 
 /// A lightly recessed control group that keeps each mode's content bounded.
+///
+/// The deck is a fixed light surface, so its content always resolves the light
+/// appearance. Without this, the deck's default-coloured labels, steppers,
+/// toggles and text fields follow the system into dark mode and render white on
+/// white.
 struct DeckPanel<Content: View>: View {
     private let content: Content
     private let borderColor: Color
@@ -12,6 +17,7 @@ struct DeckPanel<Content: View>: View {
 
     var body: some View {
         content
+            .environment(\.colorScheme, .light)
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.white.opacity(0.24))
