@@ -5,6 +5,8 @@ visual, listening and Logic acceptance pending.
 
 ## Automated evidence
 
+Historical results from 2026-09-18 (not a current acceptance claim):
+
 - 37 Python tests pass: API contracts, controls, private voice revisions, adapter
   forwarding, durable storage, atomic output publication, cancellation, recovery,
   pre-commit process crashes, retention and streaming uploads.
@@ -47,7 +49,7 @@ bash scripts/smoke-test.sh
 open /tmp/micromix-local-review/Build/Products/Debug/Micromix.app
 ```
 
-1. Inspect all seven workspaces, controls, keyboard access and connection status.
+1. Inspect all seven selectable workspaces plus GUIDE, controls, keyboard access and connection status.
 2. Generate Turbo and Quality examples in English/Vietnamese, with fixed seeds and
    four variations. Check metadata intent, intelligibility and Vietnamese tones.
 3. Compare reference influence and cover strength. Repaint a valid interval and
@@ -59,11 +61,13 @@ open /tmp/micromix-local-review/Build/Products/Debug/Micromix.app
 6. Cancel queued/running work and restart during a job; confirm durable reattachment,
    retained inputs and terminal-state consistency. Save selected results to Library.
 7. Record model revisions, runtime, memory, defects and usefulness before declaring
-   quality parity accepted. Automatic full-song vocal preparation/mixing, Vocal
-   Improve, Mashup and Complete remain future product work, not retired-server parity.
+   quality parity accepted. Guided split-to-swap is implemented; full-song quality
+   and balanced reference mixing remain unproven. Vocal Improve, Mashup and
+   Complete remain future product work, not retired-server parity.
 
-Agents stop before these manual gates under AGENTS.md. The isolated ACE,
-MuScriptor, and MLX library environments are installed on the development Mac;
-their import preflights and a temporary sidecar health/capabilities check passed.
-Weights, gated MuScriptor access, inference, listening, UI review, and Logic
-import have not been executed.
+As recorded on 2026-09-18, isolated ACE, MuScriptor and MLX library import
+preflights and a temporary sidecar health/capabilities check passed. That record
+had no real-model inference, listening, visual or Logic acceptance. A later Cua
+Space pass covered a disconnected subset of the UI only; it does not satisfy
+connected visual or model acceptance. See [PLAN.md](../../PLAN.md) for later
+checks. The user performs inference, listening and Logic acceptance.

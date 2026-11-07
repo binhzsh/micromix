@@ -13,6 +13,8 @@ struct WorkflowGuideView: View {
     var vocalSwapStudio: GuidedVocalSwapModel? = nil
     var voices: [String] = []
     var localInferenceAvailable = true
+    var voiceCatalog: VoiceCatalogState? = nil
+    var onRefreshVoices: () -> Void = {}
     var onOpenLibrary: () -> Void = {}
     var onOpenReimagine: () -> Void = {}
     var router: WorkflowRouter? = nil
@@ -64,6 +66,8 @@ struct WorkflowGuideView: View {
                             model: cover,
                             voices: voices,
                             localInferenceAvailable: localInferenceAvailable,
+                            voiceCatalog: voiceCatalog,
+                            onRefreshVoices: onRefreshVoices,
                             onOpenLibrary: onOpenLibrary,
                             router: router,
                             player: player,
@@ -97,6 +101,8 @@ struct WorkflowGuideView: View {
                             model: vocalSwapStudio,
                             voices: voices,
                             localInferenceAvailable: localInferenceAvailable,
+                            voiceCatalog: voiceCatalog,
+                            onRefreshVoices: onRefreshVoices,
                             onOpenLibrary: onOpenLibrary,
                             router: router,
                             player: player,

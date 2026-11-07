@@ -189,17 +189,17 @@ final class LocalLibrary: ObservableObject {
     /// Parents come last so the kit leads with the selected result and its
     /// chains, then carries the original as reference material.
     func exportBundle(for item: LibraryItem) throws -> URL {
-        guard FileManager.default.fileExists(atPath: resolvedURL(for: item).path) else {
-            throw BundleExportError(description: "The asset file is missing on disk")
-        }
-
         let lineage = RelatedAssetsResolver.related(for: item, in: items)
         var grouped: [LibraryItem] = [item]
         for candidate in lineage.siblings + lineage.children + lineage.parents
         where !grouped.contains(where: { $0.id == candidate.id }) {
             grouped.append(candidate)
         }
-        grouped = grouped.filter { FileManager.default.fileExists(atPath: resolvedURL(for: $0).path) }
+        let missing = grouped.filter { !FileManager.default.fileExists(atPath: resolvedURL(for: $0).path) }
+        guard missing.isEmpty else {
+            let details = missing.map { "\($0.title) (\($0.relativePath))" }.joined(separator: ", ")
+            throw BundleExportError(description: "Missing library files: \(details). Restore the files or remove the affected library items, then export again.")
+        }
 
         let jobID = item.provenance?.jobID ?? item.id.uuidString
         let folderName = Self.sanitized("\(String(jobID.suffix(8)))-\(item.title)")
@@ -209,23 +209,55 @@ final class LocalLibrary: ObservableObject {
         let destination = Self.unusedDirectory(named: folderName, in: exportsRoot)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
 
-        var lines: [String] = []
-        lines.append("MICROMIX EXPORT — \(Self.timestamp())")
-        lines.append("JOB \(jobID.suffix(8))\(item.provenance?.operation.map { " · OPERATION \($0)" } ?? "")")
-        lines.append("SOURCE: \(item.promptOrSource.isEmpty ? "(none)" : item.promptOrSource)")
-        lines.append("")
-        for (index, entry) in grouped.enumerated() {
-            let fileURL = resolvedURL(for: entry)
-            let role = entry.provenance?.output.name ?? "result"
-            let base = Self.sanitized("\(String(format: "%02d", index + 1))-\(role)-\(entry.title)")
-            let name = fileURL.pathExtension.isEmpty ? base : "\(base).\(fileURL.pathExtension)"
-            try FileManager.default.copyItem(at: fileURL, to: destination.appendingPathComponent(name))
-            let operation = entry.provenance?.operation ?? entry.kind.rawValue.uppercased()
-            lines.append("\(name) — \(operation) · \(role)")
+        do {
+            var lines = [
+                "MICROMIX EXPORT — \(Self.timestamp())",
+                "JOB \(jobID)\(item.provenance?.operation.map { " · OPERATION \($0)" } ?? "")",
+                "SOURCE: \(item.promptOrSource.isEmpty ? "(none recorded)" : item.promptOrSource)",
+                "Direct library relatives only. This bundle does not guarantee complete reproduction.",
+                "Full available metadata and source availability: manifest.json",
+                ""
+            ]
+            var entries: [BundleManifestEntry] = []
+            for (index, entry) in grouped.enumerated() {
+                let fileURL = resolvedURL(for: entry)
+                let role = entry.provenance?.output.name ?? "result"
+                let base = Self.sanitized("\(String(format: "%02d", index + 1))-\(role)-\(entry.title)")
+                let name = fileURL.pathExtension.isEmpty ? base : "\(base).\(fileURL.pathExtension)"
+                try FileManager.default.copyItem(at: fileURL, to: destination.appendingPathComponent(name))
+                let inputs: [BundleInputAvailability] = entry.provenance?.inputs.map { link in
+                    let match = grouped.first { candidate in
+                        candidate.remoteOutputAssetID == link.asset.id && !link.asset.id.isEmpty
+                            || (!link.asset.sha256.isEmpty && candidate.provenance?.output.asset.sha256 == link.asset.sha256)
+                    }
+                    return BundleInputAvailability(
+                        input: link, status: match == nil ? "not_in_bundle" : "bundled",
+                        bundledLibraryItemID: match?.id
+                    )
+                } ?? []
+                entries.append(BundleManifestEntry(filename: name, item: entry, inputs: inputs))
+                lines.append("\(name) — \(entry.provenance?.operation ?? entry.kind.rawValue.uppercased()) · \(role)")
+                if entry.provenance == nil {
+                    lines.append("  WARNING: provenance and original source availability are unknown.")
+                } else if inputs.isEmpty {
+                    lines.append("  Original source availability is unknown; no inputs were recorded.")
+                }
+                for input in inputs where input.bundledLibraryItemID == nil {
+                    lines.append("  WARNING: original input not available in this bundle: \(input.input.asset.filename) (asset \(input.input.asset.id)). Locate and retain the original separately.")
+                }
+            }
+            let manifest = BundleManifest(formatVersion: 1, entries: entries)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            try encoder.encode(manifest).write(to: destination.appendingPathComponent("manifest.json"), options: .atomic)
+            try Data((lines.joined(separator: "\n") + "\n").utf8)
+                .write(to: destination.appendingPathComponent("manifest.txt"), options: .atomic)
+            return destination
+        } catch {
+            try? FileManager.default.removeItem(at: destination)
+            throw error
         }
-        let manifest = (lines.joined(separator: "\n") + "\n").data(using: .utf8) ?? Data()
-        try manifest.write(to: destination.appendingPathComponent("manifest.txt"), options: .atomic)
-        return destination
     }
 
     private static func unusedDirectory(named folderName: String, in exportsRoot: URL) -> URL {
@@ -296,6 +328,24 @@ final class LocalLibrary: ObservableObject {
             to: rootDirectory.appendingPathComponent("library.json.migrated")
         )
     }
+}
+
+private struct BundleManifest: Encodable {
+    let formatVersion: Int
+    let scope = "direct library relatives only; complete reproduction is not guaranteed"
+    let entries: [BundleManifestEntry]
+}
+
+private struct BundleManifestEntry: Encodable {
+    let filename: String
+    let item: LibraryItem
+    let inputs: [BundleInputAvailability]
+}
+
+private struct BundleInputAvailability: Encodable {
+    let input: RemoteAssetLink
+    let status: String
+    let bundledLibraryItemID: UUID?
 }
 
 extension LocalLibrary: LibraryStoring {}

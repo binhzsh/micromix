@@ -504,6 +504,52 @@ struct ReimagineViewModelTests {
         #expect(untouched.key == "D major")
     }
 
+    @Test("derived metadata refreshes untouched meter and language and ignores missing values")
+    func derivedMetadataRefreshesUntouchedFields() {
+        let model = ReimagineViewModel(api: NeverCalledReimagineAPI(), reattacher: RecordingReattacher())
+        let source = URL(fileURLWithPath: "/tmp/source.wav")
+        func accept(_ metadata: DerivedMetadata) {
+            model.acceptSource(AssetActionContext(sourceURL: source, action: .referenceGenerate, derivedMetadata: metadata))
+        }
+
+        accept(DerivedMetadata(timeSignature: "3", detectedLanguage: .english))
+        #expect(model.timeSignature == "3")
+        #expect(model.vocalLanguage == .english)
+        accept(DerivedMetadata(timeSignature: "4", detectedLanguage: .vietnamese))
+        #expect(model.timeSignature == "4")
+        #expect(model.vocalLanguage == .vietnamese)
+        accept(.empty)
+        #expect(model.timeSignature == "4")
+        #expect(model.vocalLanguage == .vietnamese)
+    }
+
+    @Test("derived metadata preserves independent explicit meter and language edits")
+    func derivedMetadataPreservesManualEdits() {
+        let source = URL(fileURLWithPath: "/tmp/source.wav")
+        let metadata = DerivedMetadata(timeSignature: "3", detectedLanguage: .english)
+        func accept(_ model: ReimagineViewModel) {
+            model.acceptSource(AssetActionContext(sourceURL: source, action: .referenceGenerate, derivedMetadata: metadata))
+        }
+
+        let meterEdited = ReimagineViewModel(api: NeverCalledReimagineAPI(), reattacher: RecordingReattacher())
+        meterEdited.timeSignature = ""
+        accept(meterEdited)
+        #expect(meterEdited.timeSignature == "")
+        #expect(meterEdited.vocalLanguage == .english)
+
+        let languageEdited = ReimagineViewModel(api: NeverCalledReimagineAPI(), reattacher: RecordingReattacher())
+        languageEdited.vocalLanguage = .automatic
+        accept(languageEdited)
+        #expect(languageEdited.timeSignature == "3")
+        #expect(languageEdited.vocalLanguage == .automatic)
+
+        languageEdited.timeSignature = "5"
+        languageEdited.vocalLanguage = .vietnamese
+        accept(languageEdited)
+        #expect(languageEdited.timeSignature == "5")
+        #expect(languageEdited.vocalLanguage == .vietnamese)
+    }
+
     @Test("start captures immutable request state before asynchronous upload")
     func startCapturesRequestBeforeAsyncWork() async throws {
         let api = SuspendedUploadReimagineAPI()

@@ -113,20 +113,33 @@ final class GuidedTranscribeModel: ObservableObject {
         sourceReader: @escaping @Sendable (URL) throws -> Data
     ) async {
         do {
+            try requireCurrent(token)
             set(.transcribe, .running)
             let data = try await Task.detached(priority: .userInitiated) {
                 try sourceReader(sourceURL)
             }.value
-            let job = try await api.submitTranscription(
-                audio: data,
-                filename: sourceURL.lastPathComponent,
-                instruments: [],
-                detectTempo: detectTempo
-            )
-            acceptedJobID = job.id
             try requireCurrent(token)
+            // Shield the request so a late accepted job can be tracked and cancelled.
+            let job = try await Task {
+                try await api.submitTranscription(
+                    audio: data,
+                    filename: sourceURL.lastPathComponent,
+                    instruments: [],
+                    detectTempo: detectTempo
+                )
+            }.value
+            guard runID == token, !Task.isCancelled else {
+                try? reattacher.track(job)
+                if let cancelling = api as? any DurableJobCancelling {
+                    Task { try? await cancelling.cancel(jobID: job.id) }
+                }
+                throw CancellationError()
+            }
+            acceptedJobID = job.id
             try reattacher.track(job)
             let items = try await reattacher.recoverSubmittedJob(id: job.id)
+            try requireCurrent(token)
+            acceptedJobID = nil
             guard let item = items.first else {
                 throw GuidedFlowError(description: "Transcription produced no MIDI")
             }

@@ -137,11 +137,13 @@ final class GuidedRemixModel: ObservableObject {
         var item: LibraryItem?
         var derived: DerivedMetadata?
         do {
+            try requireCurrent(token)
             if splitFirst {
                 set(.splitVocals, .running)
                 let data = try await Task.detached(priority: .userInitiated) {
                     try sourceReader(sourceURL)
                 }.value
+                try requireCurrent(token)
                 let asset = try await api.uploadAsset(
                     data: data,
                     filename: sourceURL.lastPathComponent,
@@ -177,11 +179,21 @@ final class GuidedRemixModel: ObservableObject {
         api: any DurableSourceProcessing,
         reattacher: any ReimagineJobReattaching
     ) async throws -> [LibraryItem] {
-        let job = try await api.submitSourceProcessing(request)
-        acceptedJobID = job.id
         try requireCurrent(token)
+        // The request must outlive cancellation so a late acceptance is observable.
+        let job = try await Task { try await api.submitSourceProcessing(request) }.value
+        guard runID == token, !Task.isCancelled else {
+            // Keep recovery possible even if the cancellation request fails.
+            try? reattacher.track(job)
+            Task { try? await api.cancel(jobID: job.id) }
+            throw CancellationError()
+        }
+        acceptedJobID = job.id
         try reattacher.track(job)
-        return try await reattacher.recoverSubmittedJob(id: job.id)
+        let items = try await reattacher.recoverSubmittedJob(id: job.id)
+        try requireCurrent(token)
+        acceptedJobID = nil
+        return items
     }
 
     private func requireCurrent(_ token: UUID) throws {

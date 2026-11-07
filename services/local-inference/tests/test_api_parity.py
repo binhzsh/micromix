@@ -2,9 +2,10 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
-from local_inference import main
+from local_inference import engines, main
 
 
 class APIParityTests(unittest.TestCase):
@@ -77,6 +78,49 @@ class APIParityTests(unittest.TestCase):
         params = response.json()['parameters']
         self.assertEqual(params['instruments'], ['acoustic_piano', 'organ'])
         self.assertIs(params['detect_tempo'], False)
+
+    def test_transcription_tempo_survives_persistence_and_reaches_muscriptor(self):
+        cases = [(None, True), ('true', True), ('false', False),
+                 ('best-effort', 'best-effort')]
+        jobs = []
+        for value, expected in cases:
+            with self.subTest(value=value):
+                fields = [('audio_file', ('source.wav', b'RIFF', 'audio/wav'))]
+                if value is not None:
+                    fields.append(('detect_tempo', (None, value)))
+                response = self.client.post('/v1/jobs/transcription', files=fields)
+                self.assertEqual(response.status_code, 202, response.text)
+                self.assertEqual(response.json()['parameters']['detect_tempo'], expected)
+                jobs.append((response.json()['id'], expected))
+
+        # Reload from the durable store rather than relying on the submit response.
+        self.client.__exit__(None, None, None)
+        app = main.create_app(self.root, start_worker=False)
+        with TestClient(app) as client:
+            for job_id, expected in jobs:
+                with self.subTest(expected=expected):
+                    job = client.get('/v1/jobs/' + job_id).json()
+                    actual = job['parameters']['detect_tempo']
+                    self.assertEqual(actual, expected)
+                    self.assertIs(type(actual), type(expected))
+                    source_path = app.state.runtime.asset_path(job['inputs'][0]['asset']['id'])
+                    manifest = {'operation': 'transcription',
+                                'parameters': {**job['parameters'], 'source_path': str(source_path)},
+                                'output_dir': str(self.root / 'out'), 'inputs': []}
+                    with patch.object(engines, '_decode_audio', return_value=self.root / 'decoded.wav'), \
+                         patch.object(engines, '_load_muscriptor') as load:
+                        load.return_value.transcribe_and_postprocess.return_value = (b'MThd-test', None)
+                        engines.run_manifest(manifest)
+                    forwarded = load.return_value.transcribe_and_postprocess.call_args.kwargs['detect_tempo']
+                    self.assertEqual(forwarded, expected)
+                    self.assertIs(type(forwarded), type(expected))
+
+    def test_transcription_rejects_invalid_tempo(self):
+        response = self.client.post('/v1/jobs/transcription', files=[
+            ('audio_file', ('source.wav', b'RIFF', 'audio/wav')),
+            ('detect_tempo', (None, 'sometimes')),
+        ])
+        self.assertEqual(response.status_code, 422)
 
     def test_voice_selection_and_stems_link_source(self):
         root = self.root / 'voice-models'

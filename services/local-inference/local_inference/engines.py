@@ -32,6 +32,14 @@ TRANSCRIPTION_INSTRUMENTS = (
 )
 
 
+def _muscriptor_weight_path() -> Path:
+    """Return the configured local checkpoint marker without loading the model."""
+    requested = os.environ.get('MICROMIX_MUSCRIPTOR_MODEL', 'medium')
+    if requested in ('small', 'medium', 'large'):
+        return MODELS_DIR / f'muscriptor-{requested}' / 'model.safetensors'
+    return Path(requested).expanduser()
+
+
 def required_weight_paths() -> dict[str, list[Path]]:
     """Marker files proving each engine's local weights are present.
 
@@ -43,7 +51,7 @@ def required_weight_paths() -> dict[str, list[Path]]:
     return {
         'ace_step': [checkpoints / name / 'config.json' for name in
                      ('acestep-v15-xl-turbo', 'acestep-v15-xl-sft', 'acestep-5Hz-lm-4B')],
-        'muscriptor': [MODELS_DIR / 'muscriptor-medium' / 'model.safetensors'],
+        'muscriptor': [_muscriptor_weight_path()],
         'minimax_music3': [MODELS_DIR / 'MiniMax-Music3-mxfp8' / 'model.safetensors.index.json'],
         'mlx_rvc': [MODELS_DIR / 'mlx-contentvec' / 'contentvec_base.safetensors',
                     MODELS_DIR / 'mlx-rmvpe' / 'rmvpe.safetensors'],
@@ -174,12 +182,14 @@ def _decode_audio(source: str, directory: Path, *,
 
 def _load_muscriptor():
     from muscriptor import TranscriptionModel
-    # Prefer the local model store so an offline worker never reaches HuggingFace.
-    # A size keyword maps to ~/models/muscriptor-<size>; anything else (an explicit
-    # path or URL) is passed through unchanged.
+    # Size keywords prefer the local store; explicit local checkpoints share
+    # the same path resolution as the lightweight health check.
     requested = os.environ.get('MICROMIX_MUSCRIPTOR_MODEL', 'medium')
-    local = MODELS_DIR / f'muscriptor-{requested}' / 'model.safetensors'
-    return TranscriptionModel.load_model(str(local) if local.is_file() else requested, device='mps')
+    local = _muscriptor_weight_path()
+    if requested in ('small', 'medium', 'large'):
+        return TranscriptionModel.load_model(str(local) if local.is_file() else requested, device='mps')
+    checkpoint = str(local) if requested.startswith('~') else requested
+    return TranscriptionModel.load_model(checkpoint, device='mps')
 
 
 def _transcription(manifest: dict, directory: Path) -> dict:

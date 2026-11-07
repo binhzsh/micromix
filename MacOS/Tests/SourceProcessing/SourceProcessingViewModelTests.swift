@@ -35,6 +35,24 @@ private final class ProcessingRecovery: ReimagineJobReattaching {
 @MainActor
 @Suite("Source processing workflows")
 struct SourceProcessingViewModelTests {
+    @Test("voice catalog only reports an empty library after a successful response")
+    func voiceCatalogFailureStates() {
+        let offline = VoiceCatalogState.unavailable
+        let loading = VoiceCatalogState.loading
+        let failed = VoiceCatalogState.failed
+        let empty = VoiceCatalogState.loaded([])
+        #expect(offline.message?.contains("unavailable") == true)
+        #expect(loading.message?.contains("Loading") == true)
+        #expect(failed.message?.contains("Could not load") == true)
+        for state in [offline, loading, failed] {
+            #expect(state.message?.contains("No local voice models found") == false)
+            #expect(state.voices.isEmpty)
+        }
+        #expect(empty.message?.contains("No local voice models found") == true)
+        #expect(VoiceCatalogState.loaded(["voice"]).message == nil)
+        #expect(VoiceCatalogState.loaded(["voice"]).voices == ["voice"])
+    }
+
     @Test("missing source, voice and description do not submit")
     func validation() {
         let api = ProcessingAPI()

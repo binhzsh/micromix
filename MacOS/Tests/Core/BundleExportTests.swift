@@ -54,14 +54,14 @@ struct BundleExportTests {
 
             let folder = try lib.exportBundle(for: target)
             let names = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
-            #expect(names.count == 3)
+            #expect(names.count == 4)
             #expect(names.contains { $0.hasSuffix(".wav") })
             #expect(names.contains { $0.hasSuffix(".mid") })
             #expect(names.contains("manifest.txt"))
             #expect(folder.lastPathComponent.contains("split-01"))
 
             let manifest = try String(contentsOf: folder.appendingPathComponent("manifest.txt"), encoding: .utf8)
-            #expect(manifest.contains("JOB split-01"))
+            #expect(manifest.contains("JOB jobid-split-01"))
             #expect(manifest.contains("OPERATION stem_split"))
             #expect(manifest.contains("01-target"))
             #expect(manifest.contains("02-residual"))
@@ -105,13 +105,19 @@ struct BundleExportTests {
 
             let folder = try lib.exportBundle(for: target)
             let names = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
-            #expect(names.count == 4)
+            #expect(names.count == 5)
             #expect(names.contains { $0.contains("source-song") })
 
             let manifest = try String(contentsOf: folder.appendingPathComponent("manifest.txt"), encoding: .utf8)
             #expect(manifest.contains("01-target"))
             #expect(manifest.contains("02-residual"))
             #expect(manifest.contains("03-result-source-song"))
+            let jsonData = try Data(contentsOf: folder.appendingPathComponent("manifest.json"))
+            let json = try #require(JSONSerialization.jsonObject(with: jsonData) as? [String: Any])
+            let records = try #require(json["entries"] as? [[String: Any]])
+            let inputs = try #require(records.first?["inputs"] as? [[String: Any]])
+            #expect(inputs.first?["status"] as? String == "bundled")
+            #expect(inputs.first?["bundledLibraryItemID"] as? String == parent.id.uuidString)
             #expect(!manifest.contains("elsewhere"))
             #expect(!names.contains { $0.contains("elsewhere") })
         }
@@ -146,9 +152,58 @@ struct BundleExportTests {
         }
     }
 
+    @Test("missing related files fail with an actionable error")
+    func missingRelatedFileFails() throws {
+        try withLibrary { lib in
+            let target = item(title: "target", relativePath: "audio/target.wav", jobID: "shared", operation: "split", outputName: "target")
+            let sibling = item(title: "missing sibling", relativePath: "audio/missing.wav", jobID: "shared", operation: "split", outputName: "other")
+            try lib.add(target, bytes: Data([1]))
+            try lib.add(sibling, bytes: Data([2]))
+            try FileManager.default.removeItem(at: lib.resolvedURL(for: sibling))
+            do {
+                _ = try lib.exportBundle(for: target)
+                Issue.record("Export should fail when a related file is missing")
+            } catch {
+                #expect(error.localizedDescription.contains("missing sibling"))
+                #expect(error.localizedDescription.contains("Restore"))
+            }
+        }
+    }
+
+    @Test("manifest preserves structured provenance and flags unavailable inputs")
+    func fullProvenanceAndUnavailableInput() throws {
+        try withLibrary { lib in
+            let source = RemoteAssetLink(name: "source", position: 2, asset: RemoteAsset(
+                id: "original-id", filename: "original.wav", mediaType: "audio/wav",
+                sizeBytes: 42, sha256: "original-hash", downloadUrl: "/source"
+            ))
+            let entry = item(title: "result", relativePath: "audio/result.wav", jobID: "full-job-id", operation: "remix", outputName: "mix", inputs: [source], parameters: ["nested": .object(["seed": .number(123)])])
+            try lib.add(entry, bytes: Data([1]))
+            let folder = try lib.exportBundle(for: entry)
+            let data = try Data(contentsOf: folder.appendingPathComponent("manifest.json"))
+            let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let records = try #require(json["entries"] as? [[String: Any]])
+            let savedItem = try #require(records.first?["item"] as? [String: Any])
+            let provenance = try #require(savedItem["provenance"] as? [String: Any])
+            #expect(provenance["jobID"] as? String == "full-job-id")
+            #expect(provenance["operation"] as? String == "remix")
+            let parameters = try #require(provenance["parameters"] as? [String: Any])
+            let nested = try #require(parameters["nested"] as? [String: Any])
+            #expect(nested["seed"] as? Int == 123)
+            let output = try #require(provenance["output"] as? [String: Any])
+            let outputAsset = try #require(output["asset"] as? [String: Any])
+            #expect(outputAsset["sha256"] as? String == "sha-full-job-id-mix")
+            let inputs = try #require(records.first?["inputs"] as? [[String: Any]])
+            #expect(inputs.first?["status"] as? String == "not_in_bundle")
+            let text = try String(contentsOf: folder.appendingPathComponent("manifest.txt"), encoding: .utf8)
+            #expect(text.contains("original.wav"))
+            #expect(text.contains("does not guarantee complete reproduction"))
+        }
+    }
+
     private func item(
         title: String, relativePath: String, jobID: String, operation: String, outputName: String,
-        inputs: [RemoteAssetLink] = []
+        inputs: [RemoteAssetLink] = [], parameters: [String: JSONValue] = [:]
     ) -> LibraryItem {
         let asset = RemoteAsset(
             id: "as-\(outputName)-\(jobID)", filename: title, mediaType: "audio/wav",
@@ -159,7 +214,7 @@ struct BundleExportTests {
             title: title, createdAt: .now, promptOrSource: "bundle test",
             durationSeconds: nil, relativePath: relativePath,
             provenance: LibraryProvenance(
-                jobID: jobID, operation: operation, parameters: [:],
+                jobID: jobID, operation: operation, parameters: parameters,
                 inputs: inputs, output: RemoteAssetLink(name: outputName, position: 0, asset: asset)
             ),
             remoteOutputAssetID: asset.id

@@ -40,7 +40,7 @@ Upstream reference: [ACE-Step musician guide](https://github.com/ace-step/ACE-St
 - Lego: generate or add selected instrumental layers.
 - Extract: semantic isolation of vocals or selected instruments.
 - Complete/continuation: create accompaniment for partial tracks or vocals.
-- Output-format choice, vocal-language control, audio captioning, semantic-code reuse, LoRA inference/training, and expert sampling controls.
+- Output-format choice, audio captioning, semantic-code reuse, LoRA inference/training, and expert sampling controls.
 - No dedicated "extend this song" workflow; continuation is not exposed.
 - ACE-Step itself produces rendered audio rather than stems, MIDI or DAW sessions.
   Separation comes from SAM-Audio, and the session bundle is assembled by the
@@ -52,7 +52,7 @@ Upstream reference: [ACE-Step inference documentation](https://github.com/ace-st
 
 ### Currently implemented
 
-- Loaded for both ACE checkpoints.
+- Available for both ACE checkpoints; loaded only for text and reference generation.
 - Thinking is enabled automatically for text and reference generation, but disabled for Remix and Repaint.
 - Provides internal generation planning without direct user configuration.
 - Implementation: [`services/local-inference/local_inference/engines.py`](services/local-inference/local_inference/engines.py).
@@ -70,7 +70,7 @@ Upstream reference: [ACE-Step inference documentation](https://github.com/ace-st
 ### Currently implemented
 
 - Polyphonic and multi-instrument audio-to-MIDI.
-- Optional filtering across 36 instrument groups.
+- Optional filtering across 35 instrument groups.
 - Optional or best-effort tempo detection and beat-grid-adjusted MIDI.
 - Broad input decoding through FFmpeg.
 - Durable jobs, cancellation/recovery, and MIDI library import.

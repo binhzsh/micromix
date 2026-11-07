@@ -132,7 +132,7 @@ private struct ScreenRegion: View {
         .overlay(ScanlinesOverlay())
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(14)
-        .frame(height: 200)
+        .frame(height: 164)
     }
 
     private var readoutColor: Color {
@@ -155,7 +155,9 @@ private struct ScreenRegion: View {
             if reimagine.phase == .cancelled { return "CANCELLED" }
         case .analyze:
             if analyze.isRunning { return "ANALYZING" }
-            if analyze.analysis != nil { return "UNDERSTOOD" }
+            if analyze.analysis != nil {
+                return AnalyzeViewModel.supportsMusicUnderstanding ? "UNDERSTOOD" : "DURATION"
+            }
             if let error = analyze.error { return shorten(error) }
         case .transcribe:
             if transcribe.isRunning { return format(elapsed: transcribe.elapsed) }
@@ -194,7 +196,7 @@ private struct ScreenRegion: View {
             if reimagine.isRunning { return "RENDERING VARIATIONS…" }
             return reimagine.sourceURL == nil ? "READY — SELECT A SOURCE" : "READY — SET DIRECTION"
         case .analyze:
-            return analyze.isRunning ? "ANALYZING LOCALLY…" : "READY — SELECT AUDIO"
+            return analyze.statusLine
         case .transcribe:
             guard connection.isConnected else { return "LOCAL INFERENCE UNAVAILABLE" }
             return transcribe.isRunning ? "TRANSCRIBING…" : "READY — SELECT AUDIO"
@@ -255,7 +257,7 @@ private struct DeckRegion: View {
                 connectionRow
             }
 
-            LazyVGrid(columns: columns, spacing: 10) {
+            LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(DeviceMode.allCases.filter(\.isSelectableMode)) { entry in
                     PanelButton(
                         title: entry.rawValue,
@@ -273,7 +275,8 @@ private struct DeckRegion: View {
                 .frame(maxWidth: .infinity, alignment: .top)
             Spacer(minLength: 0)
         }
-        .padding(20)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.deck)
         .onAppear {
@@ -327,6 +330,8 @@ private struct DeckRegion: View {
                 viewModel: mode == .vocalSwap ? vocalSwap : stemSplit,
                 voices: connection.vocalModels,
                 localInferenceAvailable: connection.isConnected,
+                voiceCatalog: connection.voiceCatalog,
+                onRefreshVoices: { Task { await connection.refresh() } },
                 onOpenLibrary: { mode = .library },
                 router: router,
                 player: player,
@@ -342,6 +347,8 @@ private struct DeckRegion: View {
                 vocalSwapStudio: vocalSwapStudio,
                 voices: connection.vocalModels,
                 localInferenceAvailable: connection.isConnected,
+                voiceCatalog: connection.voiceCatalog,
+                onRefreshVoices: { Task { await connection.refresh() } },
                 onOpenLibrary: { mode = .library },
                 onOpenReimagine: { mode = .reimagine },
                 router: router,

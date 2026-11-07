@@ -16,6 +16,21 @@ struct DeviceWindowTests {
         #expect(DeviceMode.allCases.contains(.guide))
     }
 
+    @Test("mode accessibility descriptions use the selectable mode count")
+    func modeAccessibilityDescriptions() {
+        let selectable = DeviceMode.allCases.filter(\.isSelectableMode)
+        for mode in selectable {
+            let button = PanelButton(title: mode.rawValue, index: mode.displayIndex)
+            #expect(button.accessibilityDescription == "\(mode.rawValue), mode \(mode.displayIndex) of 7")
+        }
+    }
+
+    @Test("transcribe heading matches its mode number")
+    func transcribeHeadingNumber() {
+        #expect(TranscribeScreen.heading == "4. TRANSCRIBE — AUDIO TO MIDI")
+        #expect(TranscribeScreen.heading.hasPrefix("\(DeviceMode.transcribe.displayIndex). "))
+    }
+
     @Test("lyrics layout keeps the primary action visible at the default window size")
     func lyricsActionVisible() throws {
         let count = try orangePixelCount(width: 980, height: 700, populated: true)

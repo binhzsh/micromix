@@ -175,6 +175,38 @@ struct MicromixAPITests {
         #expect(monitor.modelStatuses.isEmpty)
     }
 
+    @Test("voice availability distinguishes offline, empty, failed and populated catalogs")
+    @MainActor func voiceCatalogConnectionStates() async {
+        let monitor = ConnectionMonitor(api: makeAPI())
+        #expect(monitor.voiceCatalog == .unavailable)
+        MockURLProtocol.handler = { request in
+            let body = request.url?.path == "/v1/health"
+                ? #"{"service":"micromix-local-inference","status":"ready","models":{}}"#
+                : #"{"generation_presets":[],"transcription_instruments":[],"vocal_models":[]}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+        }
+        await monitor.refresh()
+        #expect(monitor.voiceCatalog == .loaded([]))
+        MockURLProtocol.handler = { request in
+            if request.url?.path == "/v1/capabilities" { throw URLError(.timedOut) }
+            let body = #"{"service":"micromix-local-inference","status":"ready","models":{}}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+        }
+        await monitor.refresh()
+        #expect(monitor.voiceCatalog == .failed)
+        MockURLProtocol.handler = { request in
+            let body = request.url?.path == "/v1/health"
+                ? #"{"service":"micromix-local-inference","status":"ready","models":{}}"#
+                : #"{"generation_presets":[],"transcription_instruments":[],"vocal_models":["test-voice"]}"#
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+        }
+        await monitor.refresh()
+        #expect(monitor.voiceCatalog == .loaded(["test-voice"]))
+        MockURLProtocol.handler = { _ in throw URLError(.cannotConnectToHost) }
+        await monitor.refresh()
+        #expect(monitor.voiceCatalog == .unavailable)
+    }
+
     @Test("non-ready sidecar does not enable actions")
     @MainActor func nonReadyConnection() async {
         MockURLProtocol.handler = { request in

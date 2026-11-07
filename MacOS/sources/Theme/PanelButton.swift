@@ -10,6 +10,10 @@ struct PanelButton: View {
     var isActive: Bool = false
     var action: () -> Void = {}
 
+    var accessibilityDescription: String {
+        "\(title), mode \(index) of \(DeviceMode.allCases.filter(\.isSelectableMode).count)"
+    }
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 5) {
@@ -34,7 +38,7 @@ struct PanelButton: View {
         }
         .buttonStyle(.plain)
         .keyboardShortcut(KeyEquivalent(Character(String(index))), modifiers: [.command])
-        .accessibilityLabel("\(title), mode \(index) of 4")
+        .accessibilityLabel(accessibilityDescription)
         .accessibilityHint(isActive ? "Selected" : "Switches to \(title.lowercased())")
     }
 }

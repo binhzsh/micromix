@@ -1,10 +1,46 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// A verified capabilities response is the only evidence that the voice library is empty.
+enum VoiceCatalogState: Equatable {
+    case unavailable
+    case loading
+    case failed
+    case loaded([String])
+
+    var voices: [String] {
+        if case .loaded(let voices) = self { return voices }
+        return []
+    }
+
+    var message: String? {
+        switch self {
+        case .unavailable: "Local inference is unavailable. Start the local sidecar to load voices."
+        case .loading: "Loading local voice models…"
+        case .failed: "Could not load local voice models. Try again."
+        case .loaded(let voices): voices.isEmpty ? "No local voice models found. Install a voice model, then refresh." : nil
+        }
+    }
+}
+
+struct VoiceCatalogNotice: View {
+    let state: VoiceCatalogState
+    let onRefresh: () -> Void
+
+    var body: some View {
+        if let message = state.message {
+            Text(message).foregroundStyle(.secondary)
+        }
+        Button("REFRESH VOICES", action: onRefresh)
+    }
+}
+
 struct SourceProcessingScreen: View {
     @ObservedObject var viewModel: SourceProcessingViewModel
     var voices: [String] = []
     var localInferenceAvailable = true
+    var voiceCatalog: VoiceCatalogState? = nil
+    var onRefreshVoices: () -> Void = {}
     var onOpenLibrary: () -> Void = {}
     var router: WorkflowRouter? = nil
     var player: AudioPlayer? = nil
@@ -12,10 +48,15 @@ struct SourceProcessingScreen: View {
     var library: LocalLibrary? = nil
     @State private var isImporting = false
 
+    private var catalog: VoiceCatalogState {
+        voiceCatalog ?? (localInferenceAvailable ? .loading : .unavailable)
+    }
+
     private var canStart: Bool {
         let direction = viewModel.operation == .vocalSwap ? viewModel.voiceModel : viewModel.description
         return localInferenceAvailable && !viewModel.isRunning && viewModel.sourceURL != nil
             && !direction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (viewModel.operation != .vocalSwap || catalog.voices.contains(direction))
     }
 
     var body: some View {
@@ -31,15 +72,14 @@ struct SourceProcessingScreen: View {
             DeckPanel {
                 VStack(alignment: .leading, spacing: 10) {
                     if viewModel.operation == .vocalSwap {
-                        Picker("VOICE MODEL", selection: $viewModel.voiceModel) {
-                            Text("Select a voice").tag("")
-                            ForEach(voices, id: \.self) { Text($0).tag($0) }
+                        if !catalog.voices.isEmpty {
+                            Picker("VOICE MODEL", selection: $viewModel.voiceModel) {
+                                Text("Select a voice").tag("")
+                                ForEach(catalog.voices, id: \.self) { Text($0).tag($0) }
+                            }
+                            Stepper("PITCH  \(viewModel.pitchShift) SEMITONES", value: $viewModel.pitchShift, in: -24...24)
                         }
-                        Stepper("PITCH  \(viewModel.pitchShift) SEMITONES", value: $viewModel.pitchShift, in: -24...24)
-                        if voices.isEmpty {
-                            Text("No local voice models found. Install a voice model and refresh.")
-                                .foregroundStyle(.secondary)
-                        }
+                        VoiceCatalogNotice(state: catalog, onRefresh: onRefreshVoices)
                     } else {
                         TextField("Describe the sound to extract, e.g. lead vocals", text: $viewModel.description)
                         Text("Saves the extracted sound and the remaining audio to Library.")

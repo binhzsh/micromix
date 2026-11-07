@@ -7,10 +7,12 @@ struct AnalyzeScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Typography.monoLabel("2. ANALYZE — ON-DEVICE MUSIC UNDERSTANDING", size: 11)
+            Typography.monoLabel("3. ANALYZE — ON-DEVICE MUSIC UNDERSTANDING", size: 11)
                 .foregroundColor(Palette.ink.opacity(0.76))
 
-            Text("RHYTHM, KEY, STRUCTURE AND INSTRUMENT ACTIVITY STAY ON THIS MAC.")
+            Text(AnalyzeViewModel.capabilityDescription(
+                supportsMusicUnderstanding: AnalyzeViewModel.supportsMusicUnderstanding
+            ))
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(Palette.ink.opacity(0.68))
 
@@ -30,7 +32,10 @@ struct AnalyzeScreen: View {
             } else if let analysis = viewModel.analysis {
                 DeckPanel {
                     VStack(alignment: .leading, spacing: 8) {
-                        Typography.monoLabel("ANALYSIS COMPLETE", size: 10)
+                        Typography.monoLabel(
+                            AnalyzeViewModel.supportsMusicUnderstanding ? "ANALYSIS COMPLETE" : "DURATION ONLY — ANALYSIS COMPLETE",
+                            size: 10
+                        )
                             .foregroundColor(Palette.ink.opacity(0.68))
                         Text(analysis.compactDescription)
                             .font(.system(size: 14, weight: .semibold, design: .monospaced))
@@ -104,12 +109,14 @@ struct AnalyzeScreen: View {
                 Typography.monoLabel("OUTPUT PREVIEW", size: 10)
                     .foregroundColor(Palette.ink.opacity(0.68))
                 HStack(spacing: 8) {
-                    previewChip("RHYTHM")
-                    previewChip("KEY")
-                    previewChip("STRUCTURE")
-                    previewChip("INSTRUMENTS")
+                    previewChip("DURATION")
+                    if AnalyzeViewModel.supportsMusicUnderstanding {
+                        previewChip("RHYTHM")
+                        previewChip("KEY")
+                        previewChip("INSTRUMENTS")
+                    }
                 }
-                Text("Choose an audio file to reveal musical structure without uploading it.")
+                Text("Choose an audio file to analyze it without uploading it.")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(Palette.ink.opacity(0.64))
             }

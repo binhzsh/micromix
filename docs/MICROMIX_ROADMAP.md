@@ -100,7 +100,7 @@ Updated on 2026-09-18 after implementing local server-feature parity; extended
 
 | Area | Implemented | Remaining |
 | --- | --- | --- |
-| Native | Seven workspaces, source lineage, private voice picker, stem outputs | Manual visual and Logic acceptance |
+| Native | Seven selectable workspaces plus GUIDE, source lineage, private voice picker, stem outputs | Manual visual and Logic acceptance |
 | Chaining | Next actions on every result and Library row, analysis/seed handoffs, provenance trail, related assets, four guided studios, inline audio/MIDI preview, DAW bundle export | Manual acceptance with real model output |
 | Generation | Local ACE XL Turbo/SFT, real source conditioning, metadata, language, seeded variations | Weights and listening evaluation |
 | Transcription | Local MuScriptor, instrument filters, tempo detection, FFmpeg formats | Gated model access and MIDI evaluation |
@@ -114,21 +114,24 @@ new product work, not features shipped by the retired server.
 
 ## Completed work
 
-Workflow chaining landed on 2026-10-16 and serves Phase 1's exit gate: results
-are now nodes that offer the next operation instead of seven isolated tools.
+Workflow chaining landed on 2026-10-16 and advances Phase 1's exit gate: results
+now offer the next operation instead of being isolated. Manual acceptance remains open.
 
 - Contextual next actions on every result row and every Library row, with the
   target workspace pre-filled from the source and its derived metadata.
-- Metadata handoffs: analysis supplies BPM/key to Generate and Reimagine, and
-  stem-split outputs feed Vocal Swap without re-uploading the vocal.
+- Metadata handoffs: when supported, analysis supplies BPM/key to Generate and
+  Reimagine. Guided cover and vocal swap pass split-vocal asset IDs directly;
+  ordinary Library handoffs may re-upload the source.
 - Lineage in the Library: provenance trail, grouped alternatives, A/B compare,
   and a related-assets panel resolving siblings, parents and children.
 - Four guided studios in the GUIDE workspace: cover, remix, transcribe, and
-  vocal swap, each running durable jobs back to back with a live stage stepper.
+  vocal swap, with live stage steppers. Remix prepares a source and hands it to
+  Reimagine rather than rendering automatically.
 - In-context preview: inline audio and MIDI play/pause chips on result rows and
   Library rows, with one audible stream at a time.
-- DAW handoff: a job bundle export that gathers a result, its siblings, children
-  and parent sources into a Finder folder with a provenance manifest.
+- DAW handoff: a bundle export gathers the result and immediate Library-resolved
+  siblings, children and parents, with available provenance and explicit warnings
+  for inputs outside the bundle; it cannot guarantee complete reproduction.
 
 Phase 1's remaining model-side items — audio-conditioned completion, and output
 format choice — are still open, and Phase 0's manual corpus evaluation remains

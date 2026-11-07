@@ -1,4 +1,5 @@
 """Local API capabilities remain an executable contract, not a model claim."""
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,6 +24,21 @@ class LocalContractTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 202, response.text)
                 self.assertEqual(response.json()['parameters']['preset'], preset['id'])
 
+    def test_generation_duration_limits_are_preset_specific(self):
+        for preset, duration, expected in [
+            ('minimax-cover', 360, 202),
+            ('minimax-cover', 360.01, 422),
+            ('minimax-cover', 600, 422),
+            ('turbo', 600, 202),
+            ('quality', 600, 202),
+        ]:
+            with self.subTest(preset=preset, duration=duration):
+                response = self.client.post('/v1/jobs/generation', json={
+                    'prompt': 'piano', 'preset': preset, 'duration_seconds': duration,
+                })
+                self.assertEqual(response.status_code, expected, response.text)
+        self.assertEqual(len(self.client.get('/v1/jobs').json()), 3)
+
     def test_minimax_rejects_controls_it_cannot_apply(self):
         for field, value in [('bpm', 120), ('key', 'C minor'),
                              ('time_signature', '4'), ('vocal_language', 'vi'),
@@ -40,6 +56,43 @@ class LocalContractTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 422)
         self.assertIn('Turbo or Quality', response.json()['detail'])
+
+    def test_muscriptor_weight_marker_uses_configured_checkpoint(self):
+        from local_inference import engines
+        model_root = Path('/private/test-models')
+        with patch.object(engines, 'MODELS_DIR', model_root):
+            for configured, expected in [
+                ('small', model_root / 'muscriptor-small/model.safetensors'),
+                ('medium', model_root / 'muscriptor-medium/model.safetensors'),
+                ('large', model_root / 'muscriptor-large/model.safetensors'),
+                ('/private/custom/model.safetensors', Path('/private/custom/model.safetensors')),
+            ]:
+                with self.subTest(configured=configured), patch.dict(
+                    os.environ, {'MICROMIX_MUSCRIPTOR_MODEL': configured}
+                ):
+                    self.assertEqual(engines.required_weight_paths()['muscriptor'], [expected])
+            with patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(engines.required_weight_paths()['muscriptor'],
+                                 [model_root / 'muscriptor-medium/model.safetensors'])
+
+    def test_health_reports_selected_muscriptor_marker(self):
+        from local_inference import engines
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        checkpoint = root / 'custom.safetensors'
+        checkpoint.touch()
+        with patch.object(engines, 'MODELS_DIR', root), patch.dict(
+            os.environ, {'MICROMIX_MUSCRIPTOR_MODEL': str(checkpoint)}
+        ), patch('local_inference.main.subprocess.run') as run:
+            run.return_value.returncode = 0
+            with patch('local_inference.main.SERVICE_ROOT', root):
+                executable = root / '.venv-muscriptor/bin/python'
+                executable.parent.mkdir(parents=True)
+                executable.touch()
+                self.assertEqual(self.client.get('/v1/health').json()['models']['muscriptor'], 'ready')
+                checkpoint.unlink()
+                health = self.client.get('/v1/health').json()
+                self.assertEqual(health['models']['muscriptor'], 'weights_missing')
+                self.assertEqual(health['missing_weights']['muscriptor'], [str(checkpoint)])
 
     def test_health_is_local_without_loading_any_model(self):
         health = self.client.get('/v1/health').json()

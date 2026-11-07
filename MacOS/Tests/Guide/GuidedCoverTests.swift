@@ -8,6 +8,8 @@ private final class CoverAPI: DurableSourceProcessing {
     var submitted: [String] = []
     var cancelled: [String] = []
     var responses: [RemoteJob] = []
+    var holdSecondSubmit: CheckedContinuation<RemoteJob, Never>?
+    var suspendSecondSubmit = false
 
     func uploadAsset(data: Data, filename: String, mediaType: String) async throws -> RemoteAsset {
         uploads += 1
@@ -21,6 +23,9 @@ private final class CoverAPI: DurableSourceProcessing {
             submitted.append("vocal-swap \(source) \(voice) \(pitch)")
         case .stemSplit(let source, let description):
             submitted.append("stem-split \(source) \(description)")
+        }
+        if suspendSecondSubmit && submitted.count == 2 {
+            return await withCheckedContinuation { holdSecondSubmit = $0 }
         }
         return responses[submitted.count - 1]
     }
@@ -136,6 +141,27 @@ struct GuidedCoverTests {
         #expect(model.results.isEmpty)
     }
 
+    @Test("cancelling the second submit never cancels the completed split")
+    func cancelsSecondSubmit() async {
+        let api = CoverAPI()
+        api.responses = [job(id: "split", kind: "stem_split"), job(id: "swap", kind: "vocal-swap")]
+        api.suspendSecondSubmit = true
+        let recovery = CoverRecovery()
+        recovery.queue = [[outputItem(name: "target", remoteID: "vocal", jobID: "split")]]
+        let model = GuidedCoverModel(api: api, reattacher: recovery, sourceReader: { _ in Data([1]) })
+        model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
+        model.voiceModel = "base"
+        #expect(model.start())
+        for _ in 0..<10_000 where api.holdSecondSubmit == nil { await Task.yield() }
+        guard let continuation = api.holdSecondSubmit else { Issue.record("swap submit did not start"); model.cancel(); return }
+        model.cancel()
+        continuation.resume(returning: api.responses[1])
+        for _ in 0..<10_000 where api.cancelled.isEmpty { await Task.yield() }
+        #expect(api.cancelled == ["swap"])
+        #expect(model.state(of: .splitVocals) == .done)
+        #expect(model.state(of: .swapVoice) == .cancelled)
+    }
+
     // MARK: - Builders
 
     private func job(id: String, kind: String) -> RemoteJob {
@@ -159,5 +185,117 @@ struct GuidedCoverTests {
             ),
             remoteOutputAssetID: remoteID
         )
+    }
+}
+
+/// Holds each submission independently, including after its caller is cancelled.
+@MainActor
+private final class DelayedGuideAPI: DurableSourceProcessing, DurableTranscriptionSubmitting, DurableJobCancelling {
+    var submissions: [CheckedContinuation<RemoteJob, Never>] = []
+    var cancelled: [String] = []
+    var submitWasCancelled: [Bool] = []
+
+    func uploadAsset(data: Data, filename: String, mediaType: String) async throws -> RemoteAsset {
+        RemoteAsset(id: "upload", filename: filename, mediaType: mediaType,
+                    sizeBytes: data.count, sha256: "sha", downloadUrl: "/upload")
+    }
+
+    func submitSourceProcessing(_ request: SourceProcessingRequest) async throws -> RemoteJob {
+        await hold()
+    }
+
+    func submitTranscription(audio: Data, filename: String, instruments: [String], detectTempo: Bool) async throws -> RemoteJob {
+        await hold()
+    }
+
+    private func hold() async -> RemoteJob {
+        let job = await withCheckedContinuation { submissions.append($0) }
+        submitWasCancelled.append(Task.isCancelled)
+        return job
+    }
+
+    func accept(_ index: Int, id: String) {
+        let job = try! JSONDecoder().decode(RemoteJob.self, from: Data(#"{"id":"\#(id)","kind":"stem_split","state":"queued"}"#.utf8))
+        submissions[index].resume(returning: job)
+    }
+
+    func cancel(jobID: String) async throws { cancelled.append(jobID) }
+}
+
+@MainActor
+private final class DelayedGuideRecovery: ReimagineJobReattaching {
+    var tracked: [String] = []
+    var recovering: [String] = []
+    func track(_ job: RemoteJob) throws { tracked.append(job.id) }
+    func recoverSubmittedJob(id: String) async throws -> [LibraryItem] {
+        recovering.append(id)
+        try await Task.sleep(for: .seconds(60))
+        return []
+    }
+}
+
+@MainActor
+@Suite("Guided in-flight cancellation")
+struct GuidedSubmitCancellationTests {
+    enum Flow: CaseIterable { case cover, remix, transcribe, vocalSwap }
+
+    @Test("late acceptance is tracked and cancelled without replacing the restarted job", arguments: Flow.allCases)
+    func lateAcceptanceAfterRestart(flow: Flow) async {
+        let api = DelayedGuideAPI()
+        let recovery = DelayedGuideRecovery()
+        let start: () -> Bool
+        let cancel: () -> Void
+        let running: () -> Bool
+        let cancelledStage: () -> Bool
+        switch flow {
+        case .cover:
+            let model = GuidedCoverModel(api: api, reattacher: recovery, sourceReader: { _ in Data([1]) })
+            model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
+            model.voiceModel = "base"
+            start = { model.start() }; cancel = { model.cancel() }; running = { model.isRunning }
+            cancelledStage = { model.state(of: .splitVocals) == .cancelled }
+        case .remix:
+            let model = GuidedRemixModel(api: api, reattacher: recovery, sourceReader: { _ in Data([1]) })
+            model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
+            model.splitFirst = true
+            start = { model.start() }; cancel = { model.cancel() }; running = { model.isRunning }
+            cancelledStage = { model.state(of: .splitVocals) == .cancelled }
+        case .transcribe:
+            let model = GuidedTranscribeModel(api: api, reattacher: recovery, sourceReader: { _ in Data([1]) })
+            model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
+            start = { model.start() }; cancel = { model.cancel() }; running = { model.isRunning }
+            cancelledStage = { model.state(of: .transcribe) == .cancelled }
+        case .vocalSwap:
+            let model = GuidedVocalSwapModel(api: api, reattacher: recovery, sourceReader: { _ in Data([1]) })
+            model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
+            model.voiceModel = "base"
+            model.splitFirst = false
+            start = { model.start() }; cancel = { model.cancel() }; running = { model.isRunning }
+            cancelledStage = { model.state(of: .swapVoice) == .cancelled }
+        }
+        #expect(start())
+        for _ in 0..<10_000 where api.submissions.count < 1 { await Task.yield() }
+        guard api.submissions.count == 1 else { Issue.record("first submit did not start"); cancel(); return }
+        cancel()
+        #expect(cancelledStage())
+        #expect(start())
+        for _ in 0..<10_000 where api.submissions.count < 2 { await Task.yield() }
+        guard api.submissions.count == 2 else {
+            Issue.record("second submit did not start"); api.accept(0, id: "old"); cancel(); return
+        }
+        api.accept(1, id: "new")
+        for _ in 0..<10_000 where recovery.recovering.isEmpty { await Task.yield() }
+        #expect(recovery.recovering == ["new"])
+        api.accept(0, id: "old")
+        for _ in 0..<10_000 where !api.cancelled.contains("old") { await Task.yield() }
+        #expect(running())
+        cancel()
+        for _ in 0..<10_000 where !api.cancelled.contains("new") { await Task.yield() }
+        #expect(Set(api.cancelled) == Set(["old", "new"]))
+        #expect(api.cancelled.count == 2)
+        #expect(Set(recovery.tracked) == Set(["old", "new"]))
+        #expect(api.submitWasCancelled == [false, false])
+        #expect(cancelledStage())
+        #expect(!running())
     }
 }

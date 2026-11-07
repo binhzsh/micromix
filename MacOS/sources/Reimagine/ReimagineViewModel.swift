@@ -30,8 +30,16 @@ final class ReimagineViewModel: ObservableObject, AssetAccepting {
             if !isApplyingPrefill { keyWasManuallyEdited = true }
         }
     }
-    @Published var timeSignature = ""
-    @Published var vocalLanguage: VocalLanguage = .automatic
+    @Published var timeSignature = "" {
+        didSet {
+            if !isApplyingPrefill { timeSignatureWasManuallyEdited = true }
+        }
+    }
+    @Published var vocalLanguage: VocalLanguage = .automatic {
+        didSet {
+            if !isApplyingPrefill { vocalLanguageWasManuallyEdited = true }
+        }
+    }
     @Published var sourceStrength: Double = 0.5
     @Published var startSeconds: Double = 0
     @Published var endSeconds: Double = 10
@@ -51,6 +59,8 @@ final class ReimagineViewModel: ObservableObject, AssetAccepting {
     private var isApplyingPrefill = false
     private var bpmWasManuallyEdited = false
     private var keyWasManuallyEdited = false
+    private var timeSignatureWasManuallyEdited = false
+    private var vocalLanguageWasManuallyEdited = false
 
     init(
         api: any DurableReimagineSubmitting & DurableJobCancelling,
@@ -265,10 +275,10 @@ final class ReimagineViewModel: ObservableObject, AssetAccepting {
         if !keyWasManuallyEdited, let key = derived.key {
             self.key = key
         }
-        if let timeSignature = derived.timeSignature {
+        if !timeSignatureWasManuallyEdited, let timeSignature = derived.timeSignature {
             self.timeSignature = timeSignature
         }
-        if let language = derived.detectedLanguage {
+        if !vocalLanguageWasManuallyEdited, let language = derived.detectedLanguage {
             vocalLanguage = language
         }
     }

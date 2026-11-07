@@ -12,12 +12,25 @@ final class ConnectionMonitor: ObservableObject {
     /// Instruments for the transcribe picker, fetched at launch / refresh.
     @Published private(set) var instruments: [String] = []
     @Published private(set) var vocalModels: [String] = []
+    private enum CapabilitiesState { case loading, loaded, failed }
+    @Published private var capabilitiesState: CapabilitiesState = .loading
+
+    var voiceCatalog: VoiceCatalogState {
+        guard isConnected else { return .unavailable }
+        switch capabilitiesState {
+        case .loading: return .loading
+        case .failed: return .failed
+        case .loaded: return .loaded(vocalModels)
+        }
+    }
 
     /// Poll interval per the design spec.
     static let pollInterval: TimeInterval = 15
 
     private let api: MicromixAPI
     private var poller: Task<Void, Never>?
+    private var healthGeneration = 0
+    private var capabilitiesGeneration = 0
     private var cancellables = Set<AnyCancellable>()
 
     init(api: MicromixAPI) {
@@ -40,25 +53,44 @@ final class ConnectionMonitor: ObservableObject {
     /// Load the instrument list from `/v1/capabilities` (best-effort; the picker
     /// degrades to an empty state if local inference is unavailable).
     func refreshInstruments() async {
+        capabilitiesGeneration += 1
+        let generation = capabilitiesGeneration
+        capabilitiesState = .loading
         do {
             let capabilities = try await api.capabilities()
+            guard generation == capabilitiesGeneration else { return }
             instruments = capabilities.transcriptionInstruments
             vocalModels = capabilities.vocalModels
+            capabilitiesState = .loaded
         } catch {
+            guard generation == capabilitiesGeneration else { return }
             instruments = []
             vocalModels = []
+            capabilitiesState = .failed
         }
     }
 
     /// Perform one immediate health check.
     func refresh() async {
+        healthGeneration += 1
+        let generation = healthGeneration
         do {
             let health = try await api.health()
-            connected = health.status == "ready"
+            guard generation == healthGeneration else { return }
+            let wasConnected = connected
+            let isReady = health.status == "ready"
+            if !isReady || !wasConnected {
+                capabilitiesGeneration += 1
+                capabilitiesState = .loading
+            }
+            connected = isReady
             modelStatuses = health.models
             lastError = connected ? nil : "Local inference is \(health.status)"
             if connected { await refreshInstruments() }
         } catch {
+            guard generation == healthGeneration else { return }
+            capabilitiesGeneration += 1
+            capabilitiesState = .loading
             connected = false
             modelStatuses = [:]
             let message = (error as? MicromixAPIError)?.errorDescription

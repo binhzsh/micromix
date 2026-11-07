@@ -134,10 +134,12 @@ final class GuidedCoverModel: ObservableObject {
         sourceReader: @escaping @Sendable (URL) throws -> Data
     ) async {
         do {
+            try requireCurrent(token)
             set(.prepare, .running)
             let data = try await Task.detached(priority: .userInitiated) {
                 try sourceReader(sourceURL)
             }.value
+            try requireCurrent(token)
             let asset = try await api.uploadAsset(
                 data: data,
                 filename: sourceURL.lastPathComponent,
@@ -177,11 +179,21 @@ final class GuidedCoverModel: ObservableObject {
         api: any DurableSourceProcessing,
         reattacher: any ReimagineJobReattaching
     ) async throws -> [LibraryItem] {
-        let job = try await api.submitSourceProcessing(request)
-        acceptedJobID = job.id
         try requireCurrent(token)
+        // The request must outlive cancellation so a late acceptance is observable.
+        let job = try await Task { try await api.submitSourceProcessing(request) }.value
+        guard runID == token, !Task.isCancelled else {
+            // Keep recovery possible even if the cancellation request fails.
+            try? reattacher.track(job)
+            Task { try? await api.cancel(jobID: job.id) }
+            throw CancellationError()
+        }
+        acceptedJobID = job.id
         try reattacher.track(job)
-        return try await reattacher.recoverSubmittedJob(id: job.id)
+        let items = try await reattacher.recoverSubmittedJob(id: job.id)
+        try requireCurrent(token)
+        acceptedJobID = nil
+        return items
     }
 
     private func requireCurrent(_ token: UUID) throws {
@@ -273,11 +285,17 @@ struct GuidedCoverView: View {
     @ObservedObject var model: GuidedCoverModel
     var voices: [String] = []
     var localInferenceAvailable = true
+    var voiceCatalog: VoiceCatalogState? = nil
+    var onRefreshVoices: () -> Void = {}
     var onOpenLibrary: () -> Void = {}
     var router: WorkflowRouter? = nil
     var player: AudioPlayer? = nil
     var library: LocalLibrary? = nil
     @State private var isImporting = false
+
+    private var catalog: VoiceCatalogState {
+        voiceCatalog ?? (localInferenceAvailable ? .loading : .unavailable)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -301,25 +319,24 @@ struct GuidedCoverView: View {
                         Spacer()
                     }
                     .disabled(model.isRunning)
-                    if voices.isEmpty {
-                        Text("No local voice models found. Install a voice model and refresh.")
-                            .foregroundStyle(.secondary)
-                    } else {
+                    if !catalog.voices.isEmpty {
                         Picker("VOICE MODEL", selection: $model.voiceModel) {
                             Text("Select a voice").tag("")
-                            ForEach(voices, id: \.self) { Text($0).tag($0) }
+                            ForEach(catalog.voices, id: \.self) { Text($0).tag($0) }
                         }
                         .disabled(model.isRunning)
                         Stepper("PITCH  \(model.pitchShift) SEMITONES", value: $model.pitchShift, in: -24...24)
                             .disabled(model.isRunning)
                     }
+                    VoiceCatalogNotice(state: catalog, onRefresh: onRefreshVoices)
+                        .disabled(model.isRunning)
                 }
                 .font(.system(size: 11, design: .monospaced))
             }
             HStack {
                 PrimaryActionButton(
                     title: model.isRunning ? "COVERING…" : "START COVER",
-                    isEnabled: model.canStart && localInferenceAvailable,
+                    isEnabled: model.canStart && localInferenceAvailable && catalog.voices.contains(model.voiceModel),
                     action: { model.start() }
                 )
                 if model.isRunning { Button("CANCEL", action: model.cancel) }

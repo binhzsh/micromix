@@ -9,13 +9,17 @@ struct TranscribeScreen: View {
     var midiPreview: MidiPreview? = nil
     var library: LocalLibrary? = nil
 
+    static var heading: String {
+        "\(DeviceMode.transcribe.displayIndex). TRANSCRIBE — AUDIO TO MIDI"
+    }
+
     private var canTranscribe: Bool {
         viewModel.hasSelection && !viewModel.isBlocked && localInferenceAvailable
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Typography.monoLabel("3. TRANSCRIBE — AUDIO TO MIDI", size: 11)
+            Typography.monoLabel(Self.heading, size: 11)
                 .foregroundColor(Palette.ink.opacity(0.76))
 
             selectionZone

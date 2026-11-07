@@ -59,6 +59,12 @@ class MusicRequest(BaseModel):
 class GenerationRequest(MusicRequest):
     duration_seconds: float = Field(default=30, ge=10, le=600)
 
+    @model_validator(mode="after")
+    def supported_duration(self):
+        if self.preset == "minimax-cover" and self.duration_seconds > 360:
+            raise ValueError("MiniMax duration must not exceed 360 seconds")
+        return self
+
 
 class ReferenceGenerationRequest(GenerationRequest):
     reference_asset_id: str = Field(min_length=1)
@@ -331,7 +337,8 @@ def create_app(
             raise HTTPException(422, 'unknown transcription instrument')
         source = await upload(audio_file)
         params = {'operation': 'transcription', 'instruments': instruments,
-                  'detect_tempo': detect_tempo != 'false', 'filename': source['filename']}
+                  'detect_tempo': {'true': True, 'false': False, 'best-effort': 'best-effort'}[detect_tempo],
+                  'filename': source['filename']}
         return runtime().submit('transcription', params, [{'name': 'source', 'position': 0, 'asset': source}],
                                 worker_parameters={'source_path': str(runtime().asset_path(source['id']))})
 
