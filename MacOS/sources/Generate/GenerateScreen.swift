@@ -141,6 +141,17 @@ struct GenerateScreen: View {
                 }
             }
 
+            if viewModel.isRunning {
+                VStack(alignment: .leading, spacing: 4) {
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                        .accessibilityLabel("Generation in progress")
+                    Text("WORKING · \(Int(viewModel.elapsed))s elapsed · progress unavailable")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Palette.ink.opacity(0.68))
+                }
+            }
+
             if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.system(size: 11, design: .monospaced))
