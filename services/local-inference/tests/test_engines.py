@@ -3,6 +3,7 @@ import json
 import tempfile
 import importlib
 import os
+import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -92,6 +93,36 @@ class EngineTests(unittest.TestCase):
              patch.object(engines, '_decode_audio') as decode:
             engines.run_manifest(self.manifest('generation'))
         decode.assert_not_called()
+
+    def test_lyrics_transcription_outputs_utf8_and_fails_for_empty_text(self):
+        model_path = self.root / 'whisper'
+        model_path.mkdir()
+        for name in ('config.json', 'model.safetensors'):
+            (model_path / name).touch()
+        model = SimpleNamespace(generate=lambda audio: SimpleNamespace(text='  Xin chào!  '))
+        load = unittest.mock.Mock(return_value=model)
+        modules = {'mlx_audio': SimpleNamespace(), 'mlx_audio.stt': SimpleNamespace(),
+                   'mlx_audio.stt.utils': SimpleNamespace(load_model=load)}
+        with patch.dict(os.environ, {'MICROMIX_WHISPER_MODEL': str(model_path)}), \
+             patch.dict(sys.modules, modules), \
+             patch.object(engines, '_decode_audio', return_value=self.source) as decode:
+            result = engines.run_manifest(self.manifest('lyrics-transcription'))
+            load.assert_called_once_with(model_path, strict=True)
+            decode.assert_called_once_with(str(self.source), (self.root / 'out').resolve())
+            output = result['outputs'][0]
+            self.assertEqual(output['media_type'], 'text/plain')
+            self.assertEqual(Path(output['path']).read_text(encoding='utf-8'), 'Xin chào!\n')
+            self.assertEqual(result['provenance']['model'], str(model_path))
+            model.generate = lambda audio: SimpleNamespace(text='  ')
+            with self.assertRaisesRegex(RuntimeError, 'No lyrics or speech'):
+                engines.run_manifest(self.manifest('lyrics-transcription'))
+
+    def test_lyrics_missing_model_fails_before_loading(self):
+        with patch.dict(os.environ, {'MICROMIX_WHISPER_MODEL': str(self.root / 'missing')}), \
+             patch.object(engines, '_decode_audio') as decode:
+            with self.assertRaisesRegex(RuntimeError, 'Whisper weights are missing.*MODELS.md'):
+                engines.run_manifest(self.manifest('lyrics-transcription'))
+            decode.assert_not_called()
 
     def test_transcription_forwards_instruments_and_tempo(self):
         calls = []

@@ -19,7 +19,7 @@ struct TranscribeScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Typography.monoLabel(Self.heading, size: 11)
+            Typography.monoLabel(viewModel.output == .midi ? Self.heading : "\(DeviceMode.transcribe.displayIndex). TRANSCRIBE — LYRICS DRAFT", size: 11)
                 .foregroundColor(Palette.ink.opacity(0.76))
 
             selectionZone
@@ -28,19 +28,29 @@ struct TranscribeScreen: View {
                     return !urls.isEmpty
                 }
 
-            InstrumentPicker(viewModel: viewModel, instruments: instruments)
-
-            DeckPanel {
-                Toggle(isOn: $viewModel.detectTempo) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Typography.monoLabel("DETECT TEMPO", size: 11)
-                            .foregroundColor(Palette.ink)
-                        Typography.monoLabel("ALIGN MIDI EVENTS TO THE TRACK GRID", size: 9)
-                            .foregroundColor(Palette.ink.opacity(0.62))
-                    }
+            Picker("Output", selection: $viewModel.output) {
+                ForEach(TranscribeViewModel.Output.allCases, id: \.self) { output in
+                    Text(output.rawValue).tag(output)
                 }
-                .toggleStyle(PanelToggleStyle())
-                .disabled(viewModel.isBlocked)
+            }.pickerStyle(.segmented).disabled(viewModel.isBlocked)
+
+            if viewModel.output == .midi {
+                InstrumentPicker(viewModel: viewModel, instruments: instruments)
+                DeckPanel {
+                    Toggle(isOn: $viewModel.detectTempo) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Typography.monoLabel("DETECT TEMPO", size: 11)
+                                .foregroundColor(Palette.ink)
+                            Typography.monoLabel("ALIGN MIDI EVENTS TO THE TRACK GRID", size: 9)
+                                .foregroundColor(Palette.ink.opacity(0.62))
+                        }
+                    }
+                    .toggleStyle(PanelToggleStyle())
+                    .disabled(viewModel.isBlocked)
+                }
+            } else {
+                Text("MLX Whisper produces a draft; review and correct the lyrics.")
+                    .font(.caption).foregroundColor(Palette.ink.opacity(0.7))
             }
 
             HStack(spacing: 8) {
@@ -50,7 +60,7 @@ struct TranscribeScreen: View {
                     action: { _ = viewModel.start() }
                 )
                 .keyboardShortcut(.return, modifiers: [.command])
-                .accessibilityHint(canTranscribe ? "Convert the selected audio to MIDI" : "Select audio and start local inference first")
+                .accessibilityHint(canTranscribe ? "Transcribe the selected audio" : "Select audio and start local inference first")
 
                 if viewModel.isRunning {
                     Button(action: viewModel.cancel) {
@@ -64,9 +74,18 @@ struct TranscribeScreen: View {
                 }
             }
 
+            if case .error(let message) = viewModel.phase {
+                Text(message).foregroundColor(Palette.accentRed).textSelection(.enabled)
+            }
             if viewModel.phase == .done, let latest = viewModel.lastItem {
+                if latest.kind == .lyrics, let library {
+                    ScrollView {
+                        Text((try? String(contentsOf: library.resolvedURL(for: latest), encoding: .utf8)) ?? "Lyrics file is missing or unreadable.")
+                            .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                    }.frame(maxHeight: 180)
+                }
                 HStack(spacing: 8) {
-                    if let midiPreview, let library {
+                    if latest.kind == .midi, let midiPreview, let library {
                         InlineMidiButton(midiPreview: midiPreview, item: latest, library: library)
                     }
                     if let router {

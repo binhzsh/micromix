@@ -122,6 +122,12 @@ actor MicromixAPI {
         )
     }
 
+    func submitLyricsTranscription(audio: Data, filename: String) async throws -> RemoteJob {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        let payload = Self.multipartAudioBody(boundary: boundary, filename: filename, mediaType: "application/octet-stream", audio: audio)
+        return try await submitJob(path: "/v1/jobs/lyrics-transcription", body: payload, contentType: "multipart/form-data; boundary=\(boundary)")
+    }
+
     /// Upload a source audio asset for later reference, remix, or repaint jobs.
     func uploadAsset(data: Data, filename: String, mediaType: String) async throws -> RemoteAsset {
         let boundary = "Boundary-\(UUID().uuidString)"

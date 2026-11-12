@@ -16,6 +16,15 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
         func set(_ id: String) { self.id = id }
         func value() -> String? { id }
     }
+    enum LyricsError: LocalizedError {
+        case unavailable, noResult
+        var errorDescription: String? {
+            switch self {
+            case .unavailable: "Lyrics transcription requires the local durable job service."
+            case .noResult: "Lyrics transcription returned no result."
+            }
+        }
+    }
     enum SourceReadError: Error {
         case tooLarge
         case unreadable
@@ -39,7 +48,13 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
         let analysis: LocalMusicAnalysis?
     }
 
+    enum Output: String, CaseIterable {
+        case midi = "MIDI"
+        case lyrics = "LYRICS DRAFT"
+    }
+
     // Selection state
+    @Published var output: Output = .midi
     @Published var selection: Selection?
     @Published var instruments: [String] = []
     @Published var detectTempo: Bool = true
@@ -187,6 +202,7 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
         let audio = selection.bytes
         let instruments = self.instruments
         let detectTempo = self.detectTempo
+        let output = self.output
         let title = Self.title(from: filename)
         let submittedJob = SubmittedJobReference()
 
@@ -195,6 +211,18 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
 
         runner.start(JobRunner.Job(name: "transcribe", work: {
             do {
+                if output == .lyrics {
+                    guard let submitter = api as? any DurableLyricsSubmitting, let reattacher else {
+                        throw LyricsError.unavailable
+                    }
+                    let job = try await submitter.submitLyricsTranscription(audio: audio, filename: filename)
+                    await submittedJob.set(job.id)
+                    try await reattacher.track(job)
+                    let items = try await reattacher.recoverSubmittedJob(id: job.id)
+                    guard let item = items.first else { throw LyricsError.noResult }
+                    await MainActor.run { self.lastItem = item; self.phase = .done }
+                    return
+                }
                 if let submitter = api as? any DurableTranscriptionSubmitting, let reattacher {
                     let job = try await submitter.submitTranscription(
                         audio: audio,

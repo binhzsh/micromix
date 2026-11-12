@@ -67,6 +67,28 @@ class APIParityTests(unittest.TestCase):
             })
             self.assertEqual(response.status_code, 422)
 
+    def test_lyrics_job_is_durable_and_uses_mlx_worker(self):
+        response = self.client.post('/v1/jobs/lyrics-transcription', files={
+            'audio_file': ('../../song.wav', b'RIFF', 'audio/wav'),
+        })
+        self.assertEqual(response.status_code, 202, response.text)
+        job = response.json()
+        self.assertEqual(job['parameters']['operation'], 'lyrics-transcription')
+        self.assertEqual(job['inputs'][0]['asset']['filename'], 'song.wav')
+        self.assertNotIn('source_path', job['parameters'])
+        manifest = self.root / 'manifest.json'
+        manifest.write_text('{"operation":"lyrics-transcription","parameters":{}}')
+        with patch.object(main, 'SERVICE_ROOT', self.root):
+            python = self.root / '.venv-mlx/bin/python'
+            python.parent.mkdir(parents=True)
+            python.touch()
+            self.assertEqual(main.worker_command(manifest)[0], str(python))
+        self.client.__exit__(None, None, None)
+        with TestClient(main.create_app(self.root, start_worker=False)) as client:
+            persisted = client.get('/v1/jobs/' + job['id']).json()
+            self.assertEqual(persisted['inputs'], job['inputs'])
+            self.assertEqual(persisted['state'], 'queued')
+
     def test_transcription_accepts_repeated_instruments_and_tempo(self):
         response = self.client.post('/v1/jobs/transcription', files=[
             ('audio_file', ('source.wav', b'RIFF', 'audio/wav')),

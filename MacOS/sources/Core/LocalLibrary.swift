@@ -153,7 +153,7 @@ final class LocalLibrary: ObservableObject {
                     asset: RemoteAsset(
                         id: remoteAssetID,
                         filename: item.title,
-                        mediaType: item.kind == .audio ? "audio/wav" : "audio/midi",
+                        mediaType: item.kind == .audio ? "audio/wav" : (item.kind == .midi ? "audio/midi" : "text/plain"),
                         sizeBytes: bytes.count,
                         sha256: "",
                         downloadUrl: ""

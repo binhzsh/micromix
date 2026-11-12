@@ -47,6 +47,10 @@ protocol DurableGenerationSubmitting: Sendable {
     ) async throws -> RemoteJob
 }
 
+protocol DurableLyricsSubmitting: Sendable {
+    func submitLyricsTranscription(audio: Data, filename: String) async throws -> RemoteJob
+}
+
 protocol DurableTranscriptionSubmitting: Sendable {
     func submitTranscription(
         audio: Data,
@@ -78,6 +82,8 @@ extension MicromixAPI: DurableJobServicing {}
 extension MicromixAPI: DurableGenerationSubmitting {}
 
 extension MicromixAPI: DurableTranscriptionSubmitting {}
+
+extension MicromixAPI: DurableLyricsSubmitting {}
 
 extension MicromixAPI: DurableReimagineSubmitting {}
 

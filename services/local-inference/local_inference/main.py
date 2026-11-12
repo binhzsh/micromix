@@ -257,6 +257,7 @@ def create_app(
             ('.venv-muscriptor', ['muscriptor', 'torch'], ['muscriptor']),
             ('.venv-mlx', ['mlx_audio', 'mlx_rvc'],
              ['minimax_music3', 'mlx_rvc', 'sam_audio']),
+            ('.venv-mlx', ['mlx_audio'], ['whisper']),
         ]:
             executable = SERVICE_ROOT / environment / 'bin/python'
             status = 'unavailable'
@@ -340,6 +341,14 @@ def create_app(
                   'detect_tempo': {'true': True, 'false': False, 'best-effort': 'best-effort'}[detect_tempo],
                   'filename': source['filename']}
         return runtime().submit('transcription', params, [{'name': 'source', 'position': 0, 'asset': source}],
+                                worker_parameters={'source_path': str(runtime().asset_path(source['id']))})
+
+    @app.post('/v1/jobs/lyrics-transcription', status_code=202)
+    async def lyrics_transcription(audio_file: UploadFile = File(...)):
+        source = await upload(audio_file)
+        params = {'operation': 'lyrics-transcription', 'filename': source['filename']}
+        return runtime().submit('lyrics-transcription', params,
+                                [{'name': 'source', 'position': 0, 'asset': source}],
                                 worker_parameters={'source_path': str(runtime().asset_path(source['id']))})
 
     @app.post('/v1/jobs/vocal-swap', status_code=202)

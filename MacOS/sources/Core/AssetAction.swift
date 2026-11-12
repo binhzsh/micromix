@@ -75,6 +75,8 @@ enum AssetAction: String, CaseIterable, Identifiable, Sendable {
         switch kind {
         case .audio:
             return allCases
+        case .lyrics:
+            return []
         case .midi:
             // MIDI files can only be analyzed (for metadata) or used as reference
             // (if we add MIDI-to-audio generation in future)
@@ -174,6 +176,7 @@ final class WorkflowRouter: ObservableObject {
 
     /// Execute an action on a source asset
     func execute(_ action: AssetAction, on item: LibraryItem, derived: DerivedMetadata? = nil) {
+        guard AssetAction.available(for: item.kind).contains(action) else { return }
         let sourceURL = library.resolvedURL(for: item)
         let context = AssetActionContext(
             sourceItem: item,

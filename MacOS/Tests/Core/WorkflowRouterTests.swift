@@ -49,6 +49,19 @@ struct WorkflowRouterTests {
         return (router, generate, reimagine)
     }
 
+    @Test("lyrics cannot route to audio or MIDI workflows")
+    func lyricsHaveNoActions() {
+        let (router, _, _) = makeRouter()
+        let item = LibraryItem(id: UUID(), kind: .lyrics, title: "Lyrics", createdAt: .now, promptOrSource: "song", durationSeconds: nil, relativePath: "lyrics/song.txt")
+        var switched = false
+        router.onSwitchMode = { _ in switched = true }
+        #expect(router.availableActions(for: item).isEmpty)
+        #expect(!LibraryCollection.audio.includes(item))
+        #expect(!LibraryCollection.midi.includes(item))
+        router.execute(.transcribe, on: item)
+        #expect(!switched)
+    }
+
     @Test("reimagineReference switches mode, sets reference operation, and prefills metadata")
     func reimagineReferenceRoutesAndPrefills() {
         let (router, _, reimagine) = makeRouter()

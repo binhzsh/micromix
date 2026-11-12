@@ -93,6 +93,30 @@ These are substantial downloads. Default ACE paths match the exports above; cust
 
 For MuScriptor, accept the model license on [MuScriptor medium](https://huggingface.co/MuScriptor/muscriptor-medium) and authenticate with `uvx hf auth login`. License acceptance and account authentication must be completed by the user. Its weights are read from the local model store and never fetched at render time. `MICROMIX_MUSCRIPTOR_MODEL` can select `small`, `medium` (default), `large`, or a local checkpoint path. SAM loads `~/models/sam-audio-large` and optional MiniMax loads `~/models/MiniMax-Music3-mxfp8` from the local model store (`MICROMIX_MODELS_DIR` overrides the root); both directories hold complete HF snapshots with config and all weight shards. RVC's ContentVec/RMVPE helpers load from `~/models/mlx-contentvec` and `~/models/mlx-rmvpe` in the local model store. MuScriptor weights resolve from `~/models/muscriptor-<size>` in the local model store (a size keyword or an explicit path still works). Private voice weights/indexes remain in the ignored data directory managed by the API.
 
+### Lyrics transcription (MLX Whisper)
+
+`POST /v1/jobs/lyrics-transcription` accepts multipart `audio_file` and queues a
+separate durable job; it does not change the MIDI transcription endpoint. The
+worker decodes to mono 16 kHz WAV and writes UTF-8 `text/plain` lyrics. Empty
+recognition fails with a no-lyrics-or-speech error. Whisper can hallucinate or
+miss sung words; results require manual review and are not a guarantee that
+lyrics exist.
+
+Provision the MLX-compatible snapshot explicitly while online, from the repo root:
+
+```sh
+uvx hf download mlx-community/whisper-large-v3-turbo-asr-fp16 --local-dir "$HOME/models/whisper-large-v3-turbo-asr-fp16"
+```
+
+The default directory is `$MICROMIX_MODELS_DIR/whisper-large-v3-turbo-asr-fp16` (model store
+root defaults to `~/models`). Set `MICROMIX_WHISPER_MODEL` in the sidecar's
+launch environment to select another local snapshot directory. Restart the
+sidecar after changing its environment. Health reports `whisper` as `unavailable`
+when the MLX library environment is missing, `weights_missing` when its
+`config.json` or `model.safetensors` is missing, and otherwise `ready`. These
+are filesystem/dependency checks, not inference or quality checks; incomplete
+or incompatible snapshots may still fail at load. Jobs never download weights.
+
 ## Preflight and acceptance
 
 After library installation, these imports check runtime availability without loading model weights:

@@ -40,6 +40,10 @@ def _muscriptor_weight_path() -> Path:
     return Path(requested).expanduser()
 
 
+def _whisper_model_path() -> Path:
+    return Path(os.environ.get('MICROMIX_WHISPER_MODEL', MODELS_DIR / 'whisper-large-v3-turbo-asr-fp16')).expanduser()
+
+
 def required_weight_paths() -> dict[str, list[Path]]:
     """Marker files proving each engine's local weights are present.
 
@@ -52,6 +56,7 @@ def required_weight_paths() -> dict[str, list[Path]]:
         'ace_step': [checkpoints / name / 'config.json' for name in
                      ('acestep-v15-xl-turbo', 'acestep-v15-xl-sft', 'acestep-5Hz-lm-4B')],
         'muscriptor': [_muscriptor_weight_path()],
+        'whisper': [_whisper_model_path() / 'config.json', _whisper_model_path() / 'model.safetensors'],
         'minimax_music3': [MODELS_DIR / 'MiniMax-Music3-mxfp8' / 'model.safetensors.index.json'],
         'mlx_rvc': [MODELS_DIR / 'mlx-contentvec' / 'contentvec_base.safetensors',
                     MODELS_DIR / 'mlx-rmvpe' / 'rmvpe.safetensors'],
@@ -211,6 +216,23 @@ def _transcription(manifest: dict, directory: Path) -> dict:
         'tempo_detected': grid is not None}}
 
 
+def _lyrics_transcription(manifest: dict, directory: Path) -> dict:
+    model_path = _whisper_model_path()
+    if any(not path.is_file() for path in required_weight_paths()['whisper']):
+        raise RuntimeError(f'Whisper weights are missing at {model_path}; provision the local model '
+                           'as described in services/local-inference/MODELS.md')
+    audio = _decode_audio(_source(manifest), directory)
+    from mlx_audio.stt.utils import load_model
+    model = load_model(model_path, strict=True)
+    text = stt_text(model.generate(str(audio)))
+    if not text:
+        raise RuntimeError('No lyrics or speech were detected in the source audio')
+    target = directory / 'lyrics.txt'
+    target.write_text(text + '\n', encoding='utf-8')
+    return {'outputs': [_output(target, 'lyrics', 'text/plain')], 'provenance': {
+        'engine': 'mlx-audio-whisper', 'revision': MLX_AUDIO_REVISION, 'model': str(model_path)}}
+
+
 def _load_rvc(model_path: str):
     from mlx_rvc import RVCPipeline
     contentvec_path = str(MODELS_DIR / 'mlx-contentvec' / 'contentvec_base.safetensors')
@@ -353,7 +375,8 @@ def run_manifest(manifest: dict) -> dict:
             if preset not in ('turbo', 'quality'):
                 raise ValueError(f'Unknown generation preset: {preset}')
             return _ace(manifest, directory)
-        adapter = {'transcription': _transcription, 'vocal-swap': _vocal_swap, 'stem-split': _stem_split}.get(operation)
+        adapter = {'transcription': _transcription, 'lyrics-transcription': _lyrics_transcription,
+                   'vocal-swap': _vocal_swap, 'stem-split': _stem_split}.get(operation)
         if adapter is None:
             raise ValueError(f'Unknown operation: {operation}')
         return adapter(manifest, directory)

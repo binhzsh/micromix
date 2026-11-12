@@ -196,7 +196,7 @@ struct LibraryScreen: View {
                     .foregroundColor(Palette.ink)
                     .lineLimit(1)
             }
-            Text(item.kind == .audio ? "WAV" : "MID")
+            Text(item.kind.shortLabel)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(item.kind == .audio ? Palette.accentGreen : Palette.accentBlue)
             if item.kind == .audio {
@@ -235,7 +235,7 @@ struct LibraryScreen: View {
                         Typography.monoLabel("SELECTED ASSET", size: 10)
                             .foregroundColor(Palette.ink.opacity(0.64))
                         Spacer()
-                        Typography.monoLabel(item.kind == .audio ? "AUDIO" : "MIDI", size: 10)
+                        Typography.monoLabel(item.kind.rawValue.uppercased(), size: 10)
                             .foregroundColor(item.kind == .audio ? Palette.accentGreen : Palette.accentBlue)
                     }
                     Text(item.title)
@@ -246,6 +246,13 @@ struct LibraryScreen: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(Palette.ink.opacity(0.64))
                         .lineLimit(1)
+                    if item.kind == .lyrics {
+                        ScrollView {
+                            Text((try? String(contentsOf: library.resolvedURL(for: item), encoding: .utf8)) ?? "Lyrics file is missing or unreadable.")
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }.frame(maxHeight: 180)
+                    }
                     if item.kind == .audio {
                         HStack(spacing: 8) {
                             Button(player.currentItem?.id == item.id && player.isPlaying ? "PAUSE" : "PLAY") {
@@ -301,7 +308,7 @@ struct LibraryScreen: View {
             let controlScale = min(1, max(0.68, geometry.size.width / 760))
 
             HStack(spacing: 10 * controlScale) {
-            button("PLAY", color: Palette.accentGreen, disabled: selectedItem == nil, scale: controlScale) {
+            button("PLAY", color: Palette.accentGreen, disabled: selectedItem == nil || selectedItem?.kind == .lyrics, scale: controlScale) {
                 guard let item = selectedItem else { return }
                 let url = library.resolvedURL(for: item)
                 if item.kind == .audio {
@@ -311,7 +318,7 @@ struct LibraryScreen: View {
                     } else if player.load(url: url, item: item) != nil {
                         player.play()
                     }
-                } else {
+                } else if item.kind == .midi {
                     player.stop()
                     if midiPreview.shouldResume(for: item) {
                         midiPreview.play()
@@ -625,7 +632,7 @@ struct LibraryScreen: View {
                     .foregroundColor(Palette.ink)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                Typography.monoLabel(item.kind == .audio ? "WAV" : "MID", size: 9)
+                Typography.monoLabel(item.kind.shortLabel, size: 9)
                     .foregroundColor(item.kind == .audio ? Palette.accentGreen : Palette.accentBlue)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 8, weight: .semibold))

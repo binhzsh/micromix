@@ -23,6 +23,36 @@ struct JobReattacherTests {
         #expect(library.items.map(\.remoteOutputAssetID) == ["out-2", "out-1"])
     }
 
+    @Test("lyrics recovery persists distinct text and remains idempotent")
+    func lyricsRecovery() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = LocalLibrary(directory: directory)
+        try library.trackPendingJob(id: "lyrics-job")
+        let job = try JSONDecoder().decode(RemoteJob.self, from: Data(#"{"id":"lyrics-job","kind":"lyrics-transcription","state":"succeeded"}"#.utf8))
+        let asset = RemoteAsset(id: "lyrics-output", filename: "lyrics.txt", mediaType: "text/plain", sizeBytes: 3, sha256: "7692c3ad3540bb803c020b3aee66cd8887123234ea0c6e7143c0add73ff431ed", downloadUrl: "/v1/assets/lyrics-output")
+        let reattacher = JobReattacher(api: StubDurableJobs(job: job, outputs: [DownloadedRemoteAsset(asset: asset, data: Data("one".utf8))]), library: library)
+        await reattacher.recoverPendingJobs()
+        #expect(library.pendingJobIDs.isEmpty)
+        let item = try #require(library.items.first)
+        #expect(item.kind == .lyrics)
+        #expect(try String(contentsOf: library.resolvedURL(for: item), encoding: .utf8) == "one")
+        #expect(LocalLibrary(directory: directory).items.first?.kind == .lyrics)
+        _ = try await reattacher.recoverSubmittedJob(id: job.id)
+        #expect(library.items.count == 1)
+    }
+
+    @Test("a lyrics job with no output remains pending")
+    func lyricsMissingOutput() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let library = LocalLibrary(directory: directory)
+        try library.trackPendingJob(id: "lyrics-job")
+        let job = try JSONDecoder().decode(RemoteJob.self, from: Data(#"{"id":"lyrics-job","kind":"lyrics-transcription","state":"succeeded"}"#.utf8))
+        let reattacher = JobReattacher(api: StubDurableJobs(job: job, outputs: []), library: library)
+        await reattacher.recoverPendingJobs()
+        #expect(library.pendingJobIDs == ["lyrics-job"])
+        #expect(reattacher.status == .unavailable(1))
+    }
+
     @Test("a terminal failure clears its pending record without creating a result")
     func terminalFailureCleansUp() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

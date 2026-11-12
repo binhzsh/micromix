@@ -47,6 +47,21 @@ struct MicromixAPITests {
         return (makeAPI(), recorder)
     }
 
+    @Test("lyrics transcription posts only the audio file as multipart")
+    func lyricsMultipart() async throws {
+        let (api, recorder) = makeRecordingAPI()
+        _ = try await api.submitLyricsTranscription(audio: Data("audio-bytes".utf8), filename: "song.wav")
+        let request = try #require(recorder.requests.last)
+        let body = String(decoding: MockURLProtocol.body(of: request), as: UTF8.self)
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.path == "/v1/jobs/lyrics-transcription")
+        #expect(request.value(forHTTPHeaderField: "Content-Type")?.contains("multipart/form-data; boundary=") == true)
+        #expect(body.contains(#"name="audio_file"; filename="song.wav""#))
+        #expect(body.contains("audio-bytes"))
+        #expect(!body.contains("detect_tempo"))
+        #expect(!body.contains("instruments"))
+    }
+
     @Test("reference reimagine posts exact route and body")
     func referenceRequestPostsExactRouteAndBody() async throws {
         let request = ReimagineRequest.reference(

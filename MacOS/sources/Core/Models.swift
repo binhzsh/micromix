@@ -246,6 +246,15 @@ struct RemoteJob: Codable, Equatable, Identifiable, Sendable {
 enum LibraryItemKind: String, Codable, Sendable {
     case audio
     case midi
+    case lyrics
+
+    var shortLabel: String {
+        switch self {
+        case .audio: "WAV"
+        case .midi: "MID"
+        case .lyrics: "TXT"
+        }
+    }
 }
 
 /// A single persisted result in the local library.

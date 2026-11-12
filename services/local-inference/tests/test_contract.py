@@ -94,6 +94,26 @@ class LocalContractTests(unittest.TestCase):
                 self.assertEqual(health['models']['muscriptor'], 'weights_missing')
                 self.assertEqual(health['missing_weights']['muscriptor'], [str(checkpoint)])
 
+    def test_health_checks_configured_whisper_snapshot(self):
+        from local_inference import engines
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        model = root / 'custom-whisper'
+        model.mkdir()
+        (model / 'config.json').touch()
+        with patch.dict(os.environ, {'MICROMIX_WHISPER_MODEL': str(model)}), \
+             patch('local_inference.main.subprocess.run') as run, \
+             patch('local_inference.main.SERVICE_ROOT', root):
+            executable = root / '.venv-mlx/bin/python'
+            executable.parent.mkdir(parents=True)
+            executable.touch()
+            run.return_value.returncode = 0
+            health = self.client.get('/v1/health').json()
+            self.assertEqual(health['models']['whisper'], 'weights_missing')
+            self.assertEqual(health['missing_weights']['whisper'], [str(model / 'model.safetensors')])
+            (model / 'model.safetensors').touch()
+            self.assertEqual(self.client.get('/v1/health').json()['models']['whisper'], 'ready')
+            self.assertEqual(engines.required_weight_paths()['whisper'][0], model / 'config.json')
+
     def test_health_is_local_without_loading_any_model(self):
         health = self.client.get('/v1/health').json()
         self.assertEqual(health['service'], 'micromix-local-inference')
@@ -103,7 +123,7 @@ class LocalContractTests(unittest.TestCase):
         # Every engine reports a real dependency + weight verdict, never the old
         # blanket "unchecked", and missing weights are named for diagnosis.
         self.assertEqual(set(health['models']),
-                         {'ace_step', 'muscriptor', 'minimax_music3', 'mlx_rvc', 'sam_audio'})
+                         {'ace_step', 'muscriptor', 'minimax_music3', 'mlx_rvc', 'sam_audio', 'whisper'})
         self.assertLessEqual(set(health['models'].values()),
                              {'ready', 'weights_missing', 'unavailable'})
         for engine, status in health['models'].items():
@@ -114,7 +134,7 @@ class LocalContractTests(unittest.TestCase):
     def test_health_names_engines_whose_weights_are_absent(self):
         '''A missing artifact must degrade that engine, not the whole service.'''
         absent = {engine: [Path('/nonexistent') / engine] for engine in
-                  ('ace_step', 'muscriptor', 'minimax_music3', 'mlx_rvc', 'sam_audio')}
+                  ('ace_step', 'muscriptor', 'minimax_music3', 'mlx_rvc', 'sam_audio', 'whisper')}
         with patch('local_inference.engines.required_weight_paths', return_value=absent):
             health = self.client.get('/v1/health').json()
         self.assertEqual(health['status'], 'ready')

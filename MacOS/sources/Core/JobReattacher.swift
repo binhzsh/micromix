@@ -5,12 +5,15 @@ import Foundation
 final class JobReattacher: ObservableObject {
     private enum ReattachmentError: LocalizedError {
         case checksumMismatch
+        case missingOutput
         case terminalJob(String)
 
         var errorDescription: String? {
             switch self {
             case .checksumMismatch:
                 "A downloaded result failed its checksum and was not saved to Library"
+            case .missingOutput:
+                "The lyrics job completed without a result. It will be retried on recovery."
             case .terminalJob(let reason):
                 // `summary(of:)` returns "" when the worker reported nothing but
                 // whitespace. Never hand the deck an empty description: an
@@ -115,6 +118,9 @@ final class JobReattacher: ObservableObject {
             throw ReattachmentError.terminalJob(Self.summary(of: job.error ?? "job \(job.state)"))
         }
         let outputs = try await api.fetchOutputs(for: job)
+        if job.kind == "lyrics-transcription" && outputs.isEmpty {
+            throw ReattachmentError.missingOutput
+        }
         guard outputs.allSatisfy(Self.hasValidChecksum) else {
             throw ReattachmentError.checksumMismatch
         }
@@ -140,7 +146,7 @@ final class JobReattacher: ObservableObject {
 
     private func importOutput(_ output: DownloadedRemoteAsset, from job: RemoteJob) throws -> LibraryItem {
         let extensionName = output.asset.filename.split(separator: ".").last.map(String.init) ?? "wav"
-        let kind: LibraryItemKind = output.asset.mediaType.contains("midi") ? .midi : .audio
+        let kind: LibraryItemKind = job.kind == "lyrics-transcription" || output.asset.mediaType.lowercased().hasPrefix("text/") ? .lyrics : (output.asset.mediaType.contains("midi") ? .midi : .audio)
         let item = LibraryItem(id: UUID(), kind: kind, title: output.asset.filename, createdAt: .now, promptOrSource: job.operation ?? job.kind, durationSeconds: nil, relativePath: "\(kind.rawValue)/\(UUID().uuidString).\(extensionName)")
         let outputLink = job.outputs.first(where: { $0.asset.id == output.asset.id })
             ?? RemoteAssetLink(name: "result", position: 0, asset: output.asset)
