@@ -34,18 +34,20 @@ install_engine() {
 if [ "$ENGINE" = ace ] || [ "$ENGINE" = all ]; then
     install_engine ace "$SERVICE/.venv-ace" \
         'ace-step @ git+https://github.com/ace-step/ACE-Step-1.5.git@ca1e85fe9430179831e6bc6be790c332190a3866' \
-        'torch==2.10.0' 'torchaudio==2.10.0' 'torchvision==0.25.0' 'torchcodec==0.10.0'
+        'torch==2.10.0' 'torchaudio==2.10.0' 'torchvision==0.25.0' 'torchcodec==0.10.0' \
+        'mlx==0.32.4' 'mlx-metal==0.32.4'
 fi
 if [ "$ENGINE" = muscriptor ] || [ "$ENGINE" = all ]; then
     install_engine muscriptor "$SERVICE/.venv-muscriptor" \
-        'muscriptor @ git+https://github.com/muscriptor/muscriptor.git@7f213afecf23bd6a1b8672aa223690ee9807cefb' \
+        'muscriptor @ git+https://github.com/muscriptor/muscriptor.git@8a1ef88672cc23c26619adaff37ec48d82c0b906' \
         'torch==2.10.0' 'torchaudio==2.10.0'
 fi
 if [ "$ENGINE" = mlx ] || [ "$ENGINE" = all ]; then
     install_engine mlx "$SERVICE/.venv-mlx" \
-        'mlx-audio[stt,sts] @ git+https://github.com/Blaizzy/mlx-audio.git@40b27a2157150bf87a1f25958f049bdcd0861235' \
+        'mlx-audio[stt,sts] @ git+https://github.com/Neywa-Labs/mlx-audio.git@606b3b27509f9c2c055a563eb79db7d6020a4bb4' \
         'mlx-rvc[index] @ git+https://github.com/lextoumbourou/mlx-rvc.git@f26633539f1aa935337d8ca5e96c78784698bd7a' \
-        'torch==2.10.0' 'soundfile>=0.13'
+        'torch==2.10.0' 'soundfile>=0.13' \
+        'mlx==0.32.4' 'mlx-metal==0.32.4'
 fi
 echo 'Library setup finished. No model weights were downloaded and no inference was run.'
 echo 'See services/local-inference/MODELS.md before the manual model-download and acceptance steps.'

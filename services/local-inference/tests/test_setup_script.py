@@ -9,6 +9,18 @@ from pathlib import Path
 
 
 class SetupScriptTests(unittest.TestCase):
+    def test_installer_pins_match_adapter_provenance_and_compute_runtime(self):
+        from local_inference.engines import (
+            ACE_REVISION, MLX_AUDIO_REVISION, MUSCRIPTOR_REVISION, RVC_REVISION,
+        )
+
+        repository = Path(__file__).resolve().parents[3]
+        script = (repository / 'scripts/setup-local-models.sh').read_text()
+        for revision in (ACE_REVISION, MLX_AUDIO_REVISION, MUSCRIPTOR_REVISION, RVC_REVISION):
+            self.assertIn(f'.git@{revision}', script)
+        self.assertEqual(script.count("'mlx==0.32.4' 'mlx-metal==0.32.4'"), 2)
+        self.assertIn('https://github.com/Neywa-Labs/mlx-audio.git', script)
+
     def test_install_without_dry_run_does_not_expand_an_unset_argument(self):
         repository = Path(__file__).resolve().parents[3]
         with tempfile.TemporaryDirectory() as temporary:

@@ -1,6 +1,6 @@
 # Micromix — next steps
 
-Updated 2026-11-06. This is an actionable follow-up to the product direction and phase gates in [the roadmap](docs/MICROMIX_ROADMAP.md), not a replacement for them. Check off work only with evidence; implementation alone does not satisfy a manual audio-quality gate.
+Updated 2026-11-11. This is an actionable follow-up to the product direction and phase gates in [the roadmap](docs/MICROMIX_ROADMAP.md), not a replacement for them. Check off work only with evidence; implementation alone does not satisfy a manual audio-quality gate.
 
 ## Current state, reconciled against the roadmap
 
@@ -56,6 +56,16 @@ Tested the current native build in a macOS 26.5.2 VM with a generated two-second
 - [x] Reconcile roadmap implementation notes without marking manual quality gates complete; distinguish seven selectable modes from GUIDE.
 - [x] Date historical acceptance evidence and reference subsequent checks; retain migration instructions where their relevance is not established.
 - [x] Correct [model capability notes](MODEL_CAPABILITY_GAP_ANALYSIS.md), including vocal-language and planner-loading statements.
+
+## Engine update — 2026-11-11
+
+User authorized the reviewed local engine upgrades; model weights and native UI stay unchanged.
+
+- [x] Install MLX/MLX Metal 0.32.4 in ACE and MLX worker environments; keep ACE and RVC source pins unchanged.
+- [x] Upgrade MuScriptor to v0.4.0 (`8a1ef886`) and verify its default tempo-map MIDI export contract with real synthetic-event MIDI export (no weights/detector).
+- [x] Upgrade MLX Audio to exact revision `606b3b27`, including the MiniMax chunk-vocoder memory fix (not in the v0.6.5 release).
+- [x] Run offline import/API preflights, worker dependency checks, and lightweight tests: API suite 51 passed/1 skipped; MuScriptor engine suite 17 passed. Restarted idle sidecar and passed health/capabilities smoke. Exact results, warnings and manual steps are in [the model runtime guide](services/local-inference/MODELS.md#upgrade-verification).
+- [ ] User manual acceptance: bilingual generation/voice/stems, variable-tempo MIDI in Logic, and MiniMax long-song quality/memory. Do not mark this gate complete from automated checks.
 
 ## Verification for this review
 

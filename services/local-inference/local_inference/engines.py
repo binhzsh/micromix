@@ -18,8 +18,8 @@ os.environ.setdefault('HF_HUB_DISABLE_TELEMETRY', '1')
 ACE_REVISION = 'ca1e85fe9430179831e6bc6be790c332190a3866'
 # Root of the manually managed local model store (see ../MODELS.md).
 MODELS_DIR = Path(os.environ.get('MICROMIX_MODELS_DIR', Path.home() / 'models'))
-MUSCRIPTOR_REVISION = '7f213afecf23bd6a1b8672aa223690ee9807cefb'
-MLX_AUDIO_REVISION = '40b27a2157150bf87a1f25958f049bdcd0861235'
+MUSCRIPTOR_REVISION = '8a1ef88672cc23c26619adaff37ec48d82c0b906'
+MLX_AUDIO_REVISION = '606b3b27509f9c2c055a563eb79db7d6020a4bb4'
 RVC_REVISION = 'f26633539f1aa935337d8ca5e96c78784698bd7a'
 TRANSCRIPTION_INSTRUMENTS = (
     'acoustic_piano', 'electric_piano', 'chromatic_percussion', 'organ',
@@ -201,6 +201,7 @@ def _transcription(manifest: dict, directory: Path) -> dict:
         raise ValueError('Unknown MuScriptor instrument group')
     audio = _decode_audio(_source(manifest), directory)
     model = _load_muscriptor()
+    # Keep upstream's default export (unquantized MIDI, automatic tempo map).
     midi, grid = model.transcribe_and_postprocess(audio=str(audio), instruments=instruments,
         detect_tempo=p.get('detect_tempo', 'best-effort'))
     target = directory / 'transcription.mid'
