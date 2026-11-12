@@ -17,6 +17,7 @@ struct LibraryScreen: View {
     @State private var compareA: LibraryItem?
     @State private var compareB: LibraryItem?
     @State private var exportStatus: String?
+    @State private var showsTimeline = false
 
     private let columns = [
         GridItem(.fixed(44), alignment: .leading),
@@ -44,6 +45,10 @@ struct LibraryScreen: View {
                     .truncationMode(.middle)
             }
         }
+        .sheet(isPresented: $showsTimeline) {
+            TimelineEditor(library: library, audioPlayer: player, midiPreview: midiPreview)
+                .frame(minWidth: 800, minHeight: 450)
+        }
         .onChange(of: collection) { _, _ in clearHiddenSelection() }
         .onChange(of: searchText) { _, _ in clearHiddenSelection() }
     }
@@ -53,6 +58,8 @@ struct LibraryScreen: View {
             Typography.monoLabel("LIBRARY — \(displayedItems.count) OF \(library.items.count) ASSET\(library.items.count == 1 ? "" : "S")", size: 11)
                 .foregroundColor(Palette.ink.opacity(0.76))
             Spacer()
+            Button("OPEN TIMELINE") { showsTimeline = true }
+                .disabled(!library.items.contains { $0.kind == .audio })
         }
     }
 
@@ -240,6 +247,40 @@ struct LibraryScreen: View {
                         .foregroundColor(Palette.ink.opacity(0.64))
                         .lineLimit(1)
                     if item.kind == .audio {
+                        HStack(spacing: 8) {
+                            Button(player.currentItem?.id == item.id && player.isPlaying ? "PAUSE" : "PLAY") {
+                                if player.currentItem?.id == item.id && player.isPlaying {
+                                    player.pause()
+                                } else {
+                                    midiPreview.stop()
+                                    if player.shouldResume(for: item) {
+                                        player.play()
+                                    } else if player.load(url: library.resolvedURL(for: item), item: item) != nil {
+                                        player.play()
+                                    }
+                                }
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            ZStack {
+                                MiniWaveform(item: item, library: library, barCount: 80)
+                                Slider(value: Binding(
+                                    get: {
+                                        guard player.currentItem?.id == item.id, let duration = player.currentDuration, duration > 0 else { return 0 }
+                                        return min(max(player.currentTime / duration, 0), 1)
+                                    },
+                                    set: { fraction in
+                                        if player.currentItem?.id != item.id {
+                                            midiPreview.stop()
+                                            guard player.load(url: library.resolvedURL(for: item), item: item) != nil else { return }
+                                        }
+                                        if let duration = player.currentDuration { player.seek(to: fraction * duration) }
+                                    }
+                                ), in: 0...1)
+                                .accessibilityLabel("Seek \(item.title)")
+                            }
+                            .frame(width: 278)
+                        }
                         HStack(spacing: 7) {
                             ForEach(router.availableActions(for: item)) { action in
                                 actionButton(action.label, color: actionColor(for: action)) {

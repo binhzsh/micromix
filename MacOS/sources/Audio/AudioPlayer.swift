@@ -29,14 +29,18 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var state: PlaybackState = .idle
     @Published private(set) var currentItem: LibraryItem?
     @Published private(set) var currentDuration: Double?
+    @Published private(set) var currentTime: Double = 0
 
     /// Invoked whenever playback is about to sound; the composition root stops
     /// the MIDI preview with it so only one stream is audible at a time.
     var onStart: (@MainActor () -> Void)?
 
     private var player: AVAudioPlayer?
+    private var progressTask: Task<Void, Never>?
     private lazy var completionDelegate = AudioPlayerCompletionDelegate { [weak self] in
         Task { @MainActor in
+            self?.progressTask?.cancel()
+            self?.currentTime = self?.currentDuration ?? 0
             self?.state = .idle
         }
     }
@@ -51,6 +55,8 @@ final class AudioPlayer: ObservableObject {
     /// or nil if the file cannot be opened.
     @discardableResult
     func load(url: URL, item: LibraryItem) -> Double? {
+        progressTask?.cancel()
+        currentTime = 0
         do {
             let player = try AVAudioPlayer(contentsOf: url)
             player.delegate = completionDelegate
@@ -87,16 +93,38 @@ final class AudioPlayer: ObservableObject {
         player.prepareToPlay()
         player.play()
         state = .playing
+        currentTime = player.currentTime
+        progressTask?.cancel()
+        progressTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled, let self else { return }
+                self.currentTime = self.player?.currentTime ?? 0
+            }
+        }
     }
 
     func pause() {
-        player?.pause()
+        guard let player else { return }
+        player.pause()
+        progressTask?.cancel()
+        currentTime = player.currentTime
         state = .paused
     }
 
+    /// Seeking an idle item makes it paused, so play resumes at the chosen position.
+    func seek(to time: Double) {
+        guard let player, time.isFinite else { return }
+        player.currentTime = min(max(time, 0), player.duration)
+        currentTime = player.currentTime
+        if state == .idle { state = .paused }
+    }
+
     func stop() {
+        progressTask?.cancel()
         player?.stop()
         player?.currentTime = 0
+        currentTime = 0
         state = .idle
     }
 

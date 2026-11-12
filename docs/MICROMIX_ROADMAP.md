@@ -25,8 +25,9 @@ produce a coherent result that is roughly 70–80% finished. Logic Pro owns the
 last 20–30%: detailed arrangement, comping, editing, mix decisions, and final
 mastering.
 
-Micromix is not a DAW, model laboratory, public service, or automated music
-publishing system. Its value is making operations such as reimagining a song,
+Micromix is not a full DAW, model laboratory, public service, or automated music
+publishing system. A simple local multitrack timeline is permitted for auditioning
+and basic arrangement; detailed editing and mixing remain in Logic. Its value is making operations such as reimagining a song,
 creating a cover, swapping or improving a vocal, preparing mashup assets, and
 transcribing complex audio substantially simpler than a manual multi-tool
 workflow. When a transformation has multiple useful parts, Micromix should
@@ -49,8 +50,9 @@ A feature belongs in Micromix only when it meets all applicable rules:
    both English and Vietnamese.
 
 Do not expose inference steps, sampling internals, arbitrary model selection,
-LoRA controls, prompt-engineering machinery, waveform editing, mixer channels,
-plugin racks, automation lanes, or detailed pitch correction. Automatic
+LoRA controls, prompt-engineering machinery, full mixer channels, plugin racks,
+automation lanes, or detailed pitch correction. Basic timeline trimming and
+stacking are permitted for local audition and arrangement. Automatic
 alignment, cleanup, balance, transitions, level safety, and reference finishing
 belong when they measurably improve the result and do not require a DAW-like
 editing surface.
