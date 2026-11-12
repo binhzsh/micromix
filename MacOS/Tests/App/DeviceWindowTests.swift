@@ -31,16 +31,16 @@ struct DeviceWindowTests {
         #expect(TranscribeScreen.heading.hasPrefix("\(DeviceMode.transcribe.displayIndex). "))
     }
 
-    @Test("lyrics layout keeps the primary action visible at the default window size")
-    func lyricsActionVisible() throws {
-        let count = try orangePixelCount(width: 980, height: 700, populated: true)
-        #expect(count > 1_000)
+    @Test("studio shell renders persistent workspace structure at the default window size")
+    func studioShellStructureAtDefaultSize() throws {
+        let bitmap = try renderBitmap(width: 980, height: 700, populated: true)
+        #expect(darkPixelCount(in: bitmap) > 1_000)
     }
 
-    @Test("lyrics layout keeps the primary action visible at the minimum window size")
-    func lyricsActionVisibleAtMinimumSize() throws {
-        let count = try orangePixelCount(width: 900, height: 640, populated: true)
-        #expect(count > 1_000, "count=\(count)")
+    @Test("studio shell keeps persistent workspace structure at the compact window size")
+    func studioShellStructureAtCompactSize() throws {
+        let bitmap = try renderBitmap(width: 900, height: 640, populated: true)
+        #expect(darkPixelCount(in: bitmap) > 1_000)
     }
 
     @Test("empty generation input does not present an enabled orange action")

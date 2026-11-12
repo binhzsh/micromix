@@ -255,8 +255,12 @@ struct LibraryScreen: View {
     }
 
     private var transport: some View {
-        HStack(spacing: 10) {
-            button("PLAY", color: Palette.accentGreen, disabled: selectedItem == nil) {
+        GeometryReader { geometry in
+            let compactLabels = geometry.size.width < 580
+            let controlScale = min(1, max(0.68, geometry.size.width / 760))
+
+            HStack(spacing: 10 * controlScale) {
+            button("PLAY", color: Palette.accentGreen, disabled: selectedItem == nil, scale: controlScale) {
                 guard let item = selectedItem else { return }
                 let url = library.resolvedURL(for: item)
                 if item.kind == .audio {
@@ -275,7 +279,7 @@ struct LibraryScreen: View {
                     }
                 }
             }
-            button("PAUSE", color: Palette.ink, disabled: !player.isPlaying && !midiPreview.isPlaying) {
+            button("PAUSE", color: Palette.ink, disabled: !player.isPlaying && !midiPreview.isPlaying, scale: controlScale) {
                 if player.isPlaying { player.pause() }
                 // Pausing the MIDI preview preserves its position for a later
                 // resume; `stop` would discard it.
@@ -284,26 +288,27 @@ struct LibraryScreen: View {
             button(
                 "STOP",
                 color: Palette.ink,
-                disabled: player.state == .idle && midiPreview.state == .idle
+                disabled: player.state == .idle && midiPreview.state == .idle,
+                scale: controlScale
             ) {
                 if player.state != .idle { player.stop() }
                 if midiPreview.state != .idle { midiPreview.stop() }
             }
-            button("DELETE", color: Palette.accentRed, disabled: selectedItem == nil) {
+            button("DELETE", color: Palette.accentRed, disabled: selectedItem == nil, scale: controlScale) {
                 guard let item = selectedItem else { return }
                 if player.currentItem?.id == item.id { player.stop() }
                 if midiPreview.currentItem?.id == item.id { midiPreview.stop() }
                 try? library.remove(id: item.id)
             }
-            button("REVEAL", color: Palette.accentBlue, disabled: selectedItem == nil) {
+            button("REVEAL", color: Palette.accentBlue, disabled: selectedItem == nil, scale: controlScale) {
                 guard let item = selectedItem else { return }
                 NSWorkspace.shared.activateFileViewerSelecting([library.resolvedURL(for: item)])
             }
-            button("OPEN", color: Palette.accentBlue, disabled: selectedItem == nil) {
+            button("OPEN", color: Palette.accentBlue, disabled: selectedItem == nil, scale: controlScale) {
                 guard let item = selectedItem else { return }
                 NSWorkspace.shared.open(library.resolvedURL(for: item))
             }
-            button("EXPORT", color: Palette.accentOrange, disabled: selectedItem == nil) {
+            button("EXPORT", color: Palette.accentOrange, disabled: selectedItem == nil, scale: controlScale) {
                 guard let item = selectedItem else { return }
                 do {
                     let url = try library.exportBundle(for: item)
@@ -313,23 +318,38 @@ struct LibraryScreen: View {
                     exportStatus = "EXPORT FAILED — \(error.localizedDescription)"
                 }
             }
-            button("COPY PROVENANCE", color: Palette.accentOrange, disabled: selectedItem?.provenance == nil) {
+            button(
+                compactLabels ? "COPY" : "COPY PROVENANCE",
+                color: Palette.accentOrange,
+                disabled: selectedItem?.provenance == nil,
+                scale: controlScale
+            ) {
                 guard let copyText = selectedItem?.provenance?.copyText else { return }
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(copyText, forType: .string)
             }
             Spacer(minLength: 0)
+            }
         }
+        .frame(height: 38)
     }
 
-    private func button(_ title: String, color: Color, disabled: Bool, action: @escaping () -> Void) -> some View {
+    private func button(
+        _ title: String,
+        color: Color,
+        disabled: Bool,
+        scale: CGFloat = 1,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .tracking(1.0)
+                .font(.system(size: 11 * scale, weight: .semibold, design: .monospaced))
+                .tracking(1.0 * scale)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .foregroundColor(disabled ? Palette.ink.opacity(0.46) : color)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
+                .padding(.horizontal, 12 * scale)
+                .padding(.vertical, 7 * scale)
                 .background(Palette.deck)
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
