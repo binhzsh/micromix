@@ -50,6 +50,48 @@ import Testing
         }
     }
 
+    @Test func mixedRateProxyFileSplitMatchesWholeWithOverlappingNativeLane() throws {
+        let source = (0..<4_410).map { Float(sin(Double($0) * 0.071)) * 0.3 }
+        var position = 0
+        var converted: [Float] = []
+        try TimelinePCMProxy.convert(blockFrames: 127) { requested in
+            let count = min(requested, 83, source.count - position)
+            defer { position += count }
+            return Array(source[position..<(position + count)])
+        } write: { converted.append(contentsOf: $0) }
+        #expect(abs(converted.count - 4_800) <= 1)
+        let native = (0..<converted.count).map { Float(cos(Double($0) * 0.037)) * 0.2 }
+        let proxyURL = try fixture(converted)
+        let nativeURL = try fixture(native)
+        defer {
+            try? FileManager.default.removeItem(at: proxyURL)
+            try? FileManager.default.removeItem(at: nativeURL)
+        }
+        let proxy = try TimelineFilePCMReader(url: proxyURL)
+        let nativeReader = try TimelineFilePCMReader(url: nativeURL)
+        let length = Int64(converted.count)
+        let cut = length / 2
+        let fade = TimelineFramePrototype.Ramp(start: 0, end: length - 1, from: 0, to: 1)
+        func region(_ reader: TimelineFilePCMReader, _ start: Int64, _ count: Int64,
+                    _ at: Int64, _ ramps: [TimelineFramePrototype.Ramp] = []) -> Mixer.Region {
+            .init(reader: reader, sourceStart: start, length: count, timelineStart: at,
+                  gain: 1, muted: false, ramps: ramps)
+        }
+        let whole = try Mixer(regions: [region(proxy, 0, length, 0, [fade]),
+                                        region(nativeReader, 0, length, 0)])
+        let split = try Mixer(regions: [region(proxy, 0, cut, 0, [fade]),
+                                        region(proxy, cut, length - cut, cut, [fade]),
+                                        region(nativeReader, 0, length, 0)])
+        for (start, count, block) in [(Int64(0), length, 127), (cut - 23, Int64(51), 7)] {
+            var expected: [Float] = []
+            var actual: [Float] = []
+            try whole.render(start: start, count: count, blockSize: block) { expected.append(contentsOf: $0) }
+            try split.render(start: start, count: count, blockSize: block) { actual.append(contentsOf: $0) }
+            #expect(expected.count == Int(count))
+            #expect(actual == expected)
+        }
+    }
+
     @Test func validatesRangesAndOverflow() throws {
         let url = try fixture([0.5, 0.25])
         defer { try? FileManager.default.removeItem(at: url) }
