@@ -1,6 +1,6 @@
 # Proposal: Micromix native AI-cover production editor
 
-**Status:** planning complete; implementation not started or authorized by this document.
+**Status:** bounded audio-first scope approved by the user; M0 in progress. Later milestones remain gated by the delivery sequence and user-led acceptance.
 **Planning baseline:** current uncommitted working tree, inspected 2026-11-12. User explicitly permitted planning without pulling or changing application code. This is not a clean/reproducible release revision.
 **Tracking:** `PLAN.md` task 20 tracks this proposal. Existing tasks 12–13 remain open. The milestones below are proposed future work, not a second active implementation queue.
 
@@ -8,7 +8,7 @@
 
 Build an **audio-first, native Mac production workspace**: generate/prepare assets, assemble and edit a complete AI cover, balance it, audition alternatives, save/recover the project, and export the finished song without leaving Micromix. Take the directness of a small Logic arrangement window, not Logic's entire feature set.
 
-This expands the current roadmap's basic-arrangement/Logic-finishing boundary. Before implementation, explicitly approve the bounded scope below and reconcile `docs/MICROMIX_ROADMAP.md` and README. Do not silently treat their existing exclusions as already removed. Logic becomes an optional advanced handoff, not a required step for the supported cover workflow. This proposal does not establish that current separation or voice-conversion quality is acceptable.
+This expands the former roadmap's basic-arrangement/Logic-finishing boundary. The user approved the bounded scope below; the roadmap and README describe the new direction. Existing manual quality gates remain open. Logic becomes an optional advanced handoff, not a required step for the supported cover workflow. This proposal does not establish that current separation or voice-conversion quality is acceptable.
 
 ### Supported cover workflow
 

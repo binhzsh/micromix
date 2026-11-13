@@ -12,22 +12,20 @@ and DAW bundle export (see [completed work](#completed-work))
 
 **Product:** private, solo-user native macOS music tooling companion
 
-**Finishing environment:** Logic Pro
+**Finishing environment:** Micromix's proposed audio-first editor; Logic Pro remains an optional advanced handoff. Implementation and acceptance are not yet complete.
 
 **Music languages:** English and Vietnamese are first-class requirements
 
+## Approved editor direction
+
+The user approved the bounded [audio-first production editor proposal](TIMELINE_EDITOR_PROPOSAL.md): multitrack audio clips, editing, basic balance, and eventual local cover export. Its milestones and user-led quality gates remain open; approval is not evidence that these features already work. Piano roll, MIDI sequencing, recording, arbitrary routing, plugin hosting and automation remain out of scope. Older Logic-first phase descriptions below describe historical goals and do not prohibit this approved editor.
+
 ## Purpose
 
-Micromix is a small collection of high-leverage creative audio tools and the
-preferred starting environment for experimentation. It accepts songs, stems,
-vocals, or musical ideas, performs difficult AI transformations, and aims to
-produce a coherent result that is roughly 70–80% finished. Logic Pro owns the
-last 20–30%: detailed arrangement, comping, editing, mix decisions, and final
-mastering.
+Micromix is a collection of local creative audio tools for songs, stems, vocals and musical ideas. The approved direction adds an audio-first editor for assembling and finishing supported AI covers locally; Logic remains available for advanced work outside that bounded scope.
 
 Micromix is not a full DAW, model laboratory, public service, or automated music
-publishing system. A simple local multitrack timeline is permitted for auditioning
-and basic arrangement; detailed editing and mixing remain in Logic. Its value is making operations such as reimagining a song,
+publishing system. Its value is making operations such as reimagining a song,
 creating a cover, swapping or improving a vocal, preparing mashup assets, and
 transcribing complex audio substantially simpler than a manual multi-tool
 workflow. When a transformation has multiple useful parts, Micromix should
@@ -38,24 +36,20 @@ return both editable component assets and a convincing assembled reference mix.
 A feature belongs in Micromix only when it meets all applicable rules:
 
 1. It eliminates an annoying or complicated creative workflow.
-2. It produces a useful asset or assembled creative result rather than another
-   editing environment.
+2. It produces a useful asset or assembled creative result, including through the approved audio-first editor.
 3. Its normal workflow needs only a few creative controls.
-4. It is meaningfully model-driven or better automated outside Logic.
+4. It supports a model-driven workflow or the approved local audio editor.
 5. Its underlying model has passed a private quality evaluation.
 6. It preserves source, model, settings, and output provenance.
-7. It gets the result as close to the finish line as safe automation allows,
-   while leaving detailed, project-aware decisions to Logic.
+7. It supports intentional, safe creative decisions in Micromix; advanced workflows outside the editor's bounded scope may use Logic.
 8. Vocal workflows preserve intelligibility, phrasing, and tonal meaning in
    both English and Vietnamese.
 
 Do not expose inference steps, sampling internals, arbitrary model selection,
-LoRA controls, prompt-engineering machinery, full mixer channels, plugin racks,
-automation lanes, or detailed pitch correction. Basic timeline trimming and
-stacking are permitted for local audition and arrangement. Automatic
-alignment, cleanup, balance, transitions, level safety, and reference finishing
-belong when they measurably improve the result and do not require a DAW-like
-editing surface.
+LoRA controls, prompt-engineering machinery, plugin racks, automation lanes,
+or detailed pitch correction. The approved editor permits bounded track balance,
+audio clip editing and finishing controls. Automatic alignment and cleanup remain
+quality-gated rather than implied by the editor approval.
 
 ## Product tools
 

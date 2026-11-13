@@ -137,8 +137,7 @@ acceptance: `micromix rebuild`, `micromix start`, `micromix stop`.
 
 The app uses only the loopback local-inference endpoint at `127.0.0.1:8902`.
 
-Logic Pro remains the finishing environment for separation, tuning, mixing,
-mastering, and arrangement; Micromix does not duplicate those DAW workflows.
+The approved [audio-first editor proposal](docs/TIMELINE_EDITOR_PROPOSAL.md) expands the existing basic timeline toward local cover production. Its implementation and acceptance are in progress, not complete. Logic Pro remains an optional handoff for advanced editing and finishing.
 
 ## Verification
 
