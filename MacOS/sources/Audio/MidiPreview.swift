@@ -23,6 +23,12 @@ final class MidiPreview: ObservableObject {
     @Published private(set) var state: PreviewState = .idle
     @Published private(set) var currentItem: LibraryItem?
 
+    let coordinator: PreviewCoordinator
+
+    init(coordinator: PreviewCoordinator = PreviewCoordinator()) {
+        self.coordinator = coordinator
+    }
+
     private var player: AVMIDIPlayer?
     private var pausedAt: TimeInterval?
     /// Rises on every load/stop/pause. AVMIDIPlayer's play completion fires
@@ -30,8 +36,7 @@ final class MidiPreview: ObservableObject {
     /// superseded playback must be recognized as stale and ignored.
     private var generation = 0
 
-    /// Invoked whenever a preview is about to sound; the composition root stops
-    /// the audio player with it so only one stream is audible at a time.
+    /// Invoked whenever a preview is about to sound.
     var onStart: (@MainActor () -> Void)?
 
     /// Whether pressing play for `item` should resume a paused preview rather
@@ -69,6 +74,7 @@ final class MidiPreview: ObservableObject {
 
     func play() {
         guard let player else { return }
+        coordinator.claim(self) { [weak self] in self?.stop() }
         onStart?()
         if let pausedAt {
             player.currentPosition = pausedAt

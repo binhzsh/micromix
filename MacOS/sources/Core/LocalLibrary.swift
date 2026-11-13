@@ -54,10 +54,30 @@ final class PendingJobRecord {
 
 /// SwiftData is authoritative for metadata; generated audio and MIDI remain as
 /// ordinary files so Logic Pro and AVFoundation can consume them directly.
+private struct LibraryDeletionRecoveryError: LocalizedError {
+    let backupURL: URL
+    let underlying: Error
+
+    var errorDescription: String? {
+        "Could not restore the file: \(underlying.localizedDescription). Recover it from \(backupURL.path)."
+    }
+}
+
 @MainActor
 final class LocalLibrary: ObservableObject {
     @Published private(set) var items: [LibraryItem] = []
     @Published private(set) var pendingJobIDs: [String] = []
+    @Published private(set) var deletionRecoveryIssues: [String] = []
+
+    private struct DeletionJournal: Codable {
+        let id: UUID
+        let relativePath: String
+        let token: UUID
+    }
+
+    private var deletionJournalDirectory: URL {
+        rootDirectory.appendingPathComponent(".deletion-journal", isDirectory: true)
+    }
 
     let rootDirectory: URL
     private let container: ModelContainer
@@ -86,6 +106,7 @@ final class LocalLibrary: ObservableObject {
         context = container.mainContext
         migrateLegacyManifestIfNeeded()
         reload()
+        retryDeletionRecovery()
     }
 
     func resolvedURL(for item: LibraryItem) -> URL {
@@ -93,33 +114,99 @@ final class LocalLibrary: ObservableObject {
     }
 
     func add(_ item: LibraryItem, bytes: Data) throws {
+        try add(item, bytes: bytes, save: { try $0.save() })
+    }
+
+    func add(
+        _ item: LibraryItem,
+        bytes: Data,
+        save: (ModelContext) throws -> Void
+    ) throws {
         let fileURL = resolvedURL(for: item)
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         try bytes.write(to: fileURL, options: .atomic)
-        context.insert(LibraryRecord(item: item))
+        let record = LibraryRecord(item: item)
+        context.insert(record)
         do {
-            try context.save()
+            try save(context)
             reload()
         } catch {
+            context.delete(record)
             try? FileManager.default.removeItem(at: fileURL)
+            throw error
+        }
+    }
+
+    /// Save a separate local correction; the original ASR output and its remote provenance stay untouched.
+    @discardableResult
+    func saveLyricsCorrection(of original: LibraryItem, text: String) throws -> LibraryItem {
+        guard original.kind == .lyrics, items.contains(where: { $0.id == original.id }) else {
+            throw RenameError.itemNotFound
+        }
+        let id = UUID()
+        let correction = LibraryItem(
+            id: id, kind: .lyrics, title: "Corrected — \(original.title)", createdAt: .now,
+            promptOrSource: "Corrected from \(original.title) (Library ID: \(original.id.uuidString))",
+            durationSeconds: nil, relativePath: "lyrics/\(id.uuidString).txt"
+        )
+        try add(correction, bytes: Data(text.utf8))
+        return correction
+    }
+
+    enum RenameError: LocalizedError {
+        case emptyTitle, itemNotFound
+
+        var errorDescription: String? {
+            switch self {
+            case .emptyTitle: return "Enter a title."
+            case .itemNotFound: return "This Library item no longer exists."
+            }
+        }
+    }
+
+    func rename(id: UUID, title: String, save: (ModelContext) throws -> Void = { try $0.save() }) throws {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { throw RenameError.emptyTitle }
+        let descriptor = FetchDescriptor<LibraryRecord>(predicate: #Predicate { $0.id == id })
+        guard let record = try context.fetch(descriptor).first else { throw RenameError.itemNotFound }
+        record.title = title
+        do {
+            try save(context)
+            reload()
+        } catch {
+            context.rollback()
             throw error
         }
     }
 
     func trackPendingJob(id: String, submittedAt: Date = .now) throws {
         guard pendingRecord(id: id) == nil else { return }
-        context.insert(PendingJobRecord(id: id, submittedAt: submittedAt))
-        try context.save()
-        reload()
+        let record = PendingJobRecord(id: id, submittedAt: submittedAt)
+        context.insert(record)
+        do {
+            try context.save()
+            reload()
+        } catch {
+            context.delete(record)
+            throw error
+        }
     }
 
-    func removePendingJob(id: String) throws {
+    func removePendingJob(
+        id: String,
+        save: (ModelContext) throws -> Void = { try $0.save() }
+    ) throws {
         guard let record = pendingRecord(id: id) else { return }
         context.delete(record)
-        try context.save()
+        do {
+            try save(context)
+        } catch {
+            context.rollback()
+            throw error
+        }
         reload()
     }
 
@@ -166,7 +253,12 @@ final class LocalLibrary: ObservableObject {
         return imported
     }
 
-    func remove(id: UUID) throws {
+    func remove(
+        id: UUID,
+        moveFile: (URL, URL) throws -> Void = { try FileManager.default.moveItem(at: $0, to: $1) },
+        save: ((ModelContext) throws -> Void) = { try $0.save() },
+        removeStagedFile: (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }
+    ) throws {
         let targetID = id
         var descriptor = FetchDescriptor<LibraryRecord>(
             predicate: #Predicate { $0.id == targetID }
@@ -174,13 +266,174 @@ final class LocalLibrary: ObservableObject {
         descriptor.fetchLimit = 1
         guard let record = try context.fetch(descriptor).first else { return }
         let item = record.item
-        let fileURL = resolvedURL(for: item)
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            try FileManager.default.removeItem(at: fileURL)
+        let fileURL = resolvedURL(for: item).standardizedFileURL
+        let identity = try canonicalLibraryURL(item.relativePath)
+        let records = try context.fetch(FetchDescriptor<LibraryRecord>())
+        let shared = try records.filter { $0.id != id }.contains {
+            try sameLibraryFile(canonicalLibraryURL($0.relativePath), identity)
+        }
+        try ensureNoPendingDeletion(id: id, identity: identity)
+        let exists = FileManager.default.fileExists(atPath: fileURL.path)
+        if exists {
+            let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+            guard attributes[.type] as? FileAttributeType == .typeRegular else {
+                throw NSError(domain: "Micromix.DeletionRecovery", code: 3, userInfo: [NSLocalizedDescriptionKey: "Cannot delete a non-regular library file: \(fileURL.path)"])
+            }
+        }
+        let hasFile = !shared && exists
+        let journal = DeletionJournal(id: id, relativePath: item.relativePath, token: UUID())
+        let backupURL = stagedURL(for: journal, original: fileURL)
+        let journalURL = deletionJournalDirectory.appendingPathComponent("\(journal.token.uuidString).json")
+        if hasFile {
+            try FileManager.default.createDirectory(at: deletionJournalDirectory, withIntermediateDirectories: true)
+            try JSONEncoder().encode(journal).write(to: journalURL, options: .atomic)
+            do {
+                try moveFile(fileURL, backupURL)
+            } catch {
+                try? FileManager.default.removeItem(at: journalURL)
+                throw error
+            }
         }
         context.delete(record)
-        try context.save()
+        do {
+            try save(context)
+        } catch {
+            context.rollback()
+            if hasFile {
+                do {
+                    try moveFile(backupURL, fileURL)
+                } catch {
+                    throw LibraryDeletionRecoveryError(backupURL: backupURL, underlying: error)
+                }
+                do {
+                    try FileManager.default.removeItem(at: journalURL)
+                } catch {
+                    deletionRecoveryIssues.append("File restored, but journal cleanup failed at \(journalURL.path): \(error.localizedDescription). Fix permissions and retry deletion recovery.")
+                }
+            }
+            throw error
+        }
         reload()
+        if hasFile {
+            do {
+                try removeStagedFile(backupURL)
+                try FileManager.default.removeItem(at: journalURL)
+            } catch {
+                deletionRecoveryIssues = ["Item deleted, but cleanup failed: \(error.localizedDescription). Staged file: \(backupURL.path). Use Retry deletion recovery."]
+                throw NSError(domain: "Micromix.DeletionCleanup", code: 1, userInfo: [NSLocalizedDescriptionKey: deletionRecoveryIssues[0]])
+            }
+        }
+    }
+
+    private func canonicalLibraryURL(_ relativePath: String) throws -> URL {
+        let url = rootDirectory.appendingPathComponent(relativePath).standardizedFileURL.resolvingSymlinksInPath()
+        let root = rootDirectory.standardizedFileURL.resolvingSymlinksInPath().path + "/"
+        guard !relativePath.hasPrefix("/"), url.path.hasPrefix(root) else {
+            throw NSError(domain: "Micromix.DeletionRecovery", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid library path: \(relativePath)"])
+        }
+        return url
+    }
+
+    /// Compare existing files by filesystem identity; staged or missing paths need
+    /// the case rules of their containing volume instead of URL string equality.
+    private func sameLibraryFile(_ lhs: URL, _ rhs: URL) throws -> Bool {
+        if lhs == rhs { return true }
+        let fm = FileManager.default
+        if fm.fileExists(atPath: lhs.path), fm.fileExists(atPath: rhs.path) {
+            let left = try fm.attributesOfItem(atPath: lhs.path)
+            let right = try fm.attributesOfItem(atPath: rhs.path)
+            if let leftDevice = left[.systemNumber] as? NSNumber,
+               let rightDevice = right[.systemNumber] as? NSNumber,
+               let leftFile = left[.systemFileNumber] as? NSNumber,
+               let rightFile = right[.systemFileNumber] as? NSNumber,
+               leftDevice == rightDevice, leftFile == rightFile {
+                return true
+            }
+        }
+
+        func volume(for url: URL) throws -> (NSNumber, Bool) {
+            var ancestor = url
+            while !fm.fileExists(atPath: ancestor.path) {
+                let parent = ancestor.deletingLastPathComponent()
+                guard parent != ancestor else { throw CocoaError(.fileReadUnknown) }
+                ancestor = parent
+            }
+            let attributes = try fm.attributesOfItem(atPath: ancestor.path)
+            let values = try ancestor.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
+            guard let device = attributes[.systemNumber] as? NSNumber,
+                  let caseSensitive = values.volumeSupportsCaseSensitiveNames else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            return (device, caseSensitive)
+        }
+        let leftVolume = try volume(for: lhs)
+        let rightVolume = try volume(for: rhs)
+        guard leftVolume.0 == rightVolume.0 else { return false }
+        guard !leftVolume.1 && !rightVolume.1 else { return false }
+        return lhs.path.compare(rhs.path, options: .caseInsensitive) == .orderedSame
+    }
+
+    private func ensureNoPendingDeletion(id: UUID, identity: URL) throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: deletionJournalDirectory.path) else { return }
+        for entry in try fm.contentsOfDirectory(at: deletionJournalDirectory, includingPropertiesForKeys: nil)
+        where entry.pathExtension == "json" {
+            let journal = try JSONDecoder().decode(DeletionJournal.self, from: Data(contentsOf: entry))
+            guard entry.lastPathComponent == "\(journal.token.uuidString).json" else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            let journalIdentity = try canonicalLibraryURL(journal.relativePath)
+            let sameFile = try sameLibraryFile(journalIdentity, identity)
+            guard journal.id != id && !sameFile else {
+                throw NSError(domain: "Micromix.DeletionRecovery", code: 4, userInfo: [NSLocalizedDescriptionKey: "A deletion for this file needs recovery before it can be deleted. Use Retry deletion recovery."])
+            }
+        }
+    }
+
+    private func stagedURL(for journal: DeletionJournal, original: URL) -> URL {
+        original.deletingLastPathComponent().appendingPathComponent(".micromix-recovery-\(journal.token.uuidString)")
+    }
+
+    /// Reconcile only files identified by our journal; never overwrite an existing original.
+    func retryDeletionRecovery() {
+        let fm = FileManager.default
+        deletionRecoveryIssues = []
+        guard fm.fileExists(atPath: deletionJournalDirectory.path) else { return }
+        do {
+            // A failed metadata fetch must never be mistaken for an empty library.
+            let records = try context.fetch(FetchDescriptor<LibraryRecord>())
+            let entries = try fm.contentsOfDirectory(at: deletionJournalDirectory, includingPropertiesForKeys: nil)
+            for entry in entries where entry.pathExtension == "json" {
+                do {
+                    let journal = try JSONDecoder().decode(DeletionJournal.self, from: Data(contentsOf: entry))
+                    guard entry.lastPathComponent == "\(journal.token.uuidString).json" else {
+                        throw CocoaError(.fileReadCorruptFile)
+                    }
+                    let original = rootDirectory.appendingPathComponent(journal.relativePath).standardizedFileURL
+                    let identity = try canonicalLibraryURL(journal.relativePath)
+                    let staged = stagedURL(for: journal, original: original)
+                    if fm.fileExists(atPath: staged.path) {
+                        let referenced = try records.contains { record in
+                            if record.id == journal.id { return true }
+                            return try sameLibraryFile(canonicalLibraryURL(record.relativePath), identity)
+                        }
+                        if referenced {
+                            guard !fm.fileExists(atPath: original.path) else {
+                                throw NSError(domain: "Micromix.DeletionRecovery", code: 1, userInfo: [NSLocalizedDescriptionKey: "Original already exists; preserve both files and recover manually from \(staged.path)"])
+                            }
+                            try fm.moveItem(at: staged, to: original)
+                        } else {
+                            try fm.removeItem(at: staged)
+                        }
+                    }
+                    try fm.removeItem(at: entry)
+                } catch {
+                    deletionRecoveryIssues.append("Recovery journal \(entry.path): \(error.localizedDescription). Fix permissions or recover the staged file manually, then retry.")
+                }
+            }
+        } catch {
+            deletionRecoveryIssues.append("Cannot read deletion journals at \(deletionJournalDirectory.path): \(error.localizedDescription). Fix permissions and retry.")
+        }
     }
 
     /// Copies the item together with its job siblings, any child assets, and

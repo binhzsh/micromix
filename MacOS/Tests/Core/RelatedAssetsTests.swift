@@ -99,6 +99,61 @@ struct RelatedAssetsTests {
         #expect(RelatedAssetsResolver.related(for: child, in: [parent, child]).parents == [parent])
     }
 
+    @Test("local lyrics corrections link in both directions without provenance")
+    func linksLocalCorrections() {
+        let original = lyrics(title: "Original (Library ID: title)", source: "legacy")
+        let correction = lyrics(title: "Correction", source: "Corrected from \(original.title) (Library ID: \(original.id.uuidString))")
+        let items = [original, correction]
+        #expect(RelatedAssetsResolver.related(for: correction, in: items).parents == [original])
+        #expect(RelatedAssetsResolver.related(for: original, in: items).children == [correction])
+    }
+
+    @Test("invalid, missing, legacy and non-lyrics sources do not create local links")
+    func ignoresInvalidCorrectionSources() {
+        let original = lyrics(title: "Original", source: "legacy")
+        let id = original.id.uuidString
+        let sources = [
+            "Corrected from Original (Library ID: not-a-uuid)",
+            "Corrected from Original (Library ID: \(UUID().uuidString))",
+            "Corrected from Original (Library ID: \(id)) trailing",
+            "Old correction (Library ID: \(id))",
+            "Corrected from Original (Library ID: \(id.lowercased()))",
+            "legacy"
+        ]
+        let invalid = sources.map { lyrics(title: "Other", source: $0) }
+        let audio = LibraryItem(id: UUID(), kind: .audio, title: "Audio", createdAt: .now,
+                                promptOrSource: "Corrected from Original (Library ID: \(id))",
+                                durationSeconds: nil, relativePath: "audio/test")
+        let items = [original, audio] + invalid
+        #expect(RelatedAssetsResolver.related(for: original, in: items).children.isEmpty)
+        for item in invalid + [audio] {
+            #expect(RelatedAssetsResolver.related(for: item, in: items).parents.isEmpty)
+        }
+        let audioSource = lyrics(title: "Correction", source: "Corrected from Audio (Library ID: \(audio.id.uuidString))")
+        #expect(RelatedAssetsResolver.related(for: audioSource, in: [audio, audioSource]).isEmpty)
+    }
+
+    @Test("local correction and remote provenance links coexist")
+    func preservesProvenanceLinks() {
+        let remoteParent = item(title: "source", checksum: "sha", jobID: "parent")
+        let original = lyrics(title: "Original", source: "legacy")
+        let remoteChild = item(title: "correction", checksum: "other", jobID: "child",
+                               inputs: [link(id: "upload", checksum: "sha")])
+        let correction = LibraryItem(
+            id: remoteChild.id, kind: .lyrics, title: remoteChild.title, createdAt: remoteChild.createdAt,
+            promptOrSource: "Corrected from Original (Library ID: \(original.id.uuidString))",
+            durationSeconds: nil, relativePath: "lyrics/test.txt", provenance: remoteChild.provenance,
+            remoteOutputAssetID: remoteChild.remoteOutputAssetID
+        )
+        let parents = RelatedAssetsResolver.related(for: correction, in: [original, remoteParent, correction]).parents
+        #expect(Set(parents.map(\.id)) == Set([original.id, remoteParent.id]))
+    }
+
+    private func lyrics(title: String, source: String) -> LibraryItem {
+        LibraryItem(id: UUID(), kind: .lyrics, title: title, createdAt: .now,
+                    promptOrSource: source, durationSeconds: nil, relativePath: "lyrics/test.txt")
+    }
+
     // MARK: - Builders
 
     private func link(id: String, checksum: String) -> RemoteAssetLink {

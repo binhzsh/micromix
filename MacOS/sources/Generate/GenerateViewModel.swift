@@ -16,10 +16,10 @@ final class GenerateViewModel: ObservableObject, AssetAccepting {
     @Published var durationSeconds: Double = 30
     @Published var seedText = ""
     @Published var variationCount = 1
-    @Published var bpmText = ""
-    @Published var key = ""
-    @Published var timeSignature = ""
-    @Published var vocalLanguage: VocalLanguage = .automatic
+    @Published var bpmText = "" { didSet { if !isApplyingPrefill { bpmWasEdited = true } } }
+    @Published var key = "" { didSet { if !isApplyingPrefill { keyWasEdited = true } } }
+    @Published var timeSignature = "" { didSet { if !isApplyingPrefill { meterWasEdited = true } } }
+    @Published var vocalLanguage: VocalLanguage = .automatic { didSet { if !isApplyingPrefill { languageWasEdited = true } } }
 
     var phase: JobStatus { flow.status }
     var elapsed: TimeInterval { flow.elapsed }
@@ -33,6 +33,11 @@ final class GenerateViewModel: ObservableObject, AssetAccepting {
     private let reattacher: JobReattacher?
     private let flow = JobFlow()
     private var cancellables = Set<AnyCancellable>()
+    private var isApplyingPrefill = false
+    private var bpmWasEdited = false
+    private var keyWasEdited = false
+    private var meterWasEdited = false
+    private var languageWasEdited = false
 
     init(
         api: any GenerateServicing,
@@ -47,12 +52,13 @@ final class GenerateViewModel: ObservableObject, AssetAccepting {
             .store(in: &cancellables)
     }
 
-    /// A trimmed version of what will actually be sent to the model.
+    /// Keep musical direction independent of lyrics; lyrics-only requests use
+    /// the lyrics as a prompt fallback because the API requires a prompt.
     var effectiveInput: String {
-        if useLyrics, !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return lyrics
+        if !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return prompt
         }
-        return prompt
+        return useLyrics ? lyrics : prompt
     }
 
     var isRunning: Bool { flow.isRunning }
@@ -131,18 +137,20 @@ final class GenerateViewModel: ObservableObject, AssetAccepting {
     func acceptSource(_ context: AssetActionContext) {
         guard canAcceptSource else { return }
         guard let derived = context.derivedMetadata else { return }
-        if bpmText.trimmingCharacters(in: .whitespaces).isEmpty,
+        isApplyingPrefill = true
+        defer { isApplyingPrefill = false }
+        if !bpmWasEdited, bpmText.trimmingCharacters(in: .whitespaces).isEmpty,
            let bpm = derived.beatsPerMinute {
             bpmText = String(Int(bpm.rounded()))
         }
-        if key.trimmingCharacters(in: .whitespaces).isEmpty, let key = derived.key {
+        if !keyWasEdited, key.trimmingCharacters(in: .whitespaces).isEmpty, let key = derived.key {
             self.key = key
         }
-        if timeSignature.trimmingCharacters(in: .whitespaces).isEmpty,
+        if !meterWasEdited, timeSignature.trimmingCharacters(in: .whitespaces).isEmpty,
            let meter = derived.timeSignature {
             timeSignature = meter
         }
-        if vocalLanguage == .automatic, let language = derived.detectedLanguage {
+        if !languageWasEdited, vocalLanguage == .automatic, let language = derived.detectedLanguage {
             vocalLanguage = language
         }
     }

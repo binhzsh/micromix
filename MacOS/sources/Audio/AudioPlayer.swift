@@ -14,6 +14,36 @@ private final class AudioPlayerCompletionDelegate: NSObject, AVAudioPlayerDelega
     }
 }
 
+/// Coordinates ownership, including a timeline that is still preparing.
+@MainActor
+final class PreviewCoordinator {
+    private weak var owner: AnyObject?
+    private var stopOwner: (@MainActor () -> Void)?
+    private var revision = 0
+
+    func reserve() -> Int {
+        revision += 1
+        return revision
+    }
+
+    func isCurrent(_ reservation: Int) -> Bool { revision == reservation }
+
+    func commit(_ reservation: Int, owner newOwner: AnyObject, stop: @escaping @MainActor () -> Void) -> Bool {
+        guard isCurrent(reservation) else { return false }
+        if owner !== newOwner { stopOwner?() }
+        owner = newOwner
+        stopOwner = stop
+        return true
+    }
+
+    func claim(_ newOwner: AnyObject, stop: @escaping @MainActor () -> Void) {
+        revision += 1
+        if owner !== newOwner { stopOwner?() }
+        owner = newOwner
+        stopOwner = stop
+    }
+}
+
 /// Wraps `AVAudioPlayer` for playback of generated audio results.
 ///
 /// Runs on the main actor; playback duration is derived locally via
@@ -31,9 +61,14 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var currentDuration: Double?
     @Published private(set) var currentTime: Double = 0
 
-    /// Invoked whenever playback is about to sound; the composition root stops
-    /// the MIDI preview with it so only one stream is audible at a time.
+    /// Invoked whenever playback is about to sound.
     var onStart: (@MainActor () -> Void)?
+
+    let coordinator: PreviewCoordinator
+
+    init(coordinator: PreviewCoordinator = PreviewCoordinator()) {
+        self.coordinator = coordinator
+    }
 
     private var player: AVAudioPlayer?
     private var progressTask: Task<Void, Never>?
@@ -84,6 +119,7 @@ final class AudioPlayer: ObservableObject {
 
     func play() {
         guard let player else { return }
+        coordinator.claim(self) { [weak self] in self?.stop() }
         onStart?()
         if state == .idle {
             // Replaying a finished (or freshly loaded) item starts from the

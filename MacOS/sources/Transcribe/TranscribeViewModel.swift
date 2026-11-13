@@ -11,17 +11,13 @@ import UniformTypeIdentifiers
 /// `GenerateViewModel`).
 @MainActor
 final class TranscribeViewModel: ObservableObject, AssetAccepting {
-    private actor SubmittedJobReference {
-        private var id: String?
-        func set(_ id: String) { self.id = id }
-        func value() -> String? { id }
-    }
     enum LyricsError: LocalizedError {
-        case unavailable, noResult
+        case unavailable, noResult, noMIDIResult
         var errorDescription: String? {
             switch self {
             case .unavailable: "Lyrics transcription requires the local durable job service."
             case .noResult: "Lyrics transcription returned no result."
+            case .noMIDIResult: "MIDI transcription returned no result. Please retry."
             }
         }
     }
@@ -56,6 +52,7 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
     // Selection state
     @Published var output: Output = .midi
     @Published var selection: Selection?
+    @Published private(set) var isLoadingSource = false
     @Published var instruments: [String] = []
     @Published var detectTempo: Bool = true
 
@@ -73,14 +70,25 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
     private let library: any LibraryStoring
     private let reattacher: JobReattacher?
     private let runner = JobRunner()
+    private var runID: UUID?
+    private var acceptedJobID: String?
+    private var sourceRequestID: UUID?
+    private let sourceLoader: @Sendable (URL) async throws -> (Data, LocalMusicAnalysis?)
 
     private var cancellables = Set<AnyCancellable>()
 
     init(
         api: any TranscribeServicing,
         library: any LibraryStoring,
-        reattacher: JobReattacher? = nil
+        reattacher: JobReattacher? = nil,
+        sourceLoader: @escaping @Sendable (URL) async throws -> (Data, LocalMusicAnalysis?) = { url in
+            let data = try await Task.detached(priority: .userInitiated) {
+                try TranscribeViewModel.readSource(at: url)
+            }.value
+            return (data, try? await LocalMusicAnalyzer.analyze(url: url))
+        }
     ) {
+        self.sourceLoader = sourceLoader
         self.api = api
         self.library = library
         self.reattacher = reattacher
@@ -92,7 +100,7 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
     }
 
     var isRunning: Bool { phase == .running }
-    var isBlocked: Bool { isRunning }
+    var isBlocked: Bool { isRunning || isLoadingSource }
 
     nonisolated static func readSource(at url: URL) throws -> Data {
         let values = try url.resourceValues(forKeys: [.fileSizeKey])
@@ -113,21 +121,20 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
     @discardableResult
     func select(name: String, bytes: Data, analysis: LocalMusicAnalysis? = nil) -> Bool {
         guard !isRunning else { return false }
+        sourceRequestID = nil
+        isLoadingSource = false
         let pathExtension = (name as NSString).pathExtension.lowercased()
         guard let type = UTType(filenameExtension: pathExtension),
               type.conforms(to: .audio),
               !type.conforms(to: .midi) else {
-            selection = nil
             phase = .error("UNSUPPORTED AUDIO FILE")
             return false
         }
         guard !bytes.isEmpty else {
-            selection = nil
             phase = .error("COULD NOT READ AUDIO FILE")
             return false
         }
         guard bytes.count <= Self.maximumSourceBytes else {
-            selection = nil
             phase = .error("AUDIO FILE EXCEEDS 200 MB")
             return false
         }
@@ -140,25 +147,26 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
     @discardableResult
     func select(url: URL) async -> Bool {
         guard !isRunning else { return false }
-        let data: Data
+        let requestID = UUID()
+        sourceRequestID = requestID
+        isLoadingSource = true
         do {
-            data = try await Task.detached(priority: .userInitiated) {
-                try Self.readSource(at: url)
-            }.value
-        } catch let error as SourceReadError {
-            rejectSource(error)
-            return false
+            let (data, analysis) = try await sourceLoader(url)
+            guard sourceRequestID == requestID else { return false }
+            return select(name: url.lastPathComponent, bytes: data, analysis: analysis)
         } catch {
-            rejectSource(.unreadable)
+            guard sourceRequestID == requestID else { return false }
+            sourceRequestID = nil
+            isLoadingSource = false
+            rejectSource((error as? SourceReadError) ?? .unreadable)
             return false
         }
-        let analysis = try? await LocalMusicAnalyzer.analyze(url: url)
-        return select(name: url.lastPathComponent, bytes: data, analysis: analysis)
     }
 
     func rejectSource(_ error: SourceReadError) {
         guard !isRunning else { return }
-        selection = nil
+        sourceRequestID = nil
+        isLoadingSource = false
         switch error {
         case .tooLarge:
             phase = .error("AUDIO FILE EXCEEDS 200 MB")
@@ -170,6 +178,8 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
     /// Clear the current selection.
     func clearSelection() {
         guard !isRunning else { return }
+        sourceRequestID = nil
+        isLoadingSource = false
         selection = nil
     }
 
@@ -189,7 +199,7 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
     /// audio file is selected.
     @discardableResult
     func start() -> Bool {
-        guard !isRunning else { return false }
+        guard !isRunning, !isLoadingSource else { return false }
         guard let selection else {
             phase = .error("SELECT AN AUDIO FILE")
             return false
@@ -204,7 +214,9 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
         let detectTempo = self.detectTempo
         let output = self.output
         let title = Self.title(from: filename)
-        let submittedJob = SubmittedJobReference()
+        let runID = UUID()
+        self.runID = runID
+        acceptedJobID = nil
 
         phase = .running
         lastItem = nil
@@ -215,29 +227,36 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
                     guard let submitter = api as? any DurableLyricsSubmitting, let reattacher else {
                         throw LyricsError.unavailable
                     }
-                    let job = try await submitter.submitLyricsTranscription(audio: audio, filename: filename)
-                    await submittedJob.set(job.id)
+                    let job = try await Task { try await submitter.submitLyricsTranscription(audio: audio, filename: filename) }.value
+                    guard await self.accept(job.id, for: runID) else {
+                        defer { Task { try? await (api as? any DurableJobCancelling)?.cancel(jobID: job.id) } }
+                        try await reattacher.trackForBackground(job)
+                        return
+                    }
                     try await reattacher.track(job)
                     let items = try await reattacher.recoverSubmittedJob(id: job.id)
                     guard let item = items.first else { throw LyricsError.noResult }
-                    await MainActor.run { self.lastItem = item; self.phase = .done }
+                    await self.complete(item, for: runID)
                     return
                 }
                 if let submitter = api as? any DurableTranscriptionSubmitting, let reattacher {
-                    let job = try await submitter.submitTranscription(
-                        audio: audio,
-                        filename: filename,
-                        instruments: instruments,
-                        detectTempo: detectTempo
-                    )
-                    await submittedJob.set(job.id)
+                    let job = try await Task {
+                        try await submitter.submitTranscription(
+                            audio: audio,
+                            filename: filename,
+                            instruments: instruments,
+                            detectTempo: detectTempo
+                        )
+                    }.value
+                    guard await self.accept(job.id, for: runID) else {
+                        defer { Task { try? await (api as? any DurableJobCancelling)?.cancel(jobID: job.id) } }
+                        try await reattacher.trackForBackground(job)
+                        return
+                    }
                     try await reattacher.track(job)
                     let items = try await reattacher.recoverSubmittedJob(id: job.id)
-                    guard let item = items.first else { return }
-                    await MainActor.run {
-                        self.lastItem = item
-                        self.phase = .done
-                    }
+                    guard let item = items.first else { throw LyricsError.noMIDIResult }
+                    await self.complete(item, for: runID)
                     return
                 }
 
@@ -251,41 +270,58 @@ final class TranscribeViewModel: ObservableObject, AssetAccepting {
                     durationSeconds: nil,
                     relativePath: "midi/\(UUID().uuidString).mid"
                 )
-                try await MainActor.run { try library.add(item, bytes: data) }
-                await MainActor.run { [item] in
-                    self.lastItem = item
-                    self.phase = .done
+                try await MainActor.run {
+                    guard self.runID == runID, !Task.isCancelled else { return }
+                    try library.add(item, bytes: data)
+                    self.complete(item, for: runID)
                 }
             } catch is CancellationError {
-                await MainActor.run { self.phase = .cancelled }
+                await self.finish(.cancelled, for: runID)
             } catch let urlError as URLError where urlError.code == .cancelled {
-                await MainActor.run { self.phase = .cancelled }
+                await self.finish(.cancelled, for: runID)
             } catch {
                 let message = (error as? MicromixAPIError)?.errorDescription
                     ?? error.localizedDescription
-                await MainActor.run { self.phase = .error(message) }
-            }
-        }, onCancel: {
-            Task {
-                guard let cancelling = api as? any DurableJobCancelling,
-                      let id = await submittedJob.value() else { return }
-                try? await cancelling.cancel(jobID: id)
+                await self.finish(.error(message), for: runID)
             }
         }))
         return true
     }
 
-    /// Cancel the current transcription.
+    private func accept(_ jobID: String, for run: UUID) -> Bool {
+        guard runID == run, !Task.isCancelled else { return false }
+        acceptedJobID = jobID
+        return true
+    }
+
+    private func complete(_ item: LibraryItem, for run: UUID) {
+        guard runID == run, !Task.isCancelled else { return }
+        lastItem = item
+        finish(.done, for: run)
+    }
+
+    private func finish(_ result: Phase, for run: UUID) {
+        guard runID == run else { return }
+        runID = nil
+        acceptedJobID = nil
+        phase = result
+    }
+
+    /// Cancel the current transcription, including an accepted durable job.
     func cancel() {
+        let jobID = acceptedJobID
+        runID = nil
+        acceptedJobID = nil
         runner.cancel()
-        if phase == .running {
-            phase = .cancelled
+        if phase == .running { phase = .cancelled }
+        if let jobID, let cancelling = api as? any DurableJobCancelling {
+            Task { try? await cancelling.cancel(jobID: jobID) }
         }
     }
 
     // MARK: - AssetAccepting
 
-    var canAcceptSource: Bool { !isRunning }
+    var canAcceptSource: Bool { !isBlocked }
 
     func acceptSource(_ context: AssetActionContext) {
         guard canAcceptSource else { return }

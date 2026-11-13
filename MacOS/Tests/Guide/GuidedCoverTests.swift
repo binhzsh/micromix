@@ -39,14 +39,17 @@ private final class CoverRecovery: ReimagineJobReattaching {
     var waiting = false
     var suspend = false
     var queue: [[LibraryItem]] = []
+    var recovered: [String] = []
 
     func track(_ job: RemoteJob) throws { tracked += 1 }
 
     func recoverSubmittedJob(id: String) async throws -> [LibraryItem] {
+        recovered.append(id)
         if suspend {
             waiting = true
             try await Task.sleep(for: .seconds(60))
         }
+        guard !queue.isEmpty else { throw CocoaError(.fileReadUnknown) }
         return queue.removeFirst()
     }
 }
@@ -76,10 +79,30 @@ struct GuidedCoverTests {
         #expect(recovery.tracked == 2)
         #expect(api.uploads == 1)
         #expect(model.results.map(\.title) == ["vocal-swap.wav"])
+        #expect(model.accompaniment?.remoteOutputAssetID == "as-residual")
         #expect(model.state(of: .prepare) == .done)
         #expect(model.state(of: .splitVocals) == .done)
         #expect(model.state(of: .swapVoice) == .done)
         #expect(model.errorMessage == nil)
+    }
+
+    @Test("a split without accompaniment still returns the converted vocal")
+    func completesWithoutAccompaniment() async {
+        let api = CoverAPI()
+        api.responses = [job(id: "split", kind: "stem_split"), job(id: "swap", kind: "vocal-swap")]
+        let recovery = CoverRecovery()
+        recovery.queue = [
+            [outputItem(name: "target", remoteID: "vocal", jobID: "split")],
+            [outputItem(name: "vocals", remoteID: "converted", jobID: "swap")],
+        ]
+        let model = GuidedCoverModel(api: api, reattacher: recovery, sourceReader: { _ in Data([1]) })
+        model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
+        model.voiceModel = "base"
+        #expect(model.start())
+        for _ in 0..<1000 where model.isRunning { await Task.yield() }
+        #expect(model.results.first?.remoteOutputAssetID == "converted")
+        #expect(model.accompaniment == nil)
+        #expect(model.state(of: .swapVoice) == .done)
     }
 
     @Test("missing source or voice rejects the start without submitting")
@@ -147,7 +170,7 @@ struct GuidedCoverTests {
         api.responses = [job(id: "split", kind: "stem_split"), job(id: "swap", kind: "vocal-swap")]
         api.suspendSecondSubmit = true
         let recovery = CoverRecovery()
-        recovery.queue = [[outputItem(name: "target", remoteID: "vocal", jobID: "split")]]
+        recovery.queue = [[outputItem(name: "target", remoteID: "vocal", jobID: "split")], []]
         let model = GuidedCoverModel(api: api, reattacher: recovery, sourceReader: { _ in Data([1]) })
         model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
         model.voiceModel = "base"
@@ -156,8 +179,9 @@ struct GuidedCoverTests {
         guard let continuation = api.holdSecondSubmit else { Issue.record("swap submit did not start"); model.cancel(); return }
         model.cancel()
         continuation.resume(returning: api.responses[1])
-        for _ in 0..<10_000 where api.cancelled.isEmpty { await Task.yield() }
+        for _ in 0..<10_000 where api.cancelled.isEmpty || recovery.recovered.count < 2 { await Task.yield() }
         #expect(api.cancelled == ["swap"])
+        #expect(recovery.recovered == ["split", "swap"])
         #expect(model.state(of: .splitVocals) == .done)
         #expect(model.state(of: .swapVoice) == .cancelled)
     }
@@ -190,10 +214,11 @@ struct GuidedCoverTests {
 
 /// Holds each submission independently, including after its caller is cancelled.
 @MainActor
-private final class DelayedGuideAPI: DurableSourceProcessing, DurableTranscriptionSubmitting, DurableJobCancelling {
+private final class DelayedGuideAPI: DurableSourceProcessing, DurableTranscriptionSubmitting, DurableJobCancelling, DurableJobServicing {
     var submissions: [CheckedContinuation<RemoteJob, Never>] = []
     var cancelled: [String] = []
     var submitWasCancelled: [Bool] = []
+    var failCancellation = false
 
     func uploadAsset(data: Data, filename: String, mediaType: String) async throws -> RemoteAsset {
         RemoteAsset(id: "upload", filename: filename, mediaType: mediaType,
@@ -219,14 +244,24 @@ private final class DelayedGuideAPI: DurableSourceProcessing, DurableTranscripti
         submissions[index].resume(returning: job)
     }
 
-    func cancel(jobID: String) async throws { cancelled.append(jobID) }
+    func cancel(jobID: String) async throws {
+        cancelled.append(jobID)
+        if failCancellation { throw MicromixAPIError.unreachable() }
+    }
+    func job(id: String) async throws -> RemoteJob { throw MicromixAPIError.unreachable() }
+    func fetchOutputs(for job: RemoteJob) async throws -> [DownloadedRemoteAsset] { [] }
 }
 
 @MainActor
 private final class DelayedGuideRecovery: ReimagineJobReattaching {
     var tracked: [String] = []
     var recovering: [String] = []
+    var background: [String] = []
     func track(_ job: RemoteJob) throws { tracked.append(job.id) }
+    func trackForBackground(_ job: RemoteJob) throws {
+        tracked.append(job.id)
+        background.append(job.id)
+    }
     func recoverSubmittedJob(id: String) async throws -> [LibraryItem] {
         recovering.append(id)
         try await Task.sleep(for: .seconds(60))
@@ -238,6 +273,47 @@ private final class DelayedGuideRecovery: ReimagineJobReattaching {
 @Suite("Guided in-flight cancellation")
 struct GuidedSubmitCancellationTests {
     enum Flow: CaseIterable { case cover, remix, transcribe, vocalSwap }
+
+    @Test("late acceptance exposes persistence failure and retries without losing cancellation")
+    func lateAcceptancePersistenceFailure() async throws {
+        let api = DelayedGuideAPI()
+        api.failCancellation = true
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let library = LocalLibrary(directory: directory)
+        var fail = true
+        let recovery = JobReattacher(api: api, library: library, persistJob: { id in
+            if fail { throw CocoaError(.fileWriteNoPermission) }
+            try library.trackPendingJob(id: id)
+        })
+        let model = GuidedTranscribeModel(api: api, reattacher: recovery, sourceReader: { _ in Data([1]) })
+        model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
+        #expect(model.start())
+        for _ in 0..<10_000 where api.submissions.isEmpty { await Task.yield() }
+        guard !api.submissions.isEmpty else { Issue.record("submit did not start"); model.cancel(); return }
+        model.cancel()
+        api.accept(0, id: "late")
+        for _ in 0..<10_000 where api.cancelled.isEmpty { await Task.yield() }
+        #expect(api.cancelled == ["late"])
+        #expect(!library.pendingJobIDs.contains("late"))
+        guard case .unavailable(let message) = recovery.entries.first?.state else {
+            Issue.record("missing persistence failure entry"); return
+        }
+        #expect(message.contains("not saved"))
+        #expect(message.contains("Retry"))
+        await recovery.cancelRecovery(id: "late")
+        #expect(api.cancelled == ["late", "late"])
+        guard case .unavailable(let cancelMessage) = recovery.entries.first?.state else {
+            Issue.record("missing cancellation failure entry"); return
+        }
+        #expect(cancelMessage.contains("Cancellation failed"))
+        #expect(cancelMessage.contains("not saved"))
+        recovery.retryRecovery(id: "late")
+        #expect(!library.pendingJobIDs.contains("late"))
+        fail = false
+        recovery.retryRecovery(id: "late")
+        #expect(library.pendingJobIDs.contains("late"))
+    }
 
     @Test("late acceptance is tracked and cancelled without replacing the restarted job", arguments: Flow.allCases)
     func lateAcceptanceAfterRestart(flow: Flow) async {
@@ -294,6 +370,7 @@ struct GuidedSubmitCancellationTests {
         #expect(Set(api.cancelled) == Set(["old", "new"]))
         #expect(api.cancelled.count == 2)
         #expect(Set(recovery.tracked) == Set(["old", "new"]))
+        #expect(recovery.background == ["old"])
         #expect(api.submitWasCancelled == [false, false])
         #expect(cancelledStage())
         #expect(!running())

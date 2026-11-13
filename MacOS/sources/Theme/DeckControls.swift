@@ -54,6 +54,10 @@ struct PanelToggleStyle: ToggleStyle {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityRepresentation {
+            Toggle(isOn: configuration.$isOn) { configuration.label }
+                .toggleStyle(.switch)
+        }
     }
 }
 
@@ -68,7 +72,7 @@ struct PrimaryActionButton: View {
             Text(title)
                 .font(.system(size: 14, weight: .semibold, design: .monospaced))
                 .tracking(1.2)
-                .foregroundColor(isEnabled ? .white : Palette.ink.opacity(0.42))
+                .foregroundColor(isEnabled ? Palette.ink : Palette.ink.opacity(0.42))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(isEnabled ? Palette.accentOrange : Palette.ink.opacity(0.10))

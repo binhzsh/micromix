@@ -1,9 +1,7 @@
 import Foundation
 import SwiftUI
 
-/// Guided "TRANSCRIBE AND REMIX" run: transcribes the song to MIDI, keeps the
-/// MIDI in the Library, then hands the original audio to Reimagine as a remix
-/// source so both the notation and the new audio move forward together.
+/// Transcribes audio to a saved MIDI file, with an optional remix handoff.
 @MainActor
 final class GuidedTranscribeModel: ObservableObject {
     enum Stage: String, CaseIterable, Identifiable {
@@ -14,6 +12,7 @@ final class GuidedTranscribeModel: ObservableObject {
 
     @Published var sourceURL: URL?
     @Published var detectTempo = false
+    @Published var instruments: Set<String> = []
     @Published private(set) var states: [Stage: GuidedStageState] = [:]
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var errorMessage: String?
@@ -22,8 +21,8 @@ final class GuidedTranscribeModel: ObservableObject {
     /// Set once the original audio was handed to Reimagine.
     @Published private(set) var deliveredSource: String?
 
-    /// Called with the original source URL when transcription succeeds.
-    var onDeliver: ((URL) -> Void)?
+    /// Called with the original source URL on explicit remix continuation.
+    var onDeliver: ((URL) -> Result<Void, WorkflowRouter.HandoffError>)?
 
     private let api: any DurableTranscriptionSubmitting
     private let reattacher: any ReimagineJobReattaching
@@ -35,6 +34,7 @@ final class GuidedTranscribeModel: ObservableObject {
     private var runID: UUID?
     private var acceptedJobID: String?
     private var cancelRequested = false
+    private var completedSourceURL: URL?
 
     init(
         api: any DurableTranscriptionSubmitting,
@@ -58,12 +58,14 @@ final class GuidedTranscribeModel: ObservableObject {
 
         let sourceURL = self.sourceURL!
         let detectTempo = self.detectTempo
+        let instruments = self.instruments.sorted()
         let token = UUID()
         runID = token
         acceptedJobID = nil
         cancelRequested = false
         errorMessage = nil
         transcribedItem = nil
+        completedSourceURL = nil
         deliveredSource = nil
         states = [.transcribe: .pending]
         isRunning = true
@@ -76,7 +78,7 @@ final class GuidedTranscribeModel: ObservableObject {
         let sourceReader = self.sourceReader
         task = Task { [weak self] in
             await self?.run(
-                token: token, sourceURL: sourceURL, detectTempo: detectTempo,
+                token: token, sourceURL: sourceURL, detectTempo: detectTempo, instruments: instruments,
                 api: api, reattacher: reattacher, sourceReader: sourceReader
             )
         }
@@ -102,12 +104,28 @@ final class GuidedTranscribeModel: ObservableObject {
         states[stage] ?? .pending
     }
 
+    func deliverForRemix(onSuccess: () -> Void) {
+        guard !isRunning, transcribedItem != nil, let source = completedSourceURL else { return }
+        deliveredSource = nil
+        errorMessage = nil
+        switch onDeliver?(source) {
+        case .success:
+            deliveredSource = source.lastPathComponent
+            onSuccess()
+        case .failure(let error):
+            errorMessage = error.message
+        case nil:
+            errorMessage = "Reimagine is unavailable. Try again after reopening the app."
+        }
+    }
+
     // MARK: - Run
 
     private func run(
         token: UUID,
         sourceURL: URL,
         detectTempo: Bool,
+        instruments: [String],
         api: any DurableTranscriptionSubmitting,
         reattacher: any ReimagineJobReattaching,
         sourceReader: @escaping @Sendable (URL) throws -> Data
@@ -124,15 +142,17 @@ final class GuidedTranscribeModel: ObservableObject {
                 try await api.submitTranscription(
                     audio: data,
                     filename: sourceURL.lastPathComponent,
-                    instruments: [],
+                    instruments: instruments,
                     detectTempo: detectTempo
                 )
             }.value
             guard runID == token, !Task.isCancelled else {
-                try? reattacher.track(job)
-                if let cancelling = api as? any DurableJobCancelling {
-                    Task { try? await cancelling.cancel(jobID: job.id) }
+                defer {
+                    if let cancelling = api as? any DurableJobCancelling {
+                        Task { try? await cancelling.cancel(jobID: job.id) }
+                    }
                 }
+                try reattacher.trackForBackground(job)
                 throw CancellationError()
             }
             acceptedJobID = job.id
@@ -140,7 +160,7 @@ final class GuidedTranscribeModel: ObservableObject {
             let items = try await reattacher.recoverSubmittedJob(id: job.id)
             try requireCurrent(token)
             acceptedJobID = nil
-            guard let item = items.first else {
+            guard let item = items.first(where: { $0.kind == .midi }) else {
                 throw GuidedFlowError(description: "Transcription produced no MIDI")
             }
             transcribedItem = item
@@ -163,10 +183,9 @@ final class GuidedTranscribeModel: ObservableObject {
         stopTicker()
         task = nil
         isRunning = false
-        deliveredSource = sourceURL.lastPathComponent
+        completedSourceURL = sourceURL
         runID = nil
         acceptedJobID = nil
-        onDeliver?(sourceURL)
     }
 
     private func handle(_ error: Error, token: UUID) {
@@ -219,11 +238,12 @@ final class GuidedTranscribeModel: ObservableObject {
     }
 }
 
-/// TRANSCRIBE STUDIO tab: MIDI into the Library, then the original audio is
-/// handed to Reimagine as a remix source.
+/// TRANSCRIBE STUDIO tab: saved MIDI with an optional remix handoff.
 struct GuidedTranscribeView: View {
     @ObservedObject var model: GuidedTranscribeModel
     var localInferenceAvailable = true
+    var modelStatuses: [String: String] = [:]
+    var instruments: [String] = []
     var onOpenReimagine: () -> Void = {}
     var onOpenLibrary: () -> Void = {}
     var midiPreview: MidiPreview? = nil
@@ -235,13 +255,13 @@ struct GuidedTranscribeView: View {
             DeckPanel {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Typography.monoLabel("ONE SONG IN — MIDI PLUS A REMIX START", size: 11)
+                        Text("Audio to MIDI").font(Typography.heading)
                             .foregroundColor(Palette.ink)
                         Spacer()
                     }
-                    Text("Transcribes every instrument to MIDI and saves it to Library, then opens Reimagine with the original audio loaded for a remix. The notation and the new audio move forward together.")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Palette.ink.opacity(0.66))
+                    Text("Transcribe audio to MIDI and save it to Library. Optionally continue with the original audio as a remix source in Reimagine.")
+                        .font(Typography.help)
+                        .foregroundColor(Palette.ink.opacity(0.75))
                 }
             }
             DeckPanel {
@@ -252,6 +272,26 @@ struct GuidedTranscribeView: View {
                         Spacer()
                     }
                     .disabled(model.isRunning)
+                    Text("Instrument filter — select none to include all instruments.").font(Typography.help)
+                    if !instruments.isEmpty {
+                        Menu("SELECT INSTRUMENTS (\(model.instruments.count))") {
+                            ForEach(instruments, id: \.self) { instrument in
+                                Button {
+                                    if model.instruments.contains(instrument) {
+                                        model.instruments.remove(instrument)
+                                    } else {
+                                        model.instruments.insert(instrument)
+                                    }
+                                } label: {
+                                    Label(instrument, systemImage: model.instruments.contains(instrument) ? "checkmark.circle.fill" : "circle")
+                                }
+                            }
+                            Button("ALL INSTRUMENTS") { model.instruments.removeAll() }
+                        }
+                        .disabled(model.isRunning)
+                    } else {
+                        Text("Instrument catalog unavailable — current filter has \(model.instruments.count) selections.")
+                    }
                     Toggle("STRICT TEMPO GRID — REJECTS UNSTEADY RECORDINGS", isOn: $model.detectTempo)
                         .toggleStyle(PanelToggleStyle())
                         .disabled(model.isRunning)
@@ -260,32 +300,34 @@ struct GuidedTranscribeView: View {
             }
             HStack {
                 PrimaryActionButton(
-                    title: model.isRunning ? "TRANSCRIBING…" : "TRANSCRIBE & PREPARE REMIX",
-                    isEnabled: model.canStart && localInferenceAvailable,
+                    title: model.isRunning ? "TRANSCRIBING…" : "TRANSCRIBE TO MIDI",
+                    isEnabled: model.canStart && localInferenceAvailable && !WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: ["muscriptor"]),
                     action: { model.start() }
                 )
                 if model.isRunning { Button("CANCEL", action: model.cancel) }
-                Button("OPEN REIMAGINE", action: onOpenReimagine)
                 Button("OPEN LIBRARY", action: onOpenLibrary)
             }
             stepper
             if let error = model.errorMessage {
-                Text(error).foregroundStyle(Palette.accentRed)
+                Text(error).foregroundStyle(Palette.textRed)
             }
             if let item = model.transcribedItem {
                 HStack(spacing: 8) {
                     if let midiPreview, let library {
                         InlineMidiButton(midiPreview: midiPreview, item: item, library: library)
                     }
+                    Button("CONTINUE WITH ORIGINAL IN REIMAGINE") {
+                        model.deliverForRemix(onSuccess: onOpenReimagine)
+                    }
                     Text("MIDI SAVED — \(item.title).")
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Palette.accentGreen)
+                        .foregroundColor(Palette.textGreen)
                 }
             }
             if let delivered = model.deliveredSource {
                 Text("READY IN REIMAGINE — \(delivered). Adjust the direction and render there.")
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(Palette.accentGreen)
+                    .foregroundColor(Palette.textGreen)
             }
         }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.audio]) { result in
@@ -302,7 +344,7 @@ struct GuidedTranscribeView: View {
                     Spacer()
                     if model.isRunning {
                         Typography.monoLabel("\(Int(model.elapsed))s", size: 10)
-                            .foregroundColor(Palette.accentBlue)
+                            .foregroundColor(Palette.textBlue)
                     }
                 }
                 ForEach(GuidedTranscribeModel.Stage.allCases) { stage in
@@ -343,10 +385,10 @@ struct GuidedTranscribeView: View {
     private static func color(for state: GuidedStageState) -> Color {
         switch state {
         case .pending: Palette.ink.opacity(0.5)
-        case .running: Palette.accentBlue
-        case .done: Palette.accentGreen
+        case .running: Palette.textBlue
+        case .done: Palette.textGreen
         case .skipped: Palette.ink.opacity(0.42)
-        case .failed: Palette.accentRed
+        case .failed: Palette.textRed
         case .cancelled: Palette.ink.opacity(0.6)
         }
     }

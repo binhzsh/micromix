@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import Micromix
 
@@ -50,9 +51,9 @@ private final class FakeGenerator: GenerateServicing, DurableGenerationSubmittin
 
 @MainActor
 private final class FakeLibrary: LibraryStoring, @unchecked Sendable {
-    var saved: [(LibraryItem, Data)] = []
+    var saved: [(Micromix.LibraryItem, Data)] = []
 
-    func add(_ item: LibraryItem, bytes: Data) throws {
+    func add(_ item: Micromix.LibraryItem, bytes: Data) throws {
         saved.append((item, bytes))
     }
 }
@@ -96,6 +97,46 @@ private final class SuspendedSubmitGenerator: GenerateServicing, DurableGenerati
 @MainActor
 @Suite("GenerateViewModel")
 struct GenerateViewModelTests {
+
+    @Test("generation controls stack in a narrow form")
+    func responsiveFormLayout() throws {
+        let vm = GenerateViewModel(api: FakeGenerator(), library: FakeLibrary())
+        vm.prompt = "ambient"
+        func height(_ width: CGFloat) throws -> CGFloat {
+            let renderer = ImageRenderer(content: GenerateScreen(viewModel: vm)
+                .frame(width: width).fixedSize(horizontal: false, vertical: true))
+            return try #require(renderer.nsImage).size.height
+        }
+        #expect(try height(400) > height(760))
+    }
+
+    @Test("generation explains missing input and offline state")
+    func disabledReasons() {
+        let vm = GenerateViewModel(api: FakeGenerator(), library: FakeLibrary())
+        let screen = GenerateScreen(viewModel: vm)
+        #expect(!screen.canGenerate)
+        #expect(screen.unavailableReason == "Enter a prompt or lyrics first")
+        vm.useLyrics = true
+        vm.lyrics = "a verse"
+        #expect(screen.canGenerate)
+        let offline = GenerateScreen(viewModel: vm, localInferenceAvailable: false)
+        #expect(!offline.canGenerate)
+        #expect(offline.unavailableReason == "Local inference is unavailable. Start the local sidecar and retry.")
+    }
+
+    @Test("generation submission follows fake health markers and selected preset")
+    func readinessGatesSubmission() {
+        let vm = GenerateViewModel(api: FakeGenerator(), library: FakeLibrary())
+        vm.prompt = "ambient"
+        vm.preset = "turbo"
+        let statuses = ["ace_step": "weights_missing", "minimax_music3": "ready"]
+        #expect(GenerateScreen(viewModel: vm, modelStatuses: statuses).canGenerate)
+        #expect(GenerateScreen(viewModel: vm, modelStatuses: [:]).canGenerate)
+        #expect(!GenerateScreen(viewModel: vm, localInferenceAvailable: false, modelStatuses: [:]).canGenerate)
+        vm.preset = "minimax-cover"
+        #expect(GenerateScreen(viewModel: vm, modelStatuses: statuses).canGenerate)
+        #expect(!GenerateScreen(viewModel: vm, modelStatuses: ["minimax_music3": "weights_missing"]).canGenerate)
+    }
 
     @Test("start() from idle enters running then resolves to done with a .wav item")
     func generateFlow() async throws {
@@ -141,7 +182,7 @@ struct GenerateViewModelTests {
         ))
     }
 
-    @Test("usegrams when useLyrics is on sends lyrics as input")
+    @Test("musical direction and lyrics are submitted independently")
     func lyricsFlow() async throws {
         let api = FakeGenerator()
         let library = FakeLibrary()
@@ -151,6 +192,20 @@ struct GenerateViewModelTests {
         vm.useLyrics = true
 
         vm.start()
+        await waitUntil { vm.phase == .done }
+        #expect(api.capturedInput == "prompt text")
+        #expect(api.capturedLyrics == "la la la")
+    }
+
+    @Test("lyrics-only generation uses lyrics as the required prompt fallback")
+    func lyricsOnlyFlow() async throws {
+        let api = FakeGenerator()
+        let vm = GenerateViewModel(api: api, library: FakeLibrary())
+        vm.prompt = "  "
+        vm.lyrics = "la la la"
+        vm.useLyrics = true
+
+        #expect(vm.start())
         await waitUntil { vm.phase == .done }
         #expect(api.capturedInput == "la la la")
         #expect(api.capturedLyrics == "la la la")
@@ -295,6 +350,20 @@ struct GenerateViewModelTests {
         #expect(vm.timeSignature == "4")
         #expect(vm.vocalLanguage == .english)
         #expect(vm.phase == .idle)
+    }
+
+    @Test("explicitly cleared metadata is not overwritten by analysis")
+    func clearedMetadataIsPreserved() {
+        let vm = GenerateViewModel(api: FakeGenerator(), library: FakeLibrary())
+        vm.bpmText = ""
+        vm.key = ""
+        vm.timeSignature = ""
+        vm.vocalLanguage = .automatic
+        vm.acceptSource(AssetActionContext(sourceURL: URL(fileURLWithPath: "/tmp/source.wav"), action: .referenceGenerate, derivedMetadata: DerivedMetadata(beatsPerMinute: 120, key: "C", timeSignature: "4", detectedLanguage: .english)))
+        #expect(vm.bpmText.isEmpty)
+        #expect(vm.key.isEmpty)
+        #expect(vm.timeSignature.isEmpty)
+        #expect(vm.vocalLanguage == .automatic)
     }
 
     @Test("acceptSource without derived metadata is a no-op")

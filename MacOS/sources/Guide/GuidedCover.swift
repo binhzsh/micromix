@@ -35,6 +35,7 @@ final class GuidedCoverModel: ObservableObject {
     @Published private(set) var states: [Stage: GuidedStageState] = [:]
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var results: [LibraryItem] = []
+    @Published private(set) var accompaniment: LibraryItem?
     @Published private(set) var errorMessage: String?
     @Published private(set) var isRunning = false
 
@@ -84,6 +85,7 @@ final class GuidedCoverModel: ObservableObject {
         acceptedJobID = nil
         cancelRequested = false
         results = []
+        accompaniment = nil
         errorMessage = nil
         states = [:]
         isRunning = true
@@ -165,7 +167,7 @@ final class GuidedCoverModel: ObservableObject {
                 token: token, api: api, reattacher: reattacher
             )
             set(.swapVoice, .done)
-            succeed(token: token, results: converted)
+            succeed(token: token, results: converted, accompaniment: split.first(where: { $0.provenance?.output.name == "residual" && $0.kind == .audio }))
         } catch {
             handle(error, token: token)
         }
@@ -184,8 +186,8 @@ final class GuidedCoverModel: ObservableObject {
         let job = try await Task { try await api.submitSourceProcessing(request) }.value
         guard runID == token, !Task.isCancelled else {
             // Keep recovery possible even if the cancellation request fails.
-            try? reattacher.track(job)
-            Task { try? await api.cancel(jobID: job.id) }
+            defer { Task { try? await api.cancel(jobID: job.id) } }
+            try reattacher.trackForBackground(job)
             throw CancellationError()
         }
         acceptedJobID = job.id
@@ -220,7 +222,7 @@ final class GuidedCoverModel: ObservableObject {
         acceptedJobID = nil
     }
 
-    private func succeed(token: UUID, results: [LibraryItem]) {
+    private func succeed(token: UUID, results: [LibraryItem], accompaniment: LibraryItem?) {
         guard token == runID else { return }
         if let startedAt {
             elapsed = max(elapsed, Date().timeIntervalSince(startedAt))
@@ -229,6 +231,7 @@ final class GuidedCoverModel: ObservableObject {
         task = nil
         isRunning = false
         self.results = results
+        self.accompaniment = accompaniment
         runID = nil
         acceptedJobID = nil
     }
@@ -285,6 +288,7 @@ struct GuidedCoverView: View {
     @ObservedObject var model: GuidedCoverModel
     var voices: [String] = []
     var localInferenceAvailable = true
+    var modelStatuses: [String: String] = [:]
     var voiceCatalog: VoiceCatalogState? = nil
     var onRefreshVoices: () -> Void = {}
     var onOpenLibrary: () -> Void = {}
@@ -302,13 +306,13 @@ struct GuidedCoverView: View {
             DeckPanel {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Typography.monoLabel("ONE SONG IN — A NEW-VOICE COVER OUT", size: 11)
+                        Text("Song in — converted vocals out").font(Typography.heading)
                             .foregroundColor(Palette.ink)
                         Spacer()
                     }
-                    Text("Splits the vocal stem, converts it to the selected private voice, and saves every asset to Library. The vocal audio is passed between jobs without a second upload.")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Palette.ink.opacity(0.66))
+                    Text("Separates and converts the vocal, saving available assets to Library. Separation and conversion quality vary; lyrics may not remain intelligible. Import available converted vocals and accompaniment into Logic as separate tracks; no mix is assembled here.")
+                        .font(Typography.help)
+                        .foregroundColor(Palette.ink.opacity(0.75))
                 }
             }
             DeckPanel {
@@ -335,8 +339,8 @@ struct GuidedCoverView: View {
             }
             HStack {
                 PrimaryActionButton(
-                    title: model.isRunning ? "COVERING…" : "START COVER",
-                    isEnabled: model.canStart && localInferenceAvailable && catalog.voices.contains(model.voiceModel),
+                    title: model.isRunning ? "CONVERTING…" : "CONVERT VOCALS",
+                    isEnabled: model.canStart && localInferenceAvailable && !WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: ["sam_audio", "mlx_rvc"]) && catalog.voices.contains(model.voiceModel),
                     action: { model.start() }
                 )
                 if model.isRunning { Button("CANCEL", action: model.cancel) }
@@ -344,13 +348,15 @@ struct GuidedCoverView: View {
             }
             stepper
             if let error = model.errorMessage {
-                Text(error).foregroundStyle(Palette.accentRed)
+                Text(error).foregroundStyle(Palette.textRed)
             }
             if !model.results.isEmpty {
-                Text("Saved \(model.results.count) output(s) to Library.")
-                ForEach(model.results) { item in
+                Text(model.accompaniment == nil
+                     ? "Converted vocal saved to Library. No accompaniment was returned; no mix was assembled."
+                     : "Related tracks saved to Library. Import both into Logic as separate tracks and check alignment; no mix was assembled.")
+                ForEach(model.results + (model.accompaniment.map { [$0] } ?? [])) { item in
                     HStack(alignment: .center, spacing: 8) {
-                        Typography.monoLabel(item.title, size: 9)
+                        Typography.monoLabel("\(item.id == model.accompaniment?.id ? "ACCOMPANIMENT" : "CONVERTED VOCAL") — \(item.title)", size: 9)
                             .foregroundColor(Palette.ink.opacity(0.64))
                         if item.kind == .audio, let library {
                             MiniWaveform(item: item, library: library)
@@ -379,7 +385,7 @@ struct GuidedCoverView: View {
                     Spacer()
                     if model.isRunning {
                         Typography.monoLabel("\(Int(model.elapsed))s", size: 10)
-                            .foregroundColor(Palette.accentBlue)
+                            .foregroundColor(Palette.textBlue)
                     }
                 }
                 ForEach(GuidedCoverModel.Stage.allCases) { stage in
@@ -420,10 +426,10 @@ struct GuidedCoverView: View {
     private static func color(for state: GuidedStageState) -> Color {
         switch state {
         case .pending: Palette.ink.opacity(0.5)
-        case .running: Palette.accentBlue
-        case .done: Palette.accentGreen
+        case .running: Palette.textBlue
+        case .done: Palette.textGreen
         case .skipped: Palette.ink.opacity(0.42)
-        case .failed: Palette.accentRed
+        case .failed: Palette.textRed
         case .cancelled: Palette.ink.opacity(0.6)
         }
     }

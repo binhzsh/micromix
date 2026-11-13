@@ -39,6 +39,7 @@ struct SourceProcessingScreen: View {
     @ObservedObject var viewModel: SourceProcessingViewModel
     var voices: [String] = []
     var localInferenceAvailable = true
+    var modelStatuses: [String: String] = [:]
     var voiceCatalog: VoiceCatalogState? = nil
     var onRefreshVoices: () -> Void = {}
     var onOpenLibrary: () -> Void = {}
@@ -47,6 +48,7 @@ struct SourceProcessingScreen: View {
     var midiPreview: MidiPreview? = nil
     var library: LocalLibrary? = nil
     @State private var isImporting = false
+    @State private var importError: String?
 
     private var catalog: VoiceCatalogState {
         voiceCatalog ?? (localInferenceAvailable ? .loading : .unavailable)
@@ -54,21 +56,29 @@ struct SourceProcessingScreen: View {
 
     private var canStart: Bool {
         let direction = viewModel.operation == .vocalSwap ? viewModel.voiceModel : viewModel.description
-        return localInferenceAvailable && !viewModel.isRunning && viewModel.sourceURL != nil
+        return localInferenceAvailable && !WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [viewModel.operation == .vocalSwap ? "mlx_rvc" : "sam_audio"]) && !viewModel.isRunning && viewModel.sourceURL != nil
             && !direction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && (viewModel.operation != .vocalSwap || catalog.voices.contains(direction))
     }
 
+    private var disabledReason: String {
+        if viewModel.isRunning { return "Processing is in progress." }
+        if viewModel.sourceURL == nil { return "Select an audio source first." }
+        let model = viewModel.operation == .vocalSwap ? "mlx_rvc" : "sam_audio"
+        if !localInferenceAvailable || WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [model]) {
+            return WorkflowReadiness.description(connected: localInferenceAvailable, statuses: modelStatuses, models: [model])
+        }
+        if viewModel.operation == .vocalSwap { return "Select an available voice model." }
+        return "Describe the sound to extract."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            DeckPanel {
-                HStack {
-                    Typography.monoLabel("SOURCE", size: 11)
-                    Button(viewModel.sourceURL?.lastPathComponent ?? "SELECT AUDIO") { isImporting = true }
-                    Spacer()
-                }
-                .disabled(viewModel.isRunning)
-            }
+            SourceChooser(name: viewModel.sourceURL?.lastPathComponent,
+                          hint: viewModel.operation == .vocalSwap ? "Choose audio containing vocals to convert." : "Choose audio containing the sound to extract.",
+                          accessibilityHint: "Choose source audio for processing",
+                          isDisabled: viewModel.isRunning, error: importError,
+                          choose: { isImporting = true })
             DeckPanel {
                 VStack(alignment: .leading, spacing: 10) {
                     if viewModel.operation == .vocalSwap {
@@ -83,25 +93,29 @@ struct SourceProcessingScreen: View {
                     } else {
                         TextField("Describe the sound to extract, e.g. lead vocals", text: $viewModel.description)
                         Text("Saves the extracted sound and the remaining audio to Library.")
+                            .font(Typography.help)
                             .foregroundStyle(.secondary)
                     }
                 }
                 .font(.system(size: 11, design: .monospaced))
                 .disabled(viewModel.isRunning)
             }
-            HStack {
-                PrimaryActionButton(title: viewModel.isRunning ? "PROCESSING…" : viewModel.operation.rawValue,
+            VStack(alignment: .leading, spacing: 8) {
+                PrimaryActionButton(title: viewModel.isRunning ? "PROCESSING…" : (viewModel.phase.offersRetry ? "RETRY \(viewModel.operation.rawValue)" : viewModel.operation.rawValue),
                                     isEnabled: canStart,
                                     action: { viewModel.start() })
+                if !canStart {
+                    Text(disabledReason).font(Typography.help).foregroundColor(Palette.ink.opacity(0.75))
+                }
                 if viewModel.isRunning { Button("CANCEL", action: viewModel.cancel) }
                 Button("OPEN LIBRARY", action: onOpenLibrary)
             }
-            if let error = viewModel.errorMessage { Text(error).foregroundStyle(Palette.accentRed) }
+            WorkflowStatusView(status: viewModel.phase, elapsed: viewModel.elapsed)
             if viewModel.phase == .done {
                 Text("Saved \(viewModel.results.count) output(s) to Library.")
                 ForEach(viewModel.results) { item in
-                    HStack(alignment: .center, spacing: 8) {
-                        Typography.monoLabel(item.title, size: 9)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(item.title).font(Typography.label)
                             .foregroundColor(Palette.ink.opacity(0.64))
                         if item.kind == .audio, let library {
                             MiniWaveform(item: item, library: library)
@@ -123,7 +137,14 @@ struct SourceProcessingScreen: View {
             }
         }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.audio]) { result in
-            if case .success(let url) = result { viewModel.sourceURL = url }
+            switch result {
+            case .success(let url):
+                guard !viewModel.isRunning else { return }
+                importError = nil
+                viewModel.sourceURL = url
+            case .failure(let error):
+                importError = "Could not select audio: \(error.localizedDescription). Choose another file."
+            }
         }
     }
 }

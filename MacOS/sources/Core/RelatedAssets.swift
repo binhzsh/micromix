@@ -16,10 +16,19 @@ struct RelatedAssets: Equatable, Sendable {
 /// show a Source → Operation → Output trail without extra storage.
 enum RelatedAssetsResolver {
     static func related(for item: LibraryItem, in items: [LibraryItem]) -> RelatedAssets {
-        guard let provenance = item.provenance else { return RelatedAssets() }
         let others = items.filter { $0.id != item.id }
+        let localParentID = correctionSourceID(for: item)
+        var parents = others.filter { $0.kind == .lyrics && $0.id == localParentID }
+        var children = others.filter { candidate in
+            item.kind == .lyrics && correctionSourceID(for: candidate) == item.id
+        }
 
-        var parents: [LibraryItem] = []
+        guard let provenance = item.provenance else {
+            return RelatedAssets(
+                parents: parents.sorted { $0.createdAt > $1.createdAt },
+                children: children.sorted { $0.createdAt > $1.createdAt }
+            )
+        }
         for link in provenance.inputs {
             for candidate in others
             where isOutput(of: candidate, remoteAssetID: link.asset.id, checksum: link.asset.sha256) {
@@ -35,11 +44,13 @@ enum RelatedAssetsResolver {
 
         let remoteOutputID = item.remoteOutputAssetID
         let outputChecksum = provenance.output.asset.sha256
-        let children = others.filter { candidate in
-            candidate.provenance?.inputs.contains { link in
-                remoteOutputID == link.asset.id
-                    || (!outputChecksum.isEmpty && link.asset.sha256 == outputChecksum)
-            } == true
+        for candidate in others where candidate.provenance?.inputs.contains(where: { link in
+            remoteOutputID == link.asset.id
+                || (!outputChecksum.isEmpty && link.asset.sha256 == outputChecksum)
+        }) == true {
+            if !children.contains(where: { $0.id == candidate.id }) {
+                children.append(candidate)
+            }
         }
 
         return RelatedAssets(
@@ -47,6 +58,17 @@ enum RelatedAssetsResolver {
             siblings: siblings,
             children: children.sorted { $0.createdAt > $1.createdAt }
         )
+    }
+
+    /// Match only the exact format emitted by saveLyricsCorrection, not arbitrary legacy text.
+    private static func correctionSourceID(for item: LibraryItem) -> UUID? {
+        let source = item.promptOrSource
+        let marker = " (Library ID: "
+        guard item.kind == .lyrics, source.hasPrefix("Corrected from "), source.hasSuffix(")"),
+              let range = source.range(of: marker, options: .backwards) else { return nil }
+        let idText = String(source[range.upperBound..<source.index(before: source.endIndex)])
+        guard let id = UUID(uuidString: idText), id.uuidString == idText else { return nil }
+        return id
     }
 
     /// Whether the candidate's saved output is the asset identified by a remote

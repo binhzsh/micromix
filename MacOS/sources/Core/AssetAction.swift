@@ -107,13 +107,16 @@ struct DerivedMetadata: Sendable {
     let key: String?
     let timeSignature: String?
     let detectedLanguage: VocalLanguage?
-    
+    let durationSeconds: Double?
+
     init(
         beatsPerMinute: Double? = nil,
         key: String? = nil,
         timeSignature: String? = nil,
-        detectedLanguage: VocalLanguage? = nil
+        detectedLanguage: VocalLanguage? = nil,
+        durationSeconds: Double? = nil
     ) {
+        self.durationSeconds = durationSeconds
         self.beatsPerMinute = beatsPerMinute
         self.key = key
         self.timeSignature = timeSignature
@@ -126,7 +129,8 @@ struct DerivedMetadata: Sendable {
     init(from analysis: LocalMusicAnalysis) {
         self.init(
             beatsPerMinute: analysis.beatsPerMinute,
-            key: analysis.key
+            key: analysis.key,
+            durationSeconds: analysis.durationSeconds
         )
     }
 }
@@ -153,6 +157,13 @@ final class WorkflowRouter: ObservableObject {
     private weak var analyze: AnalyzeViewModel?
     private let library: LocalLibrary
 
+    @Published var handoffError: HandoffError?
+
+    struct HandoffError: Identifiable, Error {
+        let id = UUID()
+        let message: String
+    }
+
     /// Callback to switch the active device mode
     var onSwitchMode: ((DeviceMode) -> Void)?
 
@@ -175,37 +186,77 @@ final class WorkflowRouter: ObservableObject {
     }
 
     /// Execute an action on a source asset
-    func execute(_ action: AssetAction, on item: LibraryItem, derived: DerivedMetadata? = nil) {
-        guard AssetAction.available(for: item.kind).contains(action) else { return }
-        let sourceURL = library.resolvedURL(for: item)
-        let context = AssetActionContext(
-            sourceItem: item,
-            sourceURL: sourceURL,
-            action: action,
-            derivedMetadata: derived
-        )
-        let targetMode = action.targetMode
-
-        // Switch to target mode first
-        onSwitchMode?(targetMode)
-
-        // Then deliver the context to the appropriate VM
-        switch action {
-        case .referenceGenerate:
-            reimagine?.acceptSource(context)
-        case .remix:
-            reimagine?.acceptSource(context)
-        case .repaint:
-            reimagine?.acceptSource(context)
-        case .stemSplit:
-            stemSplit?.acceptSource(context)
-        case .vocalSwap:
-            vocalSwap?.acceptSource(context)
-        case .transcribe:
-            transcribe?.acceptSource(context)
-        case .analyze:
-            analyze?.acceptSource(context)
+    @discardableResult
+    func execute(_ action: AssetAction, on item: LibraryItem, derived: DerivedMetadata? = nil) -> Result<Void, HandoffError> {
+        guard AssetAction.available(for: item.kind).contains(action) else {
+            let error = HandoffError(message: "This action is not available for the selected item. Choose a compatible source.")
+            handoffError = error
+            return .failure(error)
         }
+        let context = AssetActionContext(
+            sourceItem: item, sourceURL: library.resolvedURL(for: item),
+            action: action, derivedMetadata: derived
+        )
+        let receiver: (any AssetAccepting)?
+        switch action {
+        case .referenceGenerate, .remix, .repaint: receiver = reimagine
+        case .stemSplit: receiver = stemSplit
+        case .vocalSwap: receiver = vocalSwap
+        case .transcribe: receiver = transcribe
+        case .analyze: receiver = analyze
+        }
+        return handoff(context, to: receiver, mode: action.targetMode)
+    }
+
+    /// A receiver acknowledges a handoff synchronously; it may load the source
+    /// asynchronously and report subsequent read errors in its own workspace.
+    @discardableResult
+    func handoff(_ context: AssetActionContext, to receiver: (any AssetAccepting)?, mode: DeviceMode, requiresFile: Bool = true) -> Result<Void, HandoffError> {
+        guard let receiver else {
+            let error = HandoffError(message: "\(mode.rawValue) is unavailable. Try again after reopening the app.")
+            handoffError = error
+            return .failure(error)
+        }
+        guard receiver.canAcceptSource else {
+            let error = HandoffError(message: "\(mode.rawValue) is busy. Wait for or cancel its current work, then try again.")
+            handoffError = error
+            return .failure(error)
+        }
+        if requiresFile {
+            var isDirectory: ObjCBool = false
+            let path = context.sourceURL.path
+            guard context.sourceURL.isFileURL,
+                  FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue, FileManager.default.isReadableFile(atPath: path) else {
+                let error = HandoffError(message: "The source file is missing or unreadable. Restore it or choose another source, then try again.")
+                handoffError = error
+                return .failure(error)
+            }
+        }
+        handoffError = nil
+        receiver.acceptSource(context)
+        onSwitchMode?(mode)
+        return .success(())
+    }
+
+    /// Explicitly replace only Generate's lyrics, leaving its prompt and language intact.
+    @discardableResult
+    func useGenerateLyrics(_ text: String) -> Result<Void, HandoffError> {
+        guard let generate else {
+            let error = HandoffError(message: "Generate is unavailable. Try again after reopening the app.")
+            handoffError = error
+            return .failure(error)
+        }
+        guard generate.canAcceptSource else {
+            let error = HandoffError(message: "Generate is busy. Wait for or cancel its current work, then try again.")
+            handoffError = error
+            return .failure(error)
+        }
+        generate.lyrics = text
+        generate.useLyrics = true
+        handoffError = nil
+        onSwitchMode?(.generate)
+        return .success(())
     }
 
     /// Get available actions for a library item
@@ -222,20 +273,19 @@ final class WorkflowRouter: ObservableObject {
             action: .referenceGenerate,
             derivedMetadata: derived
         )
-        onSwitchMode?(.reimagine)
-        reimagine?.acceptSource(context)
+        handoff(context, to: reimagine, mode: .reimagine)
     }
 
     /// Route an audio file into Reimagine remix with optional derived metadata
     /// pre-filled; the source has no LibraryItem yet.
-    func reimagineRemix(url: URL, derived: DerivedMetadata? = nil) {
+    @discardableResult
+    func reimagineRemix(url: URL, derived: DerivedMetadata? = nil) -> Result<Void, HandoffError> {
         let context = AssetActionContext(
             sourceURL: url,
             action: .remix,
             derivedMetadata: derived
         )
-        onSwitchMode?(.reimagine)
-        reimagine?.acceptSource(context)
+        return handoff(context, to: reimagine, mode: .reimagine)
     }
     
     /// Pre-fill Generate's musical direction from an analysis without a source
@@ -246,7 +296,6 @@ final class WorkflowRouter: ObservableObject {
             action: .referenceGenerate,
             derivedMetadata: derived
         )
-        onSwitchMode?(.generate)
-        generate?.acceptSource(context)
+        handoff(context, to: generate, mode: .generate, requiresFile: false)
     }
 }

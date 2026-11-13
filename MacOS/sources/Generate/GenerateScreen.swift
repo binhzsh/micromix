@@ -5,16 +5,19 @@ import SwiftUI
 struct GenerateScreen: View {
     @ObservedObject var viewModel: GenerateViewModel
     var localInferenceAvailable: Bool = true
+    var modelStatuses: [String: String] = [:]
     var router: WorkflowRouter? = nil
     var player: AudioPlayer? = nil
     var library: LocalLibrary? = nil
+    var onShowInLibrary: (LibraryItem) -> Void = { _ in }
+    @State private var showAdvanced = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Typography.monoLabel("1. GENERATE — TEXT OR LYRICS", size: 11)
-                .foregroundColor(Palette.ink.opacity(0.76))
+            Text("1. Generate — text or lyrics")
+                .font(Typography.heading)
+                .foregroundColor(Palette.ink)
 
-            ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 12) {
                     DeckPanel {
                         VStack(alignment: .leading, spacing: 8) {
@@ -29,14 +32,14 @@ struct GenerateScreen: View {
                                 editorGroup(
                                     label: viewModel.useLyrics ? "PROMPT (OPTIONAL)" : "PROMPT",
                                     text: $viewModel.prompt,
-                                    placeholder: "DESCRIBE THE TRACK, MOOD, INSTRUMENTS OR ARRANGEMENT"
+                                    placeholder: "Describe the track, mood, instruments or arrangement"
                                 )
 
                                 if viewModel.useLyrics {
                                     editorGroup(
                                         label: "LYRICS",
                                         text: $viewModel.lyrics,
-                                        placeholder: "PASTE LYRICS OR WRITE VERSE / CHORUS SECTIONS"
+                                        placeholder: "Paste lyrics or write verse / chorus sections"
                                     )
                                 }
                             }
@@ -44,7 +47,82 @@ struct GenerateScreen: View {
                     }
 
                     DeckPanel {
-                        HStack(alignment: .top, spacing: 24) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ViewThatFits(in: .horizontal) {
+                                HStack(alignment: .top, spacing: 24) {
+                                    generationControls
+                                }.fixedSize(horizontal: true, vertical: false)
+                                VStack(alignment: .leading, spacing: 12) {
+                                    generationControls
+                                }
+                            }
+                        }
+                        .disabled(viewModel.isBlocked)
+                    }
+
+                    DeckPanel {
+                        DisclosureGroup(isExpanded: $showAdvanced) {
+                            VStack(alignment: .leading, spacing: 12) {
+                            ViewThatFits(in: .horizontal) {
+                                HStack(alignment: .bottom, spacing: 12) { advancedFields }
+                                    .fixedSize(horizontal: true, vertical: false)
+                                VStack(alignment: .leading, spacing: 12) { advancedFields }
+                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                Typography.monoLabel("VOCAL LANGUAGE", size: 10)
+                                    .foregroundColor(Palette.ink.opacity(0.68))
+                                Picker("Vocal language", selection: $viewModel.vocalLanguage) {
+                                    ForEach(VocalLanguage.allCases) { language in
+                                        Text(language.label).tag(language)
+                                    }
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.segmented)
+                                .frame(width: 235)
+                            }
+                            }
+                        } label: {
+                            Text(hasAdvancedSettings ? "Advanced settings · customized" : "Advanced settings")
+                        }
+                        .disabled(viewModel.isBlocked)
+                    }
+
+                }
+
+            HStack(spacing: 8) {
+                PrimaryActionButton(
+                    title: viewModel.isRunning ? "GENERATING…" : (viewModel.phase.offersRetry ? "RETRY GENERATION" : "GENERATE"),
+                    isEnabled: canGenerate,
+                    action: { viewModel.start() }
+                )
+                .keyboardShortcut(.return, modifiers: [.command])
+                .accessibilityHint(canGenerate ? "Starts music generation" : unavailableReason)
+
+                if viewModel.isRunning {
+                    cancelButton
+                }
+            }
+            if !canGenerate && !viewModel.isRunning {
+                Text(unavailableReason).font(Typography.body(12)).foregroundColor(Palette.ink.opacity(0.76))
+            }
+
+            WorkflowStatusView(status: viewModel.phase, elapsed: viewModel.elapsed)
+            if viewModel.phase == .done, let library {
+                SelectedResultSurface(results: viewModel.results, router: router, player: player,
+                                      library: library, onShowInLibrary: onShowInLibrary)
+            }
+        }
+        .frame(maxWidth: 760, alignment: .topLeading)
+    }
+
+    @ViewBuilder private var advancedFields: some View {
+        compactField("SEED", text: $viewModel.seedText, width: 120)
+        compactField("BPM", text: $viewModel.bpmText, width: 72)
+        compactField("KEY", text: $viewModel.key, width: 92)
+        compactField("METER", text: $viewModel.timeSignature, width: 72)
+    }
+
+    @ViewBuilder private var generationControls: some View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Typography.monoLabel("ENGINE", size: 10)
                                     .foregroundColor(Palette.ink.opacity(0.68))
@@ -75,7 +153,7 @@ struct GenerateScreen: View {
                                 Typography.monoLabel("DURATION  \(Int(viewModel.durationSeconds)) SEC", size: 10)
                                     .foregroundColor(Palette.ink.opacity(0.68))
                                 Slider(value: $viewModel.durationSeconds, in: 10...120, step: 5)
-                                    .tint(Palette.accentOrange)
+                                    .tint(Palette.textOrange)
                                     .frame(width: 180)
                             }
 
@@ -95,95 +173,23 @@ struct GenerateScreen: View {
                                     .foregroundColor(Palette.ink)
                                     .padding(.vertical, 6)
                             }
-                            Spacer(minLength: 0)
-                        }
-                        .disabled(viewModel.isBlocked)
-                    }
-
-                    DeckPanel {
-                        HStack(alignment: .bottom, spacing: 12) {
-                            compactField("SEED", text: $viewModel.seedText, width: 120)
-                            compactField("BPM", text: $viewModel.bpmText, width: 72)
-                            compactField("KEY", text: $viewModel.key, width: 92)
-                            compactField("METER", text: $viewModel.timeSignature, width: 72)
-                            VStack(alignment: .leading, spacing: 6) {
-                                Typography.monoLabel("VOCAL LANGUAGE", size: 10)
-                                    .foregroundColor(Palette.ink.opacity(0.68))
-                                Picker("Vocal language", selection: $viewModel.vocalLanguage) {
-                                    ForEach(VocalLanguage.allCases) { language in
-                                        Text(language.label).tag(language)
-                                    }
-                                }
-                                .labelsHidden()
-                                .pickerStyle(.segmented)
-                                .frame(width: 235)
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .disabled(viewModel.isBlocked)
-                    }
-
-                }
-            }
-            .scrollIndicators(.visible)
-
-            HStack(spacing: 8) {
-                PrimaryActionButton(
-                    title: viewModel.isRunning ? "GENERATING…" : "GENERATE",
-                    isEnabled: canGenerate,
-                    action: { viewModel.start() }
-                )
-                .keyboardShortcut(.return, modifiers: [.command])
-                .accessibilityHint(canGenerate ? "Starts music generation" : unavailableReason)
-
-                if viewModel.isRunning {
-                    cancelButton
-                }
-            }
-
-            if viewModel.isRunning {
-                VStack(alignment: .leading, spacing: 4) {
-                    ProgressView()
-                        .progressViewStyle(.linear)
-                        .accessibilityLabel("Generation in progress")
-                    Text("WORKING · \(Int(viewModel.elapsed))s elapsed · progress unavailable")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(Palette.ink.opacity(0.68))
-                }
-            }
-
-            if let error = viewModel.errorMessage {
-                Text(error)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Palette.accentRed)
-            }
-            if viewModel.phase == .done {
-                HStack(spacing: 10) {
-                    Text("Saved \(viewModel.results.count) result(s) to Library.")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(Palette.ink.opacity(0.72))
-                    if let player, let library,
-                       let audio = viewModel.results.first(where: { $0.kind == .audio }) {
-                        MiniWaveform(item: audio, library: library)
-                        InlinePlayButton(player: player, item: audio, library: library)
-                    }
-                }
-                if let router, let latest = viewModel.results.last {
-                    NextActionsRow(router: router, item: latest)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    private var canGenerate: Bool {
+    private var hasAdvancedSettings: Bool {
+        !viewModel.seedText.isEmpty || !viewModel.bpmText.isEmpty || !viewModel.key.isEmpty
+            || !viewModel.timeSignature.isEmpty || viewModel.vocalLanguage != .automatic
+    }
+
+    var canGenerate: Bool {
         !viewModel.effectiveInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !viewModel.isBlocked
             && localInferenceAvailable
+            && !WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [WorkflowReadiness.generationModel(preset: viewModel.preset)])
     }
 
-    private var unavailableReason: String {
-        if !localInferenceAvailable { return "Local inference is unavailable" }
+    var unavailableReason: String {
+        if !localInferenceAvailable { return "Local inference is unavailable. Start the local sidecar and retry." }
+        if WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [WorkflowReadiness.generationModel(preset: viewModel.preset)]) { return WorkflowReadiness.description(connected: true, statuses: modelStatuses, models: [WorkflowReadiness.generationModel(preset: viewModel.preset)]) }
         if viewModel.isBlocked { return "Generation is already running" }
         return "Enter a prompt or lyrics first"
     }
@@ -204,8 +210,8 @@ struct GenerateScreen: View {
                 .background(Palette.deck)
             if text.wrappedValue.isEmpty {
                 Text(placeholder)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(Palette.ink.opacity(0.46))
+                    .font(Typography.help)
+                    .foregroundColor(Palette.ink.opacity(0.68))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 14)
                     .allowsHitTesting(false)
@@ -222,8 +228,9 @@ struct GenerateScreen: View {
         placeholder: String
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Typography.monoLabel(label, size: 10)
-                .foregroundColor(Palette.ink.opacity(0.68))
+            Text(label.capitalized)
+                .font(Typography.label)
+                .foregroundColor(Palette.ink)
             editor(
                 text: text,
                 placeholder: placeholder,
@@ -256,12 +263,12 @@ struct GenerateScreen: View {
             Text("CANCEL")
                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
                 .tracking(1.2)
-                .foregroundColor(Palette.accentRed)
+                .foregroundColor(Palette.textRed)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
-                        .stroke(Palette.accentRed, lineWidth: 1.5)
+                        .stroke(Palette.textRed, lineWidth: 1.5)
                 )
         }
         .buttonStyle(.plain)

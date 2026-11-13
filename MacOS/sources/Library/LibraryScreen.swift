@@ -11,46 +11,151 @@ struct LibraryScreen: View {
     @Binding var selectedID: UUID?
     var onGenerate: () -> Void = {}
     var onStartTranscribe: () -> Void = {}
+    var onOpenTimeline: () -> Void = {}
     @State private var collection: LibraryCollection = .all
     @State private var searchText = ""
     @State private var showsTrail = false
     @State private var compareA: LibraryItem?
     @State private var compareB: LibraryItem?
     @State private var exportStatus: String?
-    @State private var showsTimeline = false
-
-    private let columns = [
-        GridItem(.fixed(44), alignment: .leading),
-        GridItem(.flexible(minimum: 120), alignment: .leading),
-        GridItem(.fixed(52), alignment: .leading),
-        GridItem(.fixed(64), alignment: .leading),
-        GridItem(.fixed(52), alignment: .leading),
-        GridItem(.flexible(minimum: 64), alignment: .trailing),
-    ]
+    @State private var deletionCandidate: LibraryItem?
+    @State private var deletionError: String?
+    @State private var renameCandidate: LibraryItem?
+    @State private var renameTitle = ""
+    @State private var renameError: String?
+    @State private var lyricsEditingItem: LibraryItem?
+    @State private var lyricsDraft = ""
+    @State private var lyricsError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             organization
+            if !library.deletionRecoveryIssues.isEmpty {
+                VStack(alignment: .leading) {
+                    ForEach(library.deletionRecoveryIssues, id: \.self) { issue in
+                        Text(issue).textSelection(.enabled)
+                    }
+                    Button("Retry deletion recovery") { library.retryDeletionRecovery() }
+                }
+            }
             listOrEmpty
-            assetInspector
-            provenance
-            related
-            transport
-            if let exportStatus {
-                Text(exportStatus)
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(Palette.ink.opacity(0.7))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if selectedItem != nil {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        assetInspector
+                        transport
+                        provenance
+                        related
+                        if let exportStatus {
+                            Text(exportStatus).textSelection(.enabled)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Text(Self.emptyDetailGuidance(hasItems: !library.items.isEmpty, hasMatches: !displayedItems.isEmpty))
+                    .font(Typography.help)
+                    .foregroundColor(Palette.ink.opacity(0.72))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .sheet(isPresented: $showsTimeline) {
-            TimelineEditor(library: library, audioPlayer: player, midiPreview: midiPreview)
-                .frame(minWidth: 800, minHeight: 450)
+        .sheet(item: $lyricsEditingItem) { item in
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Correct lyrics draft").font(.headline)
+                Text("Saving creates a separate corrected draft; the original remains unchanged.")
+                TextEditor(text: $lyricsDraft).frame(minHeight: 240)
+                HStack {
+                    Button("Cancel") { lyricsEditingItem = nil }
+                    Spacer()
+                    Button("Save corrected draft") {
+                        do {
+                            let corrected = try library.saveLyricsCorrection(of: item, text: lyricsDraft)
+                            collection = .all
+                            searchText = ""
+                            selectedID = corrected.id
+                            lyricsEditingItem = nil
+                        } catch { lyricsError = error.localizedDescription }
+                    }
+                }
+                if let lyricsError { Text(lyricsError).foregroundStyle(.red).textSelection(.enabled) }
+            }.padding().frame(minWidth: 480, minHeight: 360)
+        }
+        .confirmationDialog(
+            "Delete \(deletionCandidate?.title ?? "this asset")?",
+            isPresented: Binding(
+                get: { deletionCandidate != nil },
+                set: { if !$0 { deletionCandidate = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: deletionCandidate
+        ) { item in
+            Button("Delete", role: .destructive) { delete(item) }
+            Button("Cancel", role: .cancel) { deletionCandidate = nil }
+        } message: { _ in
+            Text("Deletes this Library item and its file. Related and derived items remain, but their provenance may refer to a missing source.")
+        }
+        .alert("Deletion failed", isPresented: Binding(
+            get: { deletionError != nil },
+            set: { if !$0 { deletionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { deletionError = nil }
+        } message: {
+            Text(deletionError ?? "")
+        }
+        .alert("Rename asset", isPresented: Binding(
+            get: { renameCandidate != nil },
+            set: { if !$0 { renameCandidate = nil } }
+        ), presenting: renameCandidate) { item in
+            TextField("Display title", text: $renameTitle)
+            Button("Save") {
+                do {
+                    try library.rename(id: item.id, title: renameTitle)
+                    clearHiddenSelection()
+                } catch { renameError = error.localizedDescription }
+                renameCandidate = nil
+            }
+            Button("Cancel", role: .cancel) { renameCandidate = nil }
+        } message: { _ in
+            Text("Only the display title changes; the file and provenance stay unchanged.")
+        }
+        .alert("Rename failed", isPresented: Binding(
+            get: { renameError != nil }, set: { if !$0 { renameError = nil } }
+        )) {
+            Button("OK", role: .cancel) { renameError = nil }
+        } message: { Text(renameError ?? "") }
+        .onChange(of: selectedID) { oldID, newID in
+            if oldID != newID { player.stop(); midiPreview.stop() }
         }
         .onChange(of: collection) { _, _ in clearHiddenSelection() }
         .onChange(of: searchText) { _, _ in clearHiddenSelection() }
+    }
+
+    static func copyLyrics(_ text: String, write: (String) -> Void) {
+        write(text)
+    }
+
+    private func delete(_ item: LibraryItem) {
+        do {
+            try library.remove(id: item.id)
+            if player.currentItem?.id == item.id { player.stop() }
+            if midiPreview.currentItem?.id == item.id { midiPreview.stop() }
+            if selectedID == item.id { selectedID = nil }
+            if compareA?.id == item.id { compareA = nil }
+            if compareB?.id == item.id { compareB = nil }
+        } catch {
+            deletionError = "\(error.localizedDescription) Check file permissions and available storage, then try again."
+            if !library.items.contains(where: { $0.id == item.id }) {
+                if player.currentItem?.id == item.id { player.stop() }
+                if midiPreview.currentItem?.id == item.id { midiPreview.stop() }
+                if selectedID == item.id { selectedID = nil }
+                if compareA?.id == item.id { compareA = nil }
+                if compareB?.id == item.id { compareB = nil }
+            }
+        }
+        deletionCandidate = nil
     }
 
     private var header: some View {
@@ -58,7 +163,7 @@ struct LibraryScreen: View {
             Typography.monoLabel("LIBRARY — \(displayedItems.count) OF \(library.items.count) ASSET\(library.items.count == 1 ? "" : "S")", size: 11)
                 .foregroundColor(Palette.ink.opacity(0.76))
             Spacer()
-            Button("OPEN TIMELINE") { showsTimeline = true }
+            Button("OPEN TIMELINE") { onOpenTimeline() }
                 .disabled(!library.items.contains { $0.kind == .audio })
         }
     }
@@ -76,7 +181,7 @@ struct LibraryScreen: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(Palette.ink.opacity(0.6))
-                TextField("SEARCH TITLE, SOURCE, OR OPERATION", text: $searchText)
+                TextField("Search title, source, or operation", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(Palette.ink)
@@ -84,12 +189,12 @@ struct LibraryScreen: View {
                     Button("CLEAR") { searchText = "" }
                         .buttonStyle(.borderless)
                         .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        .foregroundColor(Palette.accentBlue)
+                        .foregroundColor(Palette.textBlue)
                 }
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 7)
-            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.divider, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.boundary, lineWidth: 1))
         }
     }
 
@@ -101,8 +206,8 @@ struct LibraryScreen: View {
             .foregroundColor(active ? Palette.deck : Palette.ink.opacity(0.76))
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
-            .background(active ? Palette.accentBlue : Palette.deck)
-            .overlay(RoundedRectangle(cornerRadius: 4).stroke(active ? Palette.accentBlue : Palette.divider, lineWidth: 1))
+            .background(active ? Palette.textBlue : Palette.deck)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(active ? Palette.textBlue : Palette.boundary, lineWidth: 1))
     }
 
     @ViewBuilder private var listOrEmpty: some View {
@@ -115,12 +220,12 @@ struct LibraryScreen: View {
                     Typography.monoLabel("NO TRACKS YET", size: 13)
                         .foregroundColor(Palette.ink)
                     Text("Generate a new piece or transcribe audio to build your private library.")
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(Typography.help)
                         .foregroundColor(Palette.ink.opacity(0.66))
                         .multilineTextAlignment(.center)
                     HStack(spacing: 8) {
-                        emptyAction("GENERATE", color: Palette.accentOrange, action: onGenerate)
-                        emptyAction("TRANSCRIBE", color: Palette.accentBlue, action: onStartTranscribe)
+                        emptyAction("GENERATE", color: Palette.textOrange, action: onGenerate)
+                        emptyAction("TRANSCRIBE", color: Palette.textBlue, action: onStartTranscribe)
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: 130)
@@ -131,7 +236,7 @@ struct LibraryScreen: View {
                     Typography.monoLabel("NO MATCHING ASSETS", size: 12)
                         .foregroundColor(Palette.ink)
                     Text("Choose another collection or clear the search to see your saved files.")
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(Typography.help)
                         .foregroundColor(Palette.ink.opacity(0.66))
                     Button("CLEAR FILTERS") {
                         collection = .all
@@ -139,7 +244,7 @@ struct LibraryScreen: View {
                     }
                     .buttonStyle(.borderless)
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Palette.accentBlue)
+                    .foregroundColor(Palette.textBlue)
                 }
                 .frame(maxWidth: .infinity, minHeight: 110)
             }
@@ -149,82 +254,28 @@ struct LibraryScreen: View {
     }
 
     private var table: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                headerRow
-                Divider().overlay(Palette.divider)
-                ForEach(Array(displayedItems.enumerated()), id: \.element.id) { index, item in
-                    row(index: index + 1, item: item)
-                    Divider().overlay(Palette.divider.opacity(0.6))
+        List(selection: $selectedID) {
+            ForEach(displayedItems) { item in
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.title).lineLimit(1)
+                        Text("\(item.kind.shortLabel) · \(item.createdAt.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if (player.currentItem?.id == item.id && player.isPlaying)
+                        || (midiPreview.currentItem?.id == item.id && midiPreview.isPlaying) {
+                        Image(systemName: "speaker.wave.2.fill").accessibilityLabel("Playing")
+                    }
+                    Text(item.durationSeconds.map { Self.formatDuration($0) } ?? "—")
+                        .font(.caption.monospacedDigit())
                 }
+                .tag(item.id)
+                .accessibilityElement(children: .combine)
             }
-            .background(Palette.deck)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Palette.divider, lineWidth: 1))
         }
-        .frame(maxHeight: 190)
-    }
-
-    private var headerRow: some View {
-        LazyVGrid(columns: columns, spacing: 8) {
-            col("")
-            col("TITLE")
-            col("TYPE")
-            col("WAVE")
-            col("LEN")
-            col("DATE")
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-    }
-
-    private func row(index: Int, item: LibraryItem) -> some View {
-        let selected = item.id == selectedID
-        let sounding = (player.currentItem?.id == item.id && player.isPlaying)
-            || (midiPreview.currentItem?.id == item.id && midiPreview.isPlaying)
-        return LazyVGrid(columns: columns, spacing: 8) {
-            Text("\(index)")
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(Palette.ink.opacity(0.68))
-            HStack(spacing: 5) {
-                if sounding {
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Palette.accentGreen)
-                }
-                Text(item.title)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Palette.ink)
-                    .lineLimit(1)
-            }
-            Text(item.kind.shortLabel)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(item.kind == .audio ? Palette.accentGreen : Palette.accentBlue)
-            if item.kind == .audio {
-                MiniWaveform(item: item, library: library)
-            } else {
-                Text("—")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(Palette.ink.opacity(0.4))
-            }
-            Text(item.durationSeconds.map { Self.formatDuration($0) } ?? "—")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Palette.ink.opacity(0.7))
-            Text(item.createdAt, style: .date)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Palette.ink.opacity(0.68))
-                .multilineTextAlignment(.trailing)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
-        .background(selected ? Palette.accentBlue.opacity(0.10) : Color.clear)
-        .onTapGesture {
-            // Same policy as select(): a row change ends any sounding or
-            // paused session so a later PLAY starts the new selection fresh.
-            player.stop()
-            midiPreview.stop()
-            selectedID = item.id
-        }
+        .accessibilityLabel("Library assets")
     }
 
     @ViewBuilder private var assetInspector: some View {
@@ -236,22 +287,46 @@ struct LibraryScreen: View {
                             .foregroundColor(Palette.ink.opacity(0.64))
                         Spacer()
                         Typography.monoLabel(item.kind.rawValue.uppercased(), size: 10)
-                            .foregroundColor(item.kind == .audio ? Palette.accentGreen : Palette.accentBlue)
+                            .foregroundColor(item.kind == .audio ? Palette.textGreen : Palette.textBlue)
                     }
                     Text(item.title)
                         .font(.system(size: 13, weight: .semibold, design: .monospaced))
                         .foregroundColor(Palette.ink)
                         .lineLimit(1)
+                    ForEach(Self.identityDetails(for: item), id: \.label) { detail in
+                        Text("\(detail.label): \(detail.value)")
+                            .font(Typography.help)
+                            .foregroundColor(Palette.ink.opacity(0.76))
+                            .textSelection(.enabled)
+                    }
                     Text(item.relativePath)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(Palette.ink.opacity(0.64))
                         .lineLimit(1)
                     if item.kind == .lyrics {
-                        ScrollView {
-                            Text((try? String(contentsOf: library.resolvedURL(for: item), encoding: .utf8)) ?? "Lyrics file is missing or unreadable.")
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }.frame(maxHeight: 180)
+                        Text("Unverified lyrics draft — review before use.").font(Typography.help)
+                        if let text = try? String(contentsOf: library.resolvedURL(for: item), encoding: .utf8) {
+                            ScrollView {
+                                Text(text).textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }.frame(maxHeight: 180)
+                            HStack {
+                                Button("Copy") {
+                                    Self.copyLyrics(text) { value in
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(value, forType: .string)
+                                    }
+                                }
+                                Button("Edit / save corrected draft") {
+                                    lyricsError = nil
+                                    lyricsDraft = text
+                                    lyricsEditingItem = item
+                                }
+                                Button("Use as Generate lyrics") { router.useGenerateLyrics(text) }
+                            }
+                        } else {
+                            Text("Lyrics file is missing or unreadable.")
+                        }
                     }
                     if item.kind == .audio {
                         HStack(spacing: 8) {
@@ -270,7 +345,7 @@ struct LibraryScreen: View {
                             .buttonStyle(.borderless)
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             ZStack {
-                                MiniWaveform(item: item, library: library, barCount: 80)
+                                MiniWaveform(item: item, library: library, barCount: 80, fillsWidth: true)
                                 Slider(value: Binding(
                                     get: {
                                         guard player.currentItem?.id == item.id, let duration = player.currentDuration, duration > 0 else { return 0 }
@@ -286,13 +361,11 @@ struct LibraryScreen: View {
                                 ), in: 0...1)
                                 .accessibilityLabel("Seek \(item.title)")
                             }
-                            .frame(width: 278)
+                            .frame(maxWidth: .infinity)
                         }
-                        HStack(spacing: 7) {
+                        Menu("Continue with…") {
                             ForEach(router.availableActions(for: item)) { action in
-                                actionButton(action.label, color: actionColor(for: action)) {
-                                    router.execute(action, on: item)
-                                }
+                                Button(action.label) { router.execute(action, on: item) }
                             }
                         }
                     }
@@ -303,142 +376,62 @@ struct LibraryScreen: View {
     }
 
     private var transport: some View {
-        GeometryReader { geometry in
-            let compactLabels = geometry.size.width < 580
-            let controlScale = min(1, max(0.68, geometry.size.width / 760))
-
-            HStack(spacing: 10 * controlScale) {
-            button("PLAY", color: Palette.accentGreen, disabled: selectedItem == nil || selectedItem?.kind == .lyrics, scale: controlScale) {
+        HStack {
+            Button("Play") {
                 guard let item = selectedItem else { return }
                 let url = library.resolvedURL(for: item)
                 if item.kind == .audio {
                     midiPreview.stop()
-                    if player.shouldResume(for: item) {
-                        player.play()
-                    } else if player.load(url: url, item: item) != nil {
-                        player.play()
-                    }
+                    if player.shouldResume(for: item) { player.play() }
+                    else if player.load(url: url, item: item) != nil { player.play() }
                 } else if item.kind == .midi {
                     player.stop()
-                    if midiPreview.shouldResume(for: item) {
-                        midiPreview.play()
-                    } else if midiPreview.load(url: url, item: item) {
-                        midiPreview.play()
-                    }
+                    if midiPreview.shouldResume(for: item) { midiPreview.play() }
+                    else if midiPreview.load(url: url, item: item) { midiPreview.play() }
                 }
             }
-            button("PAUSE", color: Palette.ink, disabled: !player.isPlaying && !midiPreview.isPlaying, scale: controlScale) {
+            .disabled(selectedItem == nil || selectedItem?.kind == .lyrics)
+            Button("Pause") {
                 if player.isPlaying { player.pause() }
-                // Pausing the MIDI preview preserves its position for a later
-                // resume; `stop` would discard it.
                 if midiPreview.isPlaying { midiPreview.pause() }
             }
-            button(
-                "STOP",
-                color: Palette.ink,
-                disabled: player.state == .idle && midiPreview.state == .idle,
-                scale: controlScale
-            ) {
-                if player.state != .idle { player.stop() }
-                if midiPreview.state != .idle { midiPreview.stop() }
-            }
-            button("DELETE", color: Palette.accentRed, disabled: selectedItem == nil, scale: controlScale) {
-                guard let item = selectedItem else { return }
-                if player.currentItem?.id == item.id { player.stop() }
-                if midiPreview.currentItem?.id == item.id { midiPreview.stop() }
-                try? library.remove(id: item.id)
-            }
-            button("REVEAL", color: Palette.accentBlue, disabled: selectedItem == nil, scale: controlScale) {
-                guard let item = selectedItem else { return }
-                NSWorkspace.shared.activateFileViewerSelecting([library.resolvedURL(for: item)])
-            }
-            button("OPEN", color: Palette.accentBlue, disabled: selectedItem == nil, scale: controlScale) {
-                guard let item = selectedItem else { return }
-                NSWorkspace.shared.open(library.resolvedURL(for: item))
-            }
-            button("EXPORT", color: Palette.accentOrange, disabled: selectedItem == nil, scale: controlScale) {
-                guard let item = selectedItem else { return }
-                do {
-                    let url = try library.exportBundle(for: item)
-                    exportStatus = "EXPORTED — \(url.path)"
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
-                } catch {
-                    exportStatus = "EXPORT FAILED — \(error.localizedDescription)"
+            .disabled(!player.isPlaying && !midiPreview.isPlaying)
+            Button("Stop") { player.stop(); midiPreview.stop() }
+                .disabled(player.state == .idle && midiPreview.state == .idle)
+            Spacer()
+            Menu("More actions") {
+                Button("Rename…") {
+                    guard let item = selectedItem else { return }
+                    renameTitle = item.title
+                    renameCandidate = item
                 }
+                Button("Reveal in Finder") {
+                    guard let item = selectedItem else { return }
+                    NSWorkspace.shared.activateFileViewerSelecting([library.resolvedURL(for: item)])
+                }
+                Button("Open") {
+                    guard let item = selectedItem else { return }
+                    NSWorkspace.shared.open(library.resolvedURL(for: item))
+                }
+                Button("Export bundle") {
+                    guard let item = selectedItem else { return }
+                    do {
+                        let url = try library.exportBundle(for: item)
+                        exportStatus = "Exported: \(url.path)"
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    } catch { exportStatus = "Export failed: \(error.localizedDescription)" }
+                }
+                Button("Copy provenance") {
+                    guard let copyText = selectedItem?.provenance?.copyText else { return }
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(copyText, forType: .string)
+                }
+                .disabled(selectedItem?.provenance == nil)
+                Divider()
+                Button("Delete…", role: .destructive) { deletionCandidate = selectedItem }
             }
-            button(
-                compactLabels ? "COPY" : "COPY PROVENANCE",
-                color: Palette.accentOrange,
-                disabled: selectedItem?.provenance == nil,
-                scale: controlScale
-            ) {
-                guard let copyText = selectedItem?.provenance?.copyText else { return }
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(copyText, forType: .string)
-            }
-            Spacer(minLength: 0)
-            }
+            .disabled(selectedItem == nil)
         }
-        .frame(height: 38)
-    }
-
-    private func button(
-        _ title: String,
-        color: Color,
-        disabled: Bool,
-        scale: CGFloat = 1,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11 * scale, weight: .semibold, design: .monospaced))
-                .tracking(1.0 * scale)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .foregroundColor(disabled ? Palette.ink.opacity(0.46) : color)
-                .padding(.horizontal, 12 * scale)
-                .padding(.vertical, 7 * scale)
-                .background(Palette.deck)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(disabled ? Palette.ink.opacity(0.22) : color, lineWidth: 1.5)
-                )
-        }
-        .buttonStyle(PlainButtonStyle())
-        .disabled(disabled)
-    }
-
-    private func actionButton(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Typography.monoLabel(title, size: 9)
-                .foregroundColor(color)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(color, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func actionColor(for action: AssetAction) -> Color {
-        switch action {
-        case .referenceGenerate:
-            return Palette.accentOrange
-        case .remix, .repaint:
-            return Palette.accentOrange
-        case .stemSplit:
-            return Palette.accentBlue
-        case .vocalSwap:
-            return Palette.accentGreen
-        case .transcribe:
-            return Palette.accentBlue
-        case .analyze:
-            return Palette.accentBlue
-        }
-    }
-
-    private func col(_ text: String) -> some View {
-        Typography.monoLabel(text, size: 10)
-            .foregroundColor(Palette.ink.opacity(0.64))
     }
 
     private func emptyAction(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
@@ -458,15 +451,53 @@ struct LibraryScreen: View {
 
     private var displayedItems: [LibraryItem] {
         library.items.filter { item in
-            collection.includes(item) && searchMatches(item)
+            Self.matches(item, collection: collection, searchText: searchText)
         }
     }
 
-    private func searchMatches(_ item: LibraryItem) -> Bool {
+    static func emptyDetailGuidance(hasItems: Bool, hasMatches: Bool) -> String {
+        if !hasItems { return "Save an asset to see its details here." }
+        if !hasMatches { return "Clear filters to select an asset and see its details." }
+        return "Select an asset in the list to see its details and actions."
+    }
+
+    static func identityDetails(for item: LibraryItem) -> [(label: String, value: String)] {
+        func known(_ value: String?) -> String {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? "Unavailable" : trimmed
+        }
+        let provenance = item.provenance
+        let inputs = provenance?.inputs.sorted { $0.position < $1.position }
+            .map { "\($0.name) — \($0.asset.filename)" }.joined(separator: ", ")
+        let source = (inputs?.isEmpty == false) ? inputs : item.promptOrSource
+        let duration = item.durationSeconds.flatMap { $0.isFinite && $0 >= 0 && $0 < Double(Int.max) ? formatDuration($0) : nil }
+        return [
+            ("Role", known(provenance?.output.name)),
+            ("Source / prompt", known(source)),
+            ("Job", known(provenance?.jobID)),
+            ("Date", item.createdAt.formatted(date: .abbreviated, time: .shortened)),
+            ("Duration", duration ?? "Unavailable")
+        ]
+    }
+
+    static func siblingLabel(for item: LibraryItem) -> String {
+        item.workspaceOperation == "stem_split" ? "STEM" : "SIBLING"
+    }
+
+    static func matches(_ item: LibraryItem, collection: LibraryCollection, searchText: String) -> Bool {
+        guard collection.includes(item) else { return false }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return true }
         return [item.title, item.promptOrSource, item.relativePath, item.workspaceOperation ?? ""]
             .contains { $0.lowercased().contains(query) }
+    }
+
+    /// Keep each filter that admits the navigation target; clear only blockers.
+    static func filtersForNavigation(to item: LibraryItem, collection: LibraryCollection, searchText: String)
+        -> (collection: LibraryCollection, searchText: String) {
+        let visibleCollection: LibraryCollection = collection.includes(item) ? collection : .all
+        let visibleSearch = matches(item, collection: .all, searchText: searchText) ? searchText : ""
+        return (visibleCollection, visibleSearch)
     }
 
     private func clearHiddenSelection() {
@@ -485,14 +516,9 @@ struct LibraryScreen: View {
                         Typography.monoLabel("PROVENANCE", size: 10)
                             .foregroundColor(Palette.ink.opacity(0.64))
                         Spacer()
-                        if item.provenance != nil {
-                            Button(showsTrail ? "HIDE TRAIL" : "SHOW TRAIL") { showsTrail.toggle() }
-                                .buttonStyle(.borderless)
-                                .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                                .foregroundColor(Palette.accentBlue)
-                        }
                     }
                     if alternatives(for: item).count > 1 {
+                        ScrollView(.horizontal) {
                         HStack(spacing: 5) {
                             Typography.monoLabel("ALTERNATIVES", size: 9)
                                 .foregroundColor(Palette.ink.opacity(0.64))
@@ -510,7 +536,7 @@ struct LibraryScreen: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                                .foregroundColor(alternative.id == item.id ? Palette.accentOrange : Palette.ink.opacity(0.68))
+                                .foregroundColor(alternative.id == item.id ? Palette.textOrange : Palette.ink.opacity(0.68))
                             }
                             Button("NEXT") {
                                 guard let alternative = library.items.nextAlternative(after: item) else { return }
@@ -522,29 +548,36 @@ struct LibraryScreen: View {
                             .disabled(library.items.nextAlternative(after: item) == nil)
                             abCompareControls(for: item, group: alternatives(for: item))
                         }
+                        }
                     }
+                    DisclosureGroup("Provenance") {
                     if let provenance = item.provenance {
+                        Button(showsTrail ? "Hide trail" : "Show trail") { showsTrail.toggle() }
                         if showsTrail {
                             trail(for: item, provenance: provenance)
                         } else {
                             Text("OPERATION: \(provenance.operation ?? item.kind.rawValue.uppercased()) · JOB \(provenance.jobID.suffix(8)) · OUTPUT #\(provenance.output.position + 1)")
                                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                                 .foregroundColor(Palette.ink)
-                            Text("SOURCE: \(provenance.inputs.sorted { $0.position < $1.position }.map { "\($0.name) — \($0.asset.filename)" }.joined(separator: ", ").ifEmpty("(none)"))")
-                                .font(.system(size: 10, design: .monospaced))
+                            Text("Source: \(provenance.inputs.sorted { $0.position < $1.position }.map { "\($0.name) — \($0.asset.filename)" }.joined(separator: ", ").ifEmpty("(none)"))")
+                                .font(Typography.help)
                                 .foregroundColor(Palette.ink.opacity(0.72))
                         }
-                        Text("SUBMITTED: \(["seed", "variation_count"].compactMap { key in provenance.parameters[key].map { "\(key)=\($0.displayText)" } }.joined(separator: ", ").ifEmpty("(not specified)"))")
-                            .font(.system(size: 10, design: .monospaced))
+                        Text("Submitted: \(["seed", "variation_count"].compactMap { key in provenance.parameters[key].map { "\(key)=\($0.displayText)" } }.joined(separator: ", ").ifEmpty("(not specified)"))")
+                            .font(Typography.help)
                             .foregroundColor(Palette.ink.opacity(0.72))
-                        Text("PARAMETERS: \(provenance.parameters.keys.sorted().map { "\($0)=\(provenance.parameters[$0]!.displayText)" }.joined(separator: ", ").ifEmpty("(none)"))")
-                            .font(.system(size: 10, design: .monospaced))
+                        Text("Parameters: \(provenance.parameters.keys.sorted().map { "\($0)=\(provenance.parameters[$0]!.displayText)" }.joined(separator: ", ").ifEmpty("(none)"))")
+                            .font(Typography.help)
                             .foregroundColor(Palette.ink.opacity(0.72))
                             .lineLimit(2)
+                    } else if item.kind == .lyrics && item.promptOrSource.hasPrefix("Corrected from ") {
+                        Text("Local correction · \(item.promptOrSource)")
+                            .font(.caption).textSelection(.enabled)
                     } else {
-                        Text("PROVENANCE UNAVAILABLE FOR THIS LEGACY ITEM")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(Palette.ink.opacity(0.60))
+                        Text("Provenance is unavailable for this legacy item.")
+                            .font(Typography.help)
+                            .foregroundColor(Palette.ink.opacity(0.72))
+                    }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -604,14 +637,11 @@ struct LibraryScreen: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Typography.monoLabel("RELATED ASSETS", size: 10)
                             .foregroundColor(Palette.ink.opacity(0.64))
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 4) {
-                                ForEach(related.parents) { relationRow("PARENT", $0) }
-                                ForEach(related.siblings) { relationRow("SIBLING", $0) }
-                                ForEach(related.children) { relationRow("CHILD", $0) }
-                            }
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(related.parents) { relationRow("SOURCE", $0) }
+                            ForEach(related.siblings) { relationRow(Self.siblingLabel(for: item), $0) }
+                            ForEach(related.children) { relationRow("DERIVED", $0) }
                         }
-                        .frame(maxHeight: 96)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -626,14 +656,19 @@ struct LibraryScreen: View {
             HStack(spacing: 8) {
                 Typography.monoLabel(relation, size: 9)
                     .foregroundColor(relationColor(relation))
-                    .frame(width: 50, alignment: .leading)
-                Text(item.title)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(Palette.ink)
-                    .lineLimit(1)
+                    .frame(width: 65, alignment: .leading)
+                VStack(alignment: .leading) {
+                    Text(item.title)
+                    if relation == "STEM", let role = item.provenance?.output.name, !role.isEmpty {
+                        Text("Role: \(role)").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(Palette.ink)
+                .lineLimit(1)
                 Spacer(minLength: 0)
                 Typography.monoLabel(item.kind.shortLabel, size: 9)
-                    .foregroundColor(item.kind == .audio ? Palette.accentGreen : Palette.accentBlue)
+                    .foregroundColor(item.kind == .audio ? Palette.textGreen : Palette.textBlue)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundColor(Palette.ink.opacity(0.45))
@@ -645,14 +680,18 @@ struct LibraryScreen: View {
 
     private func relationColor(_ relation: String) -> Color {
         switch relation {
-        case "PARENT": return Palette.accentOrange
-        case "SIBLING": return Palette.accentBlue
-        default: return Palette.accentGreen
+        case "SOURCE": return Palette.textOrange
+        case "SIBLING", "STEM": return Palette.textBlue
+        default: return Palette.textGreen
         }
     }
 
+    static func alternatives(for item: LibraryItem, in items: [LibraryItem]) -> [LibraryItem] {
+        item.workspaceOperation == "stem_split" ? [item] : items.alternatives(for: item)
+    }
+
     private func alternatives(for item: LibraryItem) -> [LibraryItem] {
-        library.items.alternatives(for: item)
+        Self.alternatives(for: item, in: library.items)
     }
 
     /// A/B compare controls (Phase 5.2): pin the selected item into one of two
@@ -668,19 +707,19 @@ struct LibraryScreen: View {
             Button("A") { compareA = item }
                 .buttonStyle(.borderless)
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                .foregroundColor(pinnedA?.id == item.id ? Palette.accentOrange : Palette.ink.opacity(0.68))
+                .foregroundColor(pinnedA?.id == item.id ? Palette.textOrange : Palette.ink.opacity(0.68))
                 .accessibilityLabel("Pin this alternative as A")
             Button("B") { compareB = item }
                 .buttonStyle(.borderless)
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                .foregroundColor(pinnedB?.id == item.id ? Palette.accentOrange : Palette.ink.opacity(0.68))
+                .foregroundColor(pinnedB?.id == item.id ? Palette.textOrange : Palette.ink.opacity(0.68))
                 .accessibilityLabel("Pin this alternative as B")
             if let a = pinnedA, let b = pinnedB, a.id != b.id {
                 Button("A⇄B") { toggleCompare(a: a, b: b) }
                     .buttonStyle(.borderless)
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundColor(Self.isCompareLoaded(a: a, b: b, loadedID: player.currentItem?.id)
-                        ? Palette.accentGreen : Palette.ink.opacity(0.68))
+                        ? Palette.textGreen : Palette.ink.opacity(0.68))
                     .accessibilityLabel("Toggle playback between the two pinned alternatives")
             }
         }
@@ -704,6 +743,9 @@ struct LibraryScreen: View {
     }
 
     private func select(_ item: LibraryItem) {
+        let filters = Self.filtersForNavigation(to: item, collection: collection, searchText: searchText)
+        collection = filters.collection
+        searchText = filters.searchText
         player.stop()
         midiPreview.stop()
         selectedID = item.id

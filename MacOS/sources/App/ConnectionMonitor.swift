@@ -15,6 +15,15 @@ final class ConnectionMonitor: ObservableObject {
     private enum CapabilitiesState { case loading, loaded, failed }
     @Published private var capabilitiesState: CapabilitiesState = .loading
 
+    var instrumentCatalog: VoiceCatalogState {
+        guard isConnected else { return .unavailable }
+        switch capabilitiesState {
+        case .loading: return .loading
+        case .failed: return .failed
+        case .loaded: return .loaded(instruments)
+        }
+    }
+
     var voiceCatalog: VoiceCatalogState {
         guard isConnected else { return .unavailable }
         switch capabilitiesState {

@@ -6,27 +6,27 @@ import UniformTypeIdentifiers
 struct ReimagineScreen: View {
     @ObservedObject var viewModel: ReimagineViewModel
     var localInferenceAvailable: Bool = true
+    var modelStatuses: [String: String] = [:]
     var analysisAvailable: Bool = true
     var onAnalyzeSource: (URL) -> Void = { _ in }
     var onOpenLibrary: () -> Void = {}
     var router: WorkflowRouter? = nil
     var player: AudioPlayer? = nil
     var library: LocalLibrary? = nil
+    var onShowInLibrary: (LibraryItem) -> Void = { _ in }
 
     @State private var isImporting = false
+    @State private var showAdvanced = false
+    @State private var importError: String?
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 8) {
-                sourceSection
-                operationSection
-                directionSection
-                renderSection
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+        VStack(alignment: .leading, spacing: 8) {
+            sourceSection
+            operationSection
+            directionSection
+            renderSection
         }
-        .scrollIndicators(.visible)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: 760, maxHeight: .infinity, alignment: .topLeading)
         .fileImporter(
             isPresented: $isImporting,
             allowedContentTypes: [.audio],
@@ -36,38 +36,23 @@ struct ReimagineScreen: View {
     }
 
     private var sourceSection: some View {
-        DeckPanel(borderColor: viewModel.sourceURL == nil ? Palette.divider : Palette.accentBlue) {
-            HStack(spacing: 10) {
-                sectionLabel("SOURCE")
-                    .frame(width: 92, alignment: .leading)
-
-                Button(action: { isImporting = true }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: viewModel.sourceURL == nil ? "waveform" : "waveform.badge.checkmark")
-                        Text(viewModel.sourceURL?.lastPathComponent ?? "SELECT AUDIO")
-                            .lineLimit(1)
-                        Spacer(minLength: 4)
-                        Text(viewModel.sourceURL == nil ? "CHOOSE" : "REPLACE")
-                    }
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundColor(viewModel.sourceURL == nil ? Palette.ink : Palette.accentBlue)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Palette.deck)
-                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Palette.divider, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-                .disabled(viewModel.isRunning)
-                .frame(maxWidth: .infinity)
-
-                Button("ANALYZE SOURCE") {
-                    guard let sourceURL = viewModel.sourceURL else { return }
-                    onAnalyzeSource(sourceURL)
-                }
-                .buttonStyle(.borderless)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundColor(Palette.ink.opacity(0.58))
-                .disabled(viewModel.sourceURL == nil || viewModel.isRunning || !analysisAvailable)
+        VStack(alignment: .leading, spacing: 8) {
+            SourceChooser(name: viewModel.sourceURL?.lastPathComponent,
+                          hint: "Choose audio as the basis for your new track.",
+                          accessibilityHint: "Choose an audio file to reimagine",
+                          isDisabled: viewModel.isRunning, error: importError,
+                          choose: { isImporting = true })
+            Button("ANALYZE SOURCE") {
+                guard let sourceURL = viewModel.sourceURL else { return }
+                onAnalyzeSource(sourceURL)
+            }
+            .buttonStyle(.borderless)
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .foregroundColor(Palette.ink.opacity(0.58))
+            .disabled(viewModel.sourceURL == nil || viewModel.isRunning || !analysisAvailable)
+            if viewModel.sourceURL != nil && !analysisAvailable {
+                Text("On-device analysis is unavailable.")
+                    .font(.caption).foregroundColor(Palette.ink.opacity(0.75))
             }
         }
     }
@@ -75,17 +60,22 @@ struct ReimagineScreen: View {
     private var operationSection: some View {
         DeckPanel {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 10) {
-                    sectionLabel("OPERATION")
-                        .frame(width: 92, alignment: .leading)
-                    ForEach(operations, id: \.rawValue) { operation in
-                        operationButton(operation)
+                sectionLabel("OPERATION")
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        ForEach(operations, id: \.rawValue) { operation in
+                            operationButton(operation)
+                        }
+                    }.fixedSize(horizontal: true, vertical: false)
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(operations, id: \.rawValue) { operation in
+                            operationButton(operation)
+                        }
                     }
                 }
                 Text(operationHelp)
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(Palette.ink.opacity(0.64))
-                    .padding(.leading, 102)
+                    .font(Typography.help)
+                    .foregroundColor(Palette.ink.opacity(0.76))
             }
         }
     }
@@ -93,9 +83,8 @@ struct ReimagineScreen: View {
     private var directionSection: some View {
         DeckPanel {
             VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 10) {
                     sectionLabel("MUSICAL DIRECTION")
-                        .frame(width: 124, alignment: .leading)
                     compactTextField("PROMPT", text: $viewModel.prompt)
                     compactTextField("LYRICS", text: $viewModel.lyrics)
                         .disabled(!viewModel.useLyrics)
@@ -107,28 +96,34 @@ struct ReimagineScreen: View {
                         .frame(width: 138)
                 }
 
-                HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 10) {
                     sectionLabel("PRESET")
-                        .frame(width: 124, alignment: .leading)
-                    presetButton("XL TURBO", value: "turbo")
-                    presetButton("XL QUALITY", value: "quality")
-                    compactTextField("BPM", text: $viewModel.bpmText, width: 78)
-                        .disabled(viewModel.operation != .reference)
-                    compactTextField("KEY", text: $viewModel.key, width: 88)
-                        .disabled(viewModel.operation != .reference)
-                    compactTextField("METER", text: $viewModel.timeSignature, width: 88)
-                        .disabled(viewModel.operation != .reference)
-                    if viewModel.operation == .reference {
-                        Picker("Vocal language", selection: $viewModel.vocalLanguage) {
-                            ForEach(VocalLanguage.allCases) { language in
-                                Text(language.label).tag(language)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .frame(width: 100)
+                    HStack {
+                        presetButton("XL TURBO", value: "turbo")
+                        presetButton("XL QUALITY", value: "quality")
                     }
-                    Spacer(minLength: 0)
+                }
+
+                DisclosureGroup(isExpanded: $showAdvanced) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        compactTextField("SEED", text: $viewModel.seedText, width: 142)
+                        compactTextField("BPM", text: $viewModel.bpmText, width: 78)
+                            .disabled(viewModel.operation != .reference)
+                        compactTextField("KEY", text: $viewModel.key, width: 88)
+                            .disabled(viewModel.operation != .reference)
+                        compactTextField("METER", text: $viewModel.timeSignature, width: 88)
+                            .disabled(viewModel.operation != .reference)
+                        if viewModel.operation == .reference {
+                            Picker("Vocal language", selection: $viewModel.vocalLanguage) {
+                                ForEach(VocalLanguage.allCases) { language in
+                                    Text(language.label).tag(language)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
+                    }
+                } label: {
+                    Text(viewModel.hasAdvancedSettings ? "Advanced settings · customized" : "Advanced settings")
                 }
             }
             .disabled(viewModel.isRunning)
@@ -139,34 +134,35 @@ struct ReimagineScreen: View {
         let canCancel = viewModel.isRunning
         return DeckPanel {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
                     sectionLabel("RENDER")
-                        .frame(width: 92, alignment: .leading)
-                    compactTextField("SEED", text: $viewModel.seedText, width: 142)
-                    Stepper("VARIATIONS  \(viewModel.variationCount)", value: $viewModel.variationCount, in: 1...4)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Palette.ink.opacity(0.72))
-                    operationControl
-                    Spacer(minLength: 0)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .top, spacing: 24) { renderControls }
+                            .fixedSize(horizontal: true, vertical: false)
+                        VStack(alignment: .leading, spacing: 10) { renderControls }
+                    }
                 }
                 .disabled(viewModel.isRunning)
 
-                HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 8) {
                     PrimaryActionButton(
-                        title: viewModel.isRunning ? "REIMAGINING…" : "START REIMAGINING",
+                        title: viewModel.isRunning ? "REIMAGINING…" : (viewModel.phase.offersRetry ? "RETRY REIMAGINING" : "START REIMAGINING"),
                         isEnabled: canStart,
                         action: { _ = viewModel.start() }
                     )
                     .accessibilityHint(canStart ? "Starts the Reimagine render" : unavailableReason)
+                    if !canStart && !viewModel.isRunning {
+                        Text(unavailableReason).font(Typography.body(12)).foregroundColor(Palette.ink.opacity(0.76))
+                    }
 
                     Button("CANCEL", action: viewModel.cancel)
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundColor(canCancel ? Palette.accentRed : Palette.ink.opacity(0.52))
+                        .foregroundColor(canCancel ? Palette.textRed : Palette.ink.opacity(0.52))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 11)
                         .overlay(
                             RoundedRectangle(cornerRadius: 4)
-                                .stroke(canCancel ? Palette.accentRed : Palette.divider, lineWidth: 1.5)
+                                .stroke(canCancel ? Palette.textRed : Palette.divider, lineWidth: 1.5)
                         )
                         .buttonStyle(.plain)
                         .disabled(!canCancel)
@@ -177,28 +173,28 @@ struct ReimagineScreen: View {
                         .buttonStyle(.borderless)
                 }
 
-                if let error = viewModel.errorMessage {
-                    Text(error)
+                if viewModel.operation == .repaint, viewModel.sourceURL != nil {
+                    Text(viewModel.sourceDurationSeconds.map {
+                        "Source duration: \(String(format: "%.2f", $0)) seconds. Repaint range: 3–90 seconds."
+                    } ?? "Source duration unavailable; the repaint range cannot be checked against the source.")
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Palette.accentRed)
+                        .foregroundColor(Palette.ink.opacity(0.72))
                 }
-                if viewModel.phase == .done {
-                    HStack(spacing: 10) {
-                        Text("Saved \(viewModel.results.count) result(s) to Library.")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(Palette.ink.opacity(0.72))
-                        if let player, let library,
-                           let audio = viewModel.results.first(where: { $0.kind == .audio }) {
-                            MiniWaveform(item: audio, library: library)
-                            InlinePlayButton(player: player, item: audio, library: library)
-                        }
-                    }
-                    if let router, let latest = viewModel.results.last {
-                        NextActionsRow(router: router, item: latest)
-                    }
+                WorkflowStatusView(status: viewModel.phase, elapsed: viewModel.elapsed)
+                if viewModel.phase == .done, let library {
+                    SelectedResultSurface(results: viewModel.results, router: router, player: player,
+                                          library: library, onShowInLibrary: onShowInLibrary)
                 }
             }
         }
+    }
+
+    @ViewBuilder private var renderControls: some View {
+        Stepper("VARIATIONS  \(viewModel.variationCount)", value: $viewModel.variationCount, in: 1...4)
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundColor(Palette.ink.opacity(0.72))
+            .fixedSize()
+        operationControl
     }
 
     @ViewBuilder private var operationControl: some View {
@@ -207,7 +203,7 @@ struct ReimagineScreen: View {
             VStack(alignment: .leading, spacing: 3) {
                 Typography.monoLabel("DURATION  \(Int(viewModel.durationSeconds)) SEC", size: 9)
                 Slider(value: $viewModel.durationSeconds, in: 10...600, step: 5)
-                    .tint(Palette.accentOrange)
+                    .tint(Palette.textOrange)
                     .frame(width: 150)
             }
             .foregroundColor(Palette.ink.opacity(0.72))
@@ -218,21 +214,29 @@ struct ReimagineScreen: View {
                     size: 9
                 )
                 Slider(value: $viewModel.sourceStrength, in: 0...1, step: 0.05)
-                    .tint(Palette.accentOrange)
+                    .tint(Palette.textOrange)
                     .frame(width: 150)
             }
             .foregroundColor(Palette.ink.opacity(0.72))
         case .repaint:
-            HStack(spacing: 6) {
-                compactNumberField("START", value: $viewModel.startSeconds)
-                compactNumberField("END", value: $viewModel.endSeconds)
+            VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Typography.monoLabel("START (SEC)", size: 9)
+                    compactNumberField("START", value: $viewModel.startSeconds)
+                        .accessibilityLabel("Repaint start in seconds")
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Typography.monoLabel("END (SEC)", size: 9)
+                    compactNumberField("END", value: $viewModel.endSeconds)
+                        .accessibilityLabel("Repaint end in seconds")
+                }
                 VStack(alignment: .leading, spacing: 3) {
                     Typography.monoLabel(
                         "STRENGTH  \(String(format: "%.2f", viewModel.repaintStrength))",
                         size: 9
                     )
                     Slider(value: $viewModel.repaintStrength, in: 0...1, step: 0.05)
-                        .tint(Palette.accentOrange)
+                        .tint(Palette.textOrange)
                         .frame(width: 110)
                 }
             }
@@ -240,15 +244,17 @@ struct ReimagineScreen: View {
         }
     }
 
-    private var canStart: Bool {
+    var canStart: Bool {
         localInferenceAvailable
+            && !WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [WorkflowReadiness.generationModel(preset: viewModel.preset)])
             && !viewModel.isRunning
             && viewModel.sourceURL != nil
             && !viewModel.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var unavailableReason: String {
-        if !localInferenceAvailable { return "Local inference is unavailable" }
+    var unavailableReason: String {
+        if !localInferenceAvailable { return "Local inference is unavailable. Start the local sidecar and retry." }
+        if WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [WorkflowReadiness.generationModel(preset: viewModel.preset)]) { return WorkflowReadiness.description(connected: true, statuses: modelStatuses, models: [WorkflowReadiness.generationModel(preset: viewModel.preset)]) }
         if viewModel.isRunning { return "A Reimagine render is already running" }
         if viewModel.sourceURL == nil { return "Select an audio source first" }
         return "Enter a prompt first"
@@ -280,9 +286,10 @@ struct ReimagineScreen: View {
                     .minimumScaleFactor(0.8)
 
                 Rectangle()
-                    .fill(selected ? Palette.accentBlue : Color.clear)
+                    .fill(selected ? Palette.textBlue : Color.clear)
                     .frame(width: 38, height: 3)
             }
+            .padding(.horizontal, 16)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 9)
             .background(selected ? Palette.ink : Palette.deck)
@@ -299,9 +306,9 @@ struct ReimagineScreen: View {
     }
 
     private func sectionLabel(_ title: String) -> some View {
-        Typography.monoLabel(title, size: 10)
-            .foregroundColor(Palette.ink.opacity(0.72))
-            .accessibilityLabel(title)
+        Text(title.capitalized)
+            .font(Typography.heading)
+            .foregroundColor(Palette.ink)
     }
 
     private func compactTextField(
@@ -311,15 +318,15 @@ struct ReimagineScreen: View {
     ) -> some View {
         ZStack(alignment: .leading) {
             if text.wrappedValue.isEmpty {
-                Text(placeholder)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(Palette.ink.opacity(0.46))
+                Text(placeholder.capitalized)
+                    .font(Typography.help)
+                    .foregroundColor(Palette.ink.opacity(0.68))
                     .allowsHitTesting(false)
             }
 
             TextField("", text: text)
                 .textFieldStyle(.plain)
-                .font(.system(size: 10, design: .monospaced))
+                .font(Typography.body())
                 .foregroundColor(Palette.ink)
         }
             .padding(.horizontal, 8)
@@ -355,7 +362,13 @@ struct ReimagineScreen: View {
     }
 
     private func selectSource(_ result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
-        viewModel.sourceURL = url
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            importError = nil
+            viewModel.sourceURL = url
+        case .failure(let error):
+            importError = "Could not select audio: \(error.localizedDescription). Choose another file."
+        }
     }
 }

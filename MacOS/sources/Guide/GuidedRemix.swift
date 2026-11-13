@@ -29,10 +29,11 @@ final class GuidedRemixModel: ObservableObject {
     /// The prepared source item (the split's instrumental residual) so the
     /// studio can audition it in place before jumping to Reimagine.
     @Published private(set) var deliveredItem: LibraryItem?
+    @Published private(set) var analysisSummary: String?
 
     /// Called with (source item if the split produced one, fallback URL,
     /// derived metadata) when the run finishes.
-    var onDeliver: ((LibraryItem?, URL, DerivedMetadata?) -> Void)?
+    var onDeliver: ((LibraryItem?, URL, DerivedMetadata?) -> Result<Void, WorkflowRouter.HandoffError>)?
 
     private let api: any DurableSourceProcessing
     private let reattacher: any ReimagineJobReattaching
@@ -80,6 +81,7 @@ final class GuidedRemixModel: ObservableObject {
         errorMessage = nil
         deliveredSource = nil
         deliveredItem = nil
+        analysisSummary = nil
         states = [:]
         set(.splitVocals, splitFirst ? .pending : .skipped)
         set(.analyze, analyzeFirst ? .pending : .skipped)
@@ -184,8 +186,8 @@ final class GuidedRemixModel: ObservableObject {
         let job = try await Task { try await api.submitSourceProcessing(request) }.value
         guard runID == token, !Task.isCancelled else {
             // Keep recovery possible even if the cancellation request fails.
-            try? reattacher.track(job)
-            Task { try? await api.cancel(jobID: job.id) }
+            defer { Task { try? await api.cancel(jobID: job.id) } }
+            try reattacher.trackForBackground(job)
             throw CancellationError()
         }
         acceptedJobID = job.id
@@ -208,11 +210,35 @@ final class GuidedRemixModel: ObservableObject {
         stopTicker()
         task = nil
         isRunning = false
-        deliveredSource = item?.title ?? sourceURL.lastPathComponent
-        deliveredItem = item
+        analysisSummary = derived.map(Self.describeMetadata)
         runID = nil
         acceptedJobID = nil
-        onDeliver?(item, sourceURL, derived)
+        switch onDeliver?(item, sourceURL, derived) {
+        case .success:
+            deliveredSource = item?.title ?? sourceURL.lastPathComponent
+            deliveredItem = item
+        case .failure(let error):
+            errorMessage = error.message
+        case nil:
+            errorMessage = "Reimagine is unavailable. Try again after reopening the app."
+        }
+    }
+
+    static func describeMetadata(_ metadata: DerivedMetadata) -> String {
+        var parts: [String] = []
+        if let duration = metadata.durationSeconds, duration.isFinite, duration >= 0 {
+            parts.append(String(format: "%.1f sec", duration))
+        }
+        var musicalParts: [String] = []
+        if let bpm = metadata.beatsPerMinute, bpm.isFinite {
+            musicalParts.append(String(format: "%g BPM", bpm))
+        }
+        if let key = metadata.key, !key.isEmpty { musicalParts.append("Key: \(key)") }
+        if let meter = metadata.timeSignature, !meter.isEmpty { musicalParts.append("Meter: \(meter)") }
+        if musicalParts.isEmpty {
+            return parts.isEmpty ? "No musical metadata available." : "Duration only: \(parts[0]); BPM, key and meter unavailable."
+        }
+        return "Available analysis: " + (parts + musicalParts).joined(separator: " • ")
     }
 
     private func handle(_ error: Error, token: UUID) {
@@ -280,6 +306,7 @@ final class GuidedRemixModel: ObservableObject {
 struct GuidedRemixView: View {
     @ObservedObject var model: GuidedRemixModel
     var localInferenceAvailable = true
+    var modelStatuses: [String: String] = [:]
     var onOpenReimagine: () -> Void = {}
     var player: AudioPlayer? = nil
     var library: LocalLibrary? = nil
@@ -287,16 +314,17 @@ struct GuidedRemixView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            WorkflowReadinessView(connected: localInferenceAvailable, statuses: modelStatuses, models: model.splitFirst ? ["sam_audio"] : [])
             DeckPanel {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Typography.monoLabel("ONE SONG IN — READY TO REMIX", size: 11)
+                        Text("Prepare a song for remix").font(Typography.heading)
                             .foregroundColor(Palette.ink)
                         Spacer()
                     }
-                    Text("Prepares the remix in Reimagine: optionally splits the vocals first so you remix the instrumental, reads BPM and key on-device, then opens Reimagine with everything pre-filled. The remix direction stays yours.")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Palette.ink.opacity(0.66))
+                    Text("Prepares a source for Reimagine. Optionally separate vocals and read available metadata; separation quality varies and analysis may only provide duration. Set the direction and render in Reimagine — this step does not create a remix.")
+                        .font(Typography.help)
+                        .foregroundColor(Palette.ink.opacity(0.75))
                 }
             }
             DeckPanel {
@@ -310,7 +338,7 @@ struct GuidedRemixView: View {
                     Toggle("SPLIT VOCALS FIRST — REMIX THE INSTRUMENTAL", isOn: $model.splitFirst)
                         .toggleStyle(PanelToggleStyle())
                         .disabled(model.isRunning)
-                    Toggle("ANALYZE BPM / KEY", isOn: $model.analyzeFirst)
+                    Toggle("READ AVAILABLE METADATA", isOn: $model.analyzeFirst)
                         .toggleStyle(PanelToggleStyle())
                         .disabled(model.isRunning)
                 }
@@ -319,7 +347,7 @@ struct GuidedRemixView: View {
             HStack {
                 PrimaryActionButton(
                     title: model.isRunning ? "PREPARING…" : "PREPARE REMIX",
-                    isEnabled: model.canStart && localInferenceAvailable,
+                    isEnabled: model.canStart && localInferenceAvailable && !WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: model.splitFirst ? ["sam_audio"] : []),
                     action: { model.start() }
                 )
                 if model.isRunning { Button("CANCEL", action: model.cancel) }
@@ -327,7 +355,12 @@ struct GuidedRemixView: View {
             }
             stepper
             if let error = model.errorMessage {
-                Text(error).foregroundStyle(Palette.accentRed)
+                Text(error).foregroundStyle(Palette.textRed)
+            }
+            if let summary = model.analysisSummary {
+                Text(summary)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(Palette.ink.opacity(0.8))
             }
             if let delivered = model.deliveredSource {
                 HStack(spacing: 8) {
@@ -336,7 +369,7 @@ struct GuidedRemixView: View {
                     }
                     Text("READY IN REIMAGINE — \(delivered). Adjust the direction and render there.")
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Palette.accentGreen)
+                        .foregroundColor(Palette.textGreen)
                 }
             }
         }
@@ -354,7 +387,7 @@ struct GuidedRemixView: View {
                     Spacer()
                     if model.isRunning {
                         Typography.monoLabel("\(Int(model.elapsed))s", size: 10)
-                            .foregroundColor(Palette.accentBlue)
+                            .foregroundColor(Palette.textBlue)
                     }
                 }
                 ForEach(GuidedRemixModel.Stage.allCases) { stage in
@@ -395,10 +428,10 @@ struct GuidedRemixView: View {
     private static func color(for state: GuidedStageState) -> Color {
         switch state {
         case .pending: Palette.ink.opacity(0.5)
-        case .running: Palette.accentBlue
-        case .done: Palette.accentGreen
+        case .running: Palette.textBlue
+        case .done: Palette.textGreen
         case .skipped: Palette.ink.opacity(0.42)
-        case .failed: Palette.accentRed
+        case .failed: Palette.textRed
         case .cancelled: Palette.ink.opacity(0.6)
         }
     }

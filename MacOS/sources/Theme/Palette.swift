@@ -7,7 +7,7 @@ import SwiftUI
 /// used for decoration).
 enum Palette {
     /// Light control deck / chassis background.
-    static let deck = Color(hex: 0xF0EFEA)
+    static let deck = Color(hex: deckHex)
     /// Near-black dot-matrix screen panel.
     static let screen = Color(hex: 0x1A1A1A)
     /// Primary text on the light deck.
@@ -24,6 +24,20 @@ enum Palette {
     static let accentGreen = Color(hex: 0x00C853)
     /// TE red — error / disconnected.
     static let accentRed = Color(hex: 0xE5352B)
+
+    // Opaque semantic colors for text on the light deck and raised panels.
+    // Keep the brighter accents above for decorative/non-text uses.
+    static let textOrangeHex: UInt32 = 0x963500
+    static let textBlueHex: UInt32 = 0x00558F
+    static let textGreenHex: UInt32 = 0x00652D
+    static let textRedHex: UInt32 = 0xA51C18
+    static let boundaryHex: UInt32 = 0x6B6963
+    static let deckHex: UInt32 = 0xF0EFEA
+    static let textOrange = Color(hex: textOrangeHex)
+    static let textBlue = Color(hex: textBlueHex)
+    static let textGreen = Color(hex: textGreenHex)
+    static let textRed = Color(hex: textRedHex)
+    static let boundary = Color(hex: boundaryHex)
 
     /// Subtle divider used between deck sections (thin ruled line).
     static let divider = Color(hex: 0xD8D5CC)

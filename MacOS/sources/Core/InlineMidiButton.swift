@@ -17,11 +17,11 @@ struct InlineMidiButton: View {
                     .font(.system(size: 8, weight: .bold))
                 Typography.monoLabel(isPlaying ? "PAUSE" : "PLAY", size: 9)
             }
-            .foregroundColor(isPlaying ? Palette.accentGreen : Palette.ink.opacity(0.76))
+            .foregroundColor(isPlaying ? Palette.textGreen : Palette.ink.opacity(0.76))
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(
-                isPlaying ? Palette.accentGreen : Palette.divider, lineWidth: 1))
+                isPlaying ? Palette.textGreen : Palette.boundary, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isPlaying ? "Pause \(item.title)" : "Play \(item.title)")

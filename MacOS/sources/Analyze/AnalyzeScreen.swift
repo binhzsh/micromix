@@ -7,13 +7,13 @@ struct AnalyzeScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Typography.monoLabel("3. ANALYZE — ON-DEVICE MUSIC UNDERSTANDING", size: 11)
+            Text("Analyze — on-device music understanding").font(Typography.heading)
                 .foregroundColor(Palette.ink.opacity(0.76))
 
             Text(AnalyzeViewModel.capabilityDescription(
                 supportsMusicUnderstanding: AnalyzeViewModel.supportsMusicUnderstanding
             ))
-                .font(.system(size: 11, design: .monospaced))
+                .font(Typography.help)
                 .foregroundColor(Palette.ink.opacity(0.68))
 
             sourcePanel
@@ -39,17 +39,25 @@ struct AnalyzeScreen: View {
                             .foregroundColor(Palette.ink.opacity(0.68))
                         Text(analysis.compactDescription)
                             .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Palette.accentBlue)
+                            .foregroundColor(Palette.textBlue)
                             .textSelection(.enabled)
                         if let router, let url = viewModel.sourceURL {
+                            let fields = [analysis.beatsPerMinute == nil ? nil : "BPM", analysis.key == nil ? nil : "key"].compactMap { $0 }
+                            Text(fields.isEmpty
+                                 ? "No BPM or key available to transfer. Reimagine can still use the source audio."
+                                 : "Available metadata: \(fields.joined(separator: " and ")). Existing destination edits are preserved. Generate does not receive the audio.")
+                                .font(.caption)
+                                .foregroundColor(Palette.ink.opacity(0.68))
                             HStack(spacing: 7) {
                                 Typography.monoLabel("NEXT ACTIONS", size: 9)
                                     .foregroundColor(Palette.ink.opacity(0.64))
-                                chainedAction("USE IN REIMAGINE", color: Palette.accentOrange) {
+                                chainedAction("USE IN REIMAGINE", color: Palette.textOrange) {
                                     router.reimagineReference(url: url, derived: DerivedMetadata(from: analysis))
                                 }
-                                chainedAction("USE IN GENERATE", color: Palette.accentOrange) {
-                                    router.prefillGenerate(with: DerivedMetadata(from: analysis))
+                                if !fields.isEmpty {
+                                    chainedAction("USE IN GENERATE", color: Palette.textOrange) {
+                                        router.prefillGenerate(with: DerivedMetadata(from: analysis))
+                                    }
                                 }
                             }
                         }
@@ -58,8 +66,8 @@ struct AnalyzeScreen: View {
             } else if let error = viewModel.error {
                 DeckPanel {
                     Text(error)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(Palette.accentRed)
+                        .font(Typography.help)
+                        .foregroundColor(Palette.textRed)
                 }
             } else {
                 outputPreview
@@ -69,38 +77,10 @@ struct AnalyzeScreen: View {
     }
 
     private var sourcePanel: some View {
-        Button(action: pick) {
-            DeckPanel(borderColor: viewModel.sourceName.isEmpty ? Palette.divider : Palette.accentBlue) {
-                HStack(spacing: 14) {
-                    waveform
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(viewModel.sourceName.isEmpty ? "SELECT OR DROP AUDIO" : viewModel.sourceName)
-                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                            .foregroundColor(viewModel.sourceName.isEmpty ? Palette.ink : Palette.accentBlue)
-                            .lineLimit(1)
-                        Typography.monoLabel("WAV, AIFF, MP3, M4A  •  ON-DEVICE", size: 9)
-                            .foregroundColor(Palette.ink.opacity(0.64))
-                    }
-                    Spacer(minLength: 8)
-                    Typography.monoLabel(viewModel.sourceName.isEmpty ? "CHOOSE" : "REPLACE", size: 10)
-                        .foregroundColor(Palette.ink)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(viewModel.isRunning)
-        .accessibilityHint("Choose an audio file to analyze, or drop one here")
-    }
-
-    private var waveform: some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach([8.0, 18.0, 12.0, 24.0, 16.0, 10.0], id: \.self) { height in
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Palette.accentBlue)
-                    .frame(width: 3, height: height)
-            }
-        }
-        .frame(width: 32, height: 28)
+        SourceChooser(name: viewModel.sourceName.isEmpty ? nil : viewModel.sourceName,
+                      hint: "WAV, AIFF, MP3 or M4A. Choose or drop audio for on-device analysis.",
+                      accessibilityHint: "Choose an audio file to analyze, or drop one here",
+                      isDisabled: viewModel.isRunning, choose: pick)
     }
 
     private var outputPreview: some View {
@@ -117,7 +97,7 @@ struct AnalyzeScreen: View {
                     }
                 }
                 Text("Choose an audio file to analyze it without uploading it.")
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(Typography.help)
                     .foregroundColor(Palette.ink.opacity(0.64))
             }
         }

@@ -39,6 +39,13 @@ private struct NoopSourceProcessingAPI: DurableSourceProcessing {
     func cancel(jobID: String) async throws {}
 }
 
+@MainActor
+private final class HandoffReceiver: AssetAccepting {
+    var canAcceptSource = true
+    var received: AssetActionContext?
+    func acceptSource(_ context: AssetActionContext) { received = context }
+}
+
 @Suite("WorkflowRouter chaining")
 @MainActor
 struct WorkflowRouterTests {
@@ -47,6 +54,30 @@ struct WorkflowRouterTests {
         let reimagine = ReimagineViewModel(api: NoopReimagineAPI(), reattacher: NoopReattacher())
         let router = WorkflowRouter(library: LocalLibrary(directory: nil), generate: generate, reimagine: reimagine)
         return (router, generate, reimagine)
+    }
+
+    @Test("lyrics handoff preserves independent musical direction and language")
+    func lyricsHandoff() {
+        let (router, generate, _) = makeRouter()
+        generate.prompt = "dream pop"
+        generate.vocalLanguage = .vietnamese
+        var switched: DeviceMode?
+        router.onSwitchMode = { switched = $0 }
+        if case .failure = router.useGenerateLyrics("corrected\nwords") { Issue.record("Handoff failed") }
+        #expect(generate.lyrics == "corrected\nwords")
+        #expect(generate.useLyrics)
+        #expect(generate.prompt == "dream pop")
+        #expect(generate.vocalLanguage == .vietnamese)
+        #expect(switched == .generate)
+        switched = nil
+        #expect(generate.start())
+        if case .success = router.useGenerateLyrics("must not replace") { Issue.record("Busy handoff must be rejected") }
+        #expect(generate.lyrics == "corrected\nwords")
+        #expect(generate.prompt == "dream pop")
+        #expect(generate.vocalLanguage == .vietnamese)
+        #expect(switched == nil)
+        #expect(router.handoffError?.message.contains("busy") == true)
+        generate.cancel()
     }
 
     @Test("lyrics cannot route to audio or MIDI workflows")
@@ -63,14 +94,17 @@ struct WorkflowRouterTests {
     }
 
     @Test("reimagineReference switches mode, sets reference operation, and prefills metadata")
-    func reimagineReferenceRoutesAndPrefills() {
+    func reimagineReferenceRoutesAndPrefills() throws {
         let (router, _, reimagine) = makeRouter()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".wav")
+        try Data("audio".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
         router.reimagineReference(
-            url: URL(fileURLWithPath: "/tmp/loop.wav"),
+            url: url,
             derived: DerivedMetadata(beatsPerMinute: 124, key: "A minor")
         )
         #expect(reimagine.operation == .reference)
-        #expect(reimagine.sourceURL == URL(fileURLWithPath: "/tmp/loop.wav"))
+        #expect(reimagine.sourceURL == url)
         #expect(reimagine.bpmText == "124")
         #expect(reimagine.key == "A minor")
     }
@@ -96,9 +130,44 @@ struct WorkflowRouterTests {
         #expect(reimagine.timeSignature == "4")
     }
 
+    @Test("busy and missing source handoffs preserve the receiver and do not navigate")
+    func rejectedHandoffs() throws {
+        let (router, _, _) = makeRouter()
+        let receiver = HandoffReceiver()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let context = AssetActionContext(sourceURL: url, action: .remix)
+        let previous = AssetActionContext(sourceURL: URL(fileURLWithPath: "/previous.wav"), action: .remix)
+        receiver.acceptSource(previous)
+        var switches = 0
+        router.onSwitchMode = { _ in switches += 1 }
+
+        receiver.canAcceptSource = false
+        let busy = router.handoff(context, to: receiver, mode: .reimagine)
+        if case .failure(let error) = busy { #expect(error.message.contains("busy")) }
+        else { Issue.record("Busy handoff must be rejected") }
+        #expect(router.handoffError?.message.contains("busy") == true)
+        #expect(receiver.received?.sourceURL == previous.sourceURL && switches == 0)
+
+        receiver.canAcceptSource = true
+        let missing = router.handoff(context, to: receiver, mode: .reimagine)
+        if case .failure(let error) = missing { #expect(error.message.contains("missing or unreadable")) }
+        else { Issue.record("Missing source handoff must be rejected") }
+        #expect(router.handoffError?.message.contains("missing or unreadable") == true)
+        #expect(receiver.received?.sourceURL == previous.sourceURL && switches == 0)
+
+        try Data("audio".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let accepted = router.handoff(context, to: receiver, mode: .reimagine)
+        if case .failure = accepted { Issue.record("Readable source handoff must be accepted") }
+        #expect(receiver.received?.sourceURL == url && switches == 1)
+        #expect(router.handoffError == nil)
+    }
+
     @Test("stem-split and vocal-swap actions deliver the source to SourceProcessing flows")
-    func routesSourceProcessingActions() {
-        let library = LocalLibrary(directory: nil)
+    func routesSourceProcessingActions() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let library = LocalLibrary(directory: directory)
         let vocalSwap = SourceProcessingViewModel(operation: .vocalSwap, api: NoopSourceProcessingAPI(), reattacher: NoopReattacher())
         let stemSplit = SourceProcessingViewModel(operation: .stemSplit, api: NoopSourceProcessingAPI(), reattacher: NoopReattacher())
         let router = WorkflowRouter(library: library, vocalSwap: vocalSwap, stemSplit: stemSplit)
@@ -109,6 +178,9 @@ struct WorkflowRouterTests {
             id: UUID(), kind: .audio, title: "song", createdAt: Date(),
             promptOrSource: "song", durationSeconds: nil, relativePath: "audio/song.wav"
         )
+        let source = library.resolvedURL(for: item)
+        try FileManager.default.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("audio".utf8).write(to: source)
         router.execute(.stemSplit, on: item)
         router.execute(.vocalSwap, on: item)
 

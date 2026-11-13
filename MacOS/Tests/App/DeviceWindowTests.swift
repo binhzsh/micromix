@@ -6,13 +6,150 @@ import Testing
 @MainActor
 @Suite("Device window regressions")
 struct DeviceWindowTests {
-    @Test("studio modes are ordered and numbered one through seven")
+    @Test("inspector resolves only an existing Library selection")
+    func inspectorSelection() {
+        let id = UUID()
+        let item = LibraryItem(id: id, kind: .audio, title: "Selected", createdAt: Date(), promptOrSource: "", durationSeconds: nil, relativePath: "audio/example.wav")
+        #expect(SessionInspector.selectedItem(id: id, items: [item]) == item)
+        #expect(SessionInspector.selectedItem(id: nil, items: [item]) == nil)
+        #expect(SessionInspector.selectedItem(id: UUID(), items: [item]) == nil)
+    }
+
+    @Test("guide describes walkthroughs separately from executable studios")
+    func guideKinds() {
+        for tab in WorkflowGuideView.GuideTab.allCases {
+            let expected = [WorkflowGuideView.GuideTab.cover, .reimagine, .fromScratch].contains(tab)
+            #expect(tab.isWalkthrough == expected)
+            #expect(tab.kindDescription.contains(expected ? "steps run separately" : "run the available steps here"))
+        }
+    }
+
+    @Test("active work identifies its workspace and elapsed time without invented progress")
+    func activeWorkDescription() {
+        let item = ActiveWorkspaceWork(destination: .workspace(.transcribe), running: true, elapsed: 12.8, cancel: {})
+        #expect(item.id == .workspace(.transcribe))
+        #expect(item.description == "TRANSCRIBE — running, 12s elapsed")
+    }
+
+    @Test("active analysis opens Analyze without an invented timer or cancellation")
+    func activeAnalysis() {
+        let work = [ActiveWorkspaceWork.analyze(running: true), .analyze(running: false)].filter(\.running)
+        #expect(work.count == 1)
+        let item = work[0]
+        #expect(item.description == "ANALYZE — running")
+        #expect(item.cancel == nil)
+        var mode = DeviceMode.generate
+        var tab = WorkflowGuideView.GuideTab.cover
+        item.destination.open(mode: &mode, guideTab: &tab)
+        #expect(mode == .analyze)
+    }
+
+    @Test("guided work opens its own studio and cancels only its own job")
+    func guidedWorkActions() {
+        let tabs: [WorkflowGuideView.GuideTab] = [.studio, .remixStudio, .transcribeStudio, .vocalSwapStudio]
+        var cancelled: [WorkflowGuideView.GuideTab] = []
+        let work = tabs.map { tab in
+            ActiveWorkspaceWork(destination: .guide(tab), running: true, elapsed: 1, cancel: { cancelled.append(tab) })
+        }
+        #expect(Set(work.map(\.id)).count == 4)
+        for (index, item) in work.enumerated() {
+            var mode = DeviceMode.generate
+            var selectedTab = WorkflowGuideView.GuideTab.cover
+            item.destination.open(mode: &mode, guideTab: &selectedTab)
+            #expect(mode == .guide)
+            #expect(selectedTab == tabs[index])
+            item.cancel?()
+            #expect(cancelled == Array(tabs.prefix(index + 1)))
+        }
+    }
+
+    @Test("instrument catalog status remains visible alongside cached items")
+    func instrumentCatalogStatus() {
+        for state in [VoiceCatalogState.loading, .failed, .unavailable] {
+            #expect(InstrumentPicker.catalogMessage(state, hasItems: true)?.contains("CACHED") == true)
+            #expect(InstrumentPicker.catalogMessage(state, hasItems: false)?.contains("CACHED") == false)
+        }
+        #expect(InstrumentPicker.catalogMessage(.loaded([]), hasItems: true) == nil)
+        #expect(InstrumentPicker.catalogMessage(.loaded([]), hasItems: false) == "INSTRUMENT CATALOG IS EMPTY")
+    }
+
+    @Test("recovery feedback distinguishes ongoing and unavailable saved jobs")
+    func recoveryFeedback() {
+        #expect(ActiveWorkBar.recoveryDescription(.idle) == nil)
+        #expect(ActiveWorkBar.recoveryDescription(.recovering(2)) == "Recovering 2 saved job(s)")
+        #expect(ActiveWorkBar.recoveryDescription(.pending(1)) == "1 saved job(s) pending recovery")
+        #expect(ActiveWorkBar.recoveryDescription(.unavailable(1))?.contains("could not be recovered") == true)
+        #expect(ActiveWorkBar.canRetryRecovery(.unavailable(1)))
+        #expect(ActiveWorkBar.canRetryRecovery(.missing(1)))
+        #expect(!ActiveWorkBar.canRetryRecovery(.recovering(1)))
+        #expect(ActiveWorkBar.recoveryDescription(.missing(1))?.contains("unavailable in the local service") == true)
+    }
+
+    @Test("active work viewport stays bounded at small and large window heights")
+    func activeWorkViewportHeight() {
+        #expect(ActiveWorkBar.maximumHeight(windowHeight: 640) == 160)
+        #expect(ActiveWorkBar.maximumHeight(windowHeight: 700) == 175)
+        #expect(ActiveWorkBar.maximumHeight(windowHeight: 1200) == 200)
+        #expect(ActiveWorkBar.maximumHeight(windowHeight: 0) == 0)
+    }
+
+    @Test("inspector overlays only when the remaining canvas is narrow")
+    func inspectorLayout() {
+        #expect(WorkspaceLayout.overlaysInspector(windowWidth: 900, sidebarVisible: true))
+        #expect(WorkspaceLayout.overlaysInspector(windowWidth: 980, sidebarVisible: true))
+        #expect(!WorkspaceLayout.overlaysInspector(windowWidth: 900, sidebarVisible: false))
+        #expect(!WorkspaceLayout.overlaysInspector(windowWidth: 1_200, sidebarVisible: true))
+    }
+
+    @Test("persistent workspace menu assigns every mode its command shortcut")
+    func workspaceShortcuts() {
+        let expected: [(DeviceMode, Character)] = [
+            (.generate, "1"), (.reimagine, "2"), (.analyze, "3"),
+            (.transcribe, "4"), (.vocalSwap, "5"), (.stemSplit, "6"),
+            (.library, "7"), (.timeline, "8"), (.guide, "?"),
+        ]
+        #expect(DeviceMode.allCases.count == expected.count)
+        for (mode, key) in expected {
+            #expect(mode.shortcutKey == key)
+        }
+        #expect(Set(DeviceMode.allCases.map(\.shortcutKey)).count == expected.count)
+    }
+
+    @Test("guide has an unnumbered accessibility name")
+    func guideAccessibilityName() {
+        #expect(DeviceMode.guide.accessibilityName == "GUIDE")
+        #expect(DeviceMode.library.accessibilityName == "LIBRARY, mode 7 of 8")
+    }
+
+    @Test("window controls move to the persistent header when the sidebar is hidden")
+    func windowControlsPlacement() {
+        #expect(WorkspaceLayout.windowControlsInHeader(sidebarVisible: false))
+        #expect(!WorkspaceLayout.windowControlsInHeader(sidebarVisible: true))
+    }
+
+    @Test("window actions dispatch to the corresponding native operation")
+    func windowActionDispatch() {
+        let target = WindowActionSpy()
+        WorkspaceWindowAction.close.perform(on: target)
+        WorkspaceWindowAction.minimize.perform(on: target)
+        WorkspaceWindowAction.zoom.perform(on: target)
+        #expect(target.calls == ["close", "minimize", "zoom"])
+    }
+
+    private final class WindowActionSpy: WorkspaceWindowActionTarget {
+        var calls: [String] = []
+        func closeWorkspaceWindow() { calls.append("close") }
+        func minimizeWorkspaceWindow() { calls.append("minimize") }
+        func zoomWorkspaceWindow() { calls.append("zoom") }
+    }
+
+    @Test("studio modes are ordered and numbered one through eight")
     func studioModeOrderAndNumbers() {
         let selectable = DeviceMode.allCases.filter(\.isSelectableMode)
         #expect(selectable.map(\.rawValue) == [
-            "GENERATE", "REIMAGINE", "ANALYZE", "TRANSCRIBE", "VOCAL SWAP", "STEM SPLIT", "LIBRARY",
+            "GENERATE", "REIMAGINE", "ANALYZE", "TRANSCRIBE", "VOCAL SWAP", "STEM SPLIT", "LIBRARY", "TIMELINE",
         ])
-        #expect(selectable.map(\.displayIndex) == [1, 2, 3, 4, 5, 6, 7])
+        #expect(selectable.map(\.displayIndex) == [1, 2, 3, 4, 5, 6, 7, 8])
         #expect(DeviceMode.allCases.contains(.guide))
     }
 
@@ -21,13 +158,13 @@ struct DeviceWindowTests {
         let selectable = DeviceMode.allCases.filter(\.isSelectableMode)
         for mode in selectable {
             let button = PanelButton(title: mode.rawValue, index: mode.displayIndex)
-            #expect(button.accessibilityDescription == "\(mode.rawValue), mode \(mode.displayIndex) of 7")
+            #expect(button.accessibilityDescription == "\(mode.rawValue), mode \(mode.displayIndex) of 8")
         }
     }
 
     @Test("transcribe heading matches its mode number")
     func transcribeHeadingNumber() {
-        #expect(TranscribeScreen.heading == "4. TRANSCRIBE — AUDIO TO MIDI")
+        #expect(TranscribeScreen.heading == "4. TRANSCRIBE — MIDI & LYRICS")
         #expect(TranscribeScreen.heading.hasPrefix("\(DeviceMode.transcribe.displayIndex). "))
     }
 
@@ -50,16 +187,17 @@ struct DeviceWindowTests {
 
     @Test("Reimagine keeps render controls adjacent to musical direction on tall decks")
     func reimagineRenderControlsDoNotDriftToDeckBottom() throws {
-        let bottommostOrange = try reimagineOrangeMaximumY(
-            localInferenceAvailable: true,
-            width: 940,
-            height: 900
-        )
+        let standard = try reimagineOrangeMaximumY(localInferenceAvailable: true, width: 940, height: 700)
+        let tall = try reimagineOrangeMaximumY(localInferenceAvailable: true, width: 940, height: 900)
+        let taller = try reimagineOrangeMaximumY(localInferenceAvailable: true, width: 940, height: 1_200)
+        let disabled = try reimagineOrangeMaximumY(localInferenceAvailable: false, width: 940, height: 700)
 
-        #expect(
-            bottommostOrange < 560,
-            "The render action drifted to the bottom of the deck instead of following musical direction"
-        )
+        // The source chooser and adaptive form have intrinsic height; their exact
+        // pixel positions can change. Extra deck height must not move the action.
+        #expect(standard > disabled, "The enabled render action should add orange below the other controls")
+        #expect(standard > 0 && standard < 640, "The render action should be visible on a standard deck")
+        #expect(tall == standard, "Render action moved from \(standard) to \(tall) on a taller deck")
+        #expect(taller == tall, "Render action moved from \(tall) to \(taller) on an even taller deck")
     }
 
     @Test("deck panels render default-coloured labels dark whatever the host appearance is")

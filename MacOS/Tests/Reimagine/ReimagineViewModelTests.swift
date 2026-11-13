@@ -226,6 +226,44 @@ private final class SourceReadProbe: @unchecked Sendable {
 @MainActor
 @Suite("ReimagineViewModel")
 struct ReimagineViewModelTests {
+    @Test("reimagine explains missing source, direction and connectivity")
+    func disabledReasons() {
+        let model = ReimagineViewModel(api: NeverCalledReimagineAPI(), reattacher: RecordingReattacher())
+        let screen = ReimagineScreen(viewModel: model)
+        #expect(!screen.canStart)
+        #expect(screen.unavailableReason == "Select an audio source first")
+        model.sourceURL = URL(fileURLWithPath: "/tmp/source.wav")
+        #expect(!screen.canStart)
+        #expect(screen.unavailableReason == "Enter a prompt first")
+        model.prompt = "  new chorus  "
+        #expect(screen.canStart)
+        let offline = ReimagineScreen(viewModel: model, localInferenceAvailable: false)
+        #expect(!offline.canStart)
+        #expect(offline.unavailableReason == "Local inference is unavailable. Start the local sidecar and retry.")
+    }
+
+    @Test("advanced settings indicate every non-default value")
+    func advancedSettingsIndication() {
+        let model = ReimagineViewModel(api: NeverCalledReimagineAPI(), reattacher: RecordingReattacher())
+        #expect(!model.hasAdvancedSettings)
+        model.seedText = "42"
+        #expect(model.hasAdvancedSettings)
+        model.seedText = ""
+        model.bpmText = "120"
+        #expect(model.hasAdvancedSettings)
+        model.bpmText = ""
+        model.key = "Am"
+        #expect(model.hasAdvancedSettings)
+        model.key = ""
+        model.timeSignature = "4/4"
+        #expect(model.hasAdvancedSettings)
+        model.timeSignature = ""
+        model.vocalLanguage = .english
+        #expect(model.hasAdvancedSettings)
+        model.vocalLanguage = .automatic
+        #expect(!model.hasAdvancedSettings)
+    }
+
     @Test("accepted jobs are tracked before recovery begins")
     func acceptedJobTracksBeforeRecovery() async throws {
         let api = AcceptedReimagineAPI()
@@ -292,6 +330,49 @@ struct ReimagineViewModelTests {
             #expect(model.errorMessage == expectedMessage, Comment(rawValue: name))
             #expect(api.callCount == 0, Comment(rawValue: name))
         }
+    }
+
+    @Test("repaint validates source bounds and refreshes duration on source changes")
+    func repaintSourceBounds() throws {
+        let api = NeverCalledReimagineAPI()
+        let model = ReimagineViewModel(
+            api: api, reattacher: RecordingReattacher(),
+            durationReader: { $0.lastPathComponent == "known.wav" ? 10 : nil }
+        )
+        model.sourceURL = URL(fileURLWithPath: "/tmp/known.wav")
+        model.operation = .repaint
+        model.prompt = "bridge"
+        #expect(model.sourceDurationSeconds == 10)
+
+        model.startSeconds = -1
+        model.endSeconds = 3
+        #expect(!model.start())
+        #expect(model.errorMessage == "REPAINT START MUST BE AT OR AFTER 0 SECONDS")
+        model.startSeconds = 7
+        model.endSeconds = 10.1
+        #expect(!model.start())
+        #expect(model.errorMessage == "REPAINT END EXCEEDS SOURCE DURATION")
+        #expect(api.callCount == 0)
+
+        model.sourceURL = URL(fileURLWithPath: "/tmp/unknown.wav")
+        #expect(model.sourceDurationSeconds == nil)
+        model.sourceURL = nil
+        #expect(model.sourceDurationSeconds == nil)
+    }
+
+    @Test("repaint accepts zero start and exact source end")
+    func repaintInclusiveSourceBounds() async throws {
+        let api = AcceptedReimagineAPI()
+        let model = ReimagineViewModel(
+            api: api, reattacher: RecordingReattacher(), durationReader: { _ in 10 }
+        )
+        model.sourceURL = try fixtureAudioURL()
+        model.operation = .repaint
+        model.prompt = "bridge"
+        model.startSeconds = 0
+        model.endSeconds = 10
+        #expect(model.start())
+        try await eventually { api.submittedRequests.count == 1 }
     }
 
     @Test("missing source and blank prompt are rejected before upload")

@@ -3,6 +3,7 @@ import SwiftUI
 @main
 @MainActor
 struct MicromixApp: App {
+    @NSApplicationDelegateAdaptor(TimelineApplicationDelegate.self) private var appDelegate
     @State private var root = Self.makeRoot()
 
     static func makeRoot() -> AppRoot {
@@ -37,14 +38,13 @@ struct MicromixApp: App {
         // Guided remix hands its prepared source to Reimagine through the router.
         remix.onDeliver = { item, url, derived in
             if let item {
-                router.execute(.remix, on: item, derived: derived)
+                return router.execute(.remix, on: item, derived: derived)
             } else {
-                router.reimagineRemix(url: url, derived: derived)
+                return router.reimagineRemix(url: url, derived: derived)
             }
         }
 
-        // Guided transcribe studio hands the original audio to Reimagine as a
-        // remix source once the MIDI lands in the Library.
+        // The guided transcription studio invokes this only on explicit remix continuation.
         transcribeStudio.onDeliver = { url in
             router.reimagineRemix(url: url)
         }
@@ -55,13 +55,10 @@ struct MicromixApp: App {
         Task { await monitor.refreshInstruments() }
         reattacher.startRecovery()
 
-        // Only one preview stream is audible at a time: starting audio stops
-        // the MIDI synth and vice versa. Weak captures avoid a retain cycle
-        // between the two app-lifetime players.
-        let player = AudioPlayer()
-        let midiPreview = MidiPreview()
-        player.onStart = { [weak midiPreview] in midiPreview?.stop() }
-        midiPreview.onStart = { [weak player] in player?.stop() }
+        // Share ownership with the timeline, including while it prepares.
+        let coordinator = PreviewCoordinator()
+        let player = AudioPlayer(coordinator: coordinator)
+        let midiPreview = MidiPreview(coordinator: coordinator)
 
         return AppRoot(
             generate: generate,

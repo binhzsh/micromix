@@ -202,6 +202,7 @@ struct MicromixAPITests {
         }
         await monitor.refresh()
         #expect(monitor.voiceCatalog == .loaded([]))
+        #expect(monitor.instrumentCatalog == .loaded([]))
         MockURLProtocol.handler = { request in
             if request.url?.path == "/v1/capabilities" { throw URLError(.timedOut) }
             let body = #"{"service":"micromix-local-inference","status":"ready","models":{}}"#
@@ -209,6 +210,7 @@ struct MicromixAPITests {
         }
         await monitor.refresh()
         #expect(monitor.voiceCatalog == .failed)
+        #expect(monitor.instrumentCatalog == .failed)
         MockURLProtocol.handler = { request in
             let body = request.url?.path == "/v1/health"
                 ? #"{"service":"micromix-local-inference","status":"ready","models":{}}"#
@@ -220,6 +222,48 @@ struct MicromixAPITests {
         MockURLProtocol.handler = { _ in throw URLError(.cannotConnectToHost) }
         await monitor.refresh()
         #expect(monitor.voiceCatalog == .unavailable)
+    }
+
+    @Test("workflow prerequisites distinguish markers from inference")
+    func workflowReadiness() {
+        let offline = WorkflowReadiness.description(connected: false, statuses: [:], models: ["whisper"])
+        #expect(offline.contains("unavailable"))
+        let ready = WorkflowReadiness.description(connected: true, statuses: ["muscriptor": "ready"], models: ["muscriptor"])
+        #expect(ready.contains("components detected"))
+        #expect(ready.contains("do not verify"))
+        let missing = WorkflowReadiness.description(connected: true, statuses: ["whisper": "weights_missing", "sam_audio": "unavailable"], models: ["whisper", "sam_audio"])
+        #expect(missing.contains("weights missing"))
+        #expect(missing.contains("shared MLX runtime check failed"))
+        #expect(missing.contains("MODELS.md"))
+        #expect(WorkflowReadiness.description(connected: true, statuses: [:], models: ["mlx_rvc"]).contains("unknown"))
+        #expect(WorkflowReadiness.generationModel(preset: "minimax-cover") == "minimax_music3")
+        #expect(WorkflowReadiness.generationModel(preset: "turbo") == "ace_step")
+        #expect(WorkflowReadiness.description(connected: false, statuses: [:], models: []).contains("No inference model"))
+    }
+
+    @Test("confirmed missing prerequisites alone gate selected models")
+    func prerequisiteSubmissionGate() {
+        let fakeStatuses = ["muscriptor": "weights_missing", "whisper": "ready", "sam_audio": "unavailable", "mlx_rvc": "ready"]
+        #expect(WorkflowReadiness.hasConfirmedMissing(statuses: fakeStatuses, models: ["muscriptor"]))
+        #expect(!WorkflowReadiness.hasConfirmedMissing(statuses: fakeStatuses, models: ["whisper"]))
+        #expect(!WorkflowReadiness.hasConfirmedMissing(statuses: [:], models: ["muscriptor"]))
+        #expect(!WorkflowReadiness.hasConfirmedMissing(statuses: ["muscriptor": "loading"], models: ["muscriptor"]))
+        #expect(!WorkflowReadiness.hasConfirmedMissing(statuses: fakeStatuses, models: []))
+        #expect(!WorkflowReadiness.hasConfirmedMissing(statuses: fakeStatuses, models: ["mlx_rvc"]))
+        #expect(!WorkflowReadiness.hasConfirmedMissing(statuses: fakeStatuses, models: ["sam_audio", "mlx_rvc"]))
+        #expect(WorkflowReadiness.description(connected: true, statuses: fakeStatuses, models: ["muscriptor"]).contains("Submission is disabled"))
+        for model in ["minimax_music3", "sam_audio", "mlx_rvc"] {
+            let statuses = [model: "unavailable"]
+            #expect(!WorkflowReadiness.hasConfirmedMissing(statuses: statuses, models: [model]))
+            let description = WorkflowReadiness.description(connected: true, statuses: statuses, models: [model])
+            #expect(description.contains("status is unknown"))
+            #expect(!description.contains("Submission is disabled"))
+            #expect(WorkflowReadiness.hasConfirmedMissing(statuses: [model: "weights_missing"], models: [model]))
+        }
+        let ace = ["ace_step": "weights_missing"]
+        #expect(!WorkflowReadiness.hasConfirmedMissing(statuses: ace, models: ["ace_step"]))
+        #expect(WorkflowReadiness.description(connected: true, statuses: ace, models: ["ace_step"]).contains("selected preset status unknown"))
+        #expect(WorkflowReadiness.hasConfirmedMissing(statuses: ["ace_step": "unavailable"], models: ["ace_step"]))
     }
 
     @Test("non-ready sidecar does not enable actions")

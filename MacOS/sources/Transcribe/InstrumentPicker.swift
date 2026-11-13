@@ -5,67 +5,69 @@ import SwiftUI
 struct InstrumentPicker: View {
     @ObservedObject var viewModel: TranscribeViewModel
     let instruments: [String]
+    var catalog: VoiceCatalogState? = nil
+    var onRefresh: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Typography.monoLabel("INSTRUMENTS", size: 10)
                 .foregroundColor(Palette.ink.opacity(0.68))
 
-            if instruments.isEmpty {
-                Text("NO INSTRUMENTS — CHECK LOCAL INFERENCE")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(Palette.ink.opacity(0.64))
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.divider, lineWidth: 1))
-            } else {
-                ScrollView(.vertical) {
-                    LazyVStack(spacing: 2) {
-                        ForEach(Array(instruments.enumerated()), id: \.element) { index, name in
-                            row(name: name, selected: viewModel.instruments.contains(name))
-                            Divider().overlay(Palette.divider.opacity(0.5))
-                        }
+            if let message = Self.catalogMessage(catalog, hasItems: !instruments.isEmpty) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(message)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(Palette.ink.opacity(0.64))
+                    if catalog == .failed || catalog == .unavailable {
+                        Button("Refresh catalog", action: onRefresh)
                     }
                 }
-                .frame(maxHeight: 160)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.divider, lineWidth: 1))
+            }
+            if !instruments.isEmpty {
+                LazyVStack(spacing: 2) {
+                    ForEach(instruments, id: \.self) { name in
+                        row(name: name, selected: viewModel.instruments.contains(name))
+                        Divider().overlay(Palette.divider.opacity(0.5))
+                    }
+                }
                 .background(Palette.deck)
                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(Palette.divider, lineWidth: 1))
             }
         }
     }
 
-    private func row(name: String, selected: Bool) -> some View {
-        HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(selected ? Palette.accentBlue : Color.clear)
-                .frame(width: 14, height: 14)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 2)
-                        .stroke(selected ? Palette.accentBlue : Palette.ink.opacity(0.48), lineWidth: 1.25)
-                )
-                .overlay {
-                    if selected {
-                        Text("✓")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                    }
-                }
-            Text(displayName(name))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Palette.ink.opacity(selected ? 1 : 0.72))
-            Spacer()
+    static func catalogMessage(_ catalog: VoiceCatalogState?, hasItems: Bool) -> String? {
+        let cached = hasItems ? " — SHOWING CACHED INSTRUMENTS" : ""
+        switch catalog {
+        case .unavailable: return "LOCAL INFERENCE UNAVAILABLE" + cached
+        case .loading: return "LOADING INSTRUMENT CATALOG…" + cached
+        case .failed: return "INSTRUMENT CATALOG FETCH FAILED" + cached
+        case .loaded, .none: return hasItems ? nil : "INSTRUMENT CATALOG IS EMPTY"
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
-        .background(selected ? Palette.accentBlue.opacity(0.10) : Color.clear)
-        .onTapGesture { viewModel.toggleInstrument(name) }
-        .accessibilityLabel(displayName(name))
-        .accessibilityValue(selected ? "Selected" : "Not selected")
-        .accessibilityAddTraits(.isButton)
     }
 
-    private func displayName(_ name: String) -> String {
+    static func selectionSummary(_ instruments: [String]) -> String {
+        guard !instruments.isEmpty else { return "All instruments" }
+        let names = instruments.map(displayName)
+        let visible = names.prefix(2).joined(separator: ", ")
+        return names.count > 2 ? "\(visible) +\(names.count - 2)" : visible
+    }
+
+    private func row(name: String, selected: Bool) -> some View {
+        Toggle(Self.displayName(name), isOn: Binding(
+            get: { selected },
+            set: { if $0 != selected { viewModel.toggleInstrument(name) } }
+        ))
+        .toggleStyle(.checkbox)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .disabled(viewModel.isBlocked)
+    }
+
+    private static func displayName(_ name: String) -> String {
         name.replacingOccurrences(of: "_", with: " ").capitalized
     }
 }

@@ -3,7 +3,7 @@ import Testing
 @testable import Micromix
 
 @MainActor
-private final class RemixAPI: DurableSourceProcessing {
+private final class RemixAPI: DurableSourceProcessing, DurableReimagineSubmitting, DurableJobCancelling {
     var uploads = 0
     var submitted: [String] = []
     var cancelled: [String] = []
@@ -23,6 +23,11 @@ private final class RemixAPI: DurableSourceProcessing {
             submitted.append("stem-split \(source) \(description)")
         }
         return responses[submitted.count - 1]
+    }
+
+    func submitReimagine(_ request: ReimagineRequest) async throws -> RemoteJob {
+        Issue.record("preparation must not submit a remix")
+        throw CancellationError()
     }
 
     func cancel(jobID: String) async throws { cancelled.append(jobID) }
@@ -66,7 +71,7 @@ struct GuidedRemixTests {
         model.splitFirst = true
         model.analyzeFirst = true
         var delivered: (LibraryItem?, URL, DerivedMetadata?)?
-        model.onDeliver = { delivered = ($0, $1, $2) }
+        model.onDeliver = { delivered = ($0, $1, $2); return .success(()) }
 
         #expect(model.start())
         for _ in 0..<1000 where model.isRunning { await Task.yield() }
@@ -75,6 +80,7 @@ struct GuidedRemixTests {
         #expect(api.uploads == 1)
         #expect(delivered?.0 == residual)
         #expect(delivered?.2?.beatsPerMinute == 124)
+        #expect(model.analysisSummary == "Available analysis: 124 BPM • Key: A minor")
         #expect(model.state(of: .splitVocals) == .done)
         #expect(model.state(of: .analyze) == .done)
         #expect(model.deliveredSource == "residual.wav")
@@ -94,7 +100,7 @@ struct GuidedRemixTests {
         model.splitFirst = false
         model.analyzeFirst = true
         var delivered: (LibraryItem?, URL, DerivedMetadata?)?
-        model.onDeliver = { delivered = ($0, $1, $2) }
+        model.onDeliver = { delivered = ($0, $1, $2); return .success(()) }
 
         #expect(model.start())
         for _ in 0..<1000 where model.isRunning { await Task.yield() }
@@ -104,6 +110,7 @@ struct GuidedRemixTests {
         #expect(delivered?.0 == nil)
         #expect(delivered?.1 == URL(fileURLWithPath: "/tmp/song.wav"))
         #expect(delivered?.2?.beatsPerMinute == 96)
+        #expect(model.analysisSummary == "Available analysis: 96 BPM")
         #expect(model.state(of: .splitVocals) == .skipped)
         #expect(model.state(of: .analyze) == .done)
     }
@@ -117,15 +124,69 @@ struct GuidedRemixTests {
         model.splitFirst = false
         model.analyzeFirst = false
         var delivered: (LibraryItem?, URL, DerivedMetadata?)?
-        model.onDeliver = { delivered = ($0, $1, $2) }
+        model.onDeliver = { delivered = ($0, $1, $2); return .success(()) }
 
         #expect(model.start())
         for _ in 0..<1000 where model.isRunning { await Task.yield() }
 
         #expect(api.submitted.isEmpty)
         #expect(delivered?.1 == URL(fileURLWithPath: "/tmp/song.wav"))
+        #expect(model.analysisSummary == nil)
         #expect(model.state(of: .splitVocals) == .skipped)
         #expect(model.state(of: .analyze) == .skipped)
+    }
+
+    @Test("guided metadata handoff preserves manually edited direction")
+    func handoffPreservesEdits() async {
+        let api = RemixAPI()
+        let recovery = RemixRecovery()
+        let destination = ReimagineViewModel(api: api, reattacher: recovery)
+        destination.bpmText = "135"
+        destination.key = "D minor"
+        destination.timeSignature = "5"
+        let model = GuidedRemixModel(api: api, reattacher: recovery, metadataReader: { _ in
+            DerivedMetadata(beatsPerMinute: 96, key: "C major", timeSignature: "4")
+        })
+        model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
+        model.onDeliver = { item, url, metadata in
+            destination.acceptSource(AssetActionContext(sourceItem: item, sourceURL: url, action: .remix, derivedMetadata: metadata))
+            return .success(())
+        }
+        #expect(model.start())
+        for _ in 0..<1000 where model.isRunning { await Task.yield() }
+        #expect(destination.sourceURL == model.sourceURL)
+        #expect(destination.bpmText == "135")
+        #expect(destination.key == "D minor")
+        #expect(destination.timeSignature == "5")
+        #expect(!destination.isRunning)
+    }
+
+    @Test("rejected handoff reports error without claiming readiness", arguments: ["Reimagine is busy", "The source file is unreadable"])
+    func rejectedHandoff(message: String) async {
+        let model = GuidedRemixModel(api: RemixAPI(), reattacher: RemixRecovery())
+        model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
+        model.analyzeFirst = false
+        model.onDeliver = { _, _, _ in .failure(.init(message: message)) }
+        #expect(model.start())
+        for _ in 0..<1000 where model.isRunning { await Task.yield() }
+        #expect(model.deliveredSource == nil)
+        #expect(model.deliveredItem == nil)
+        #expect(model.errorMessage == message)
+    }
+
+    @Test("duration-only and absent analysis are reported without invented musical metadata")
+    func durationAndMissingMetadata() async {
+        for (metadata, expected) in [
+            (DerivedMetadata(durationSeconds: 42.5), "Duration only: 42.5 sec; BPM, key and meter unavailable."),
+            (DerivedMetadata.empty, "No musical metadata available."),
+            (DerivedMetadata(timeSignature: "3/4"), "Available analysis: Meter: 3/4"),
+        ] {
+            let model = GuidedRemixModel(api: RemixAPI(), reattacher: RemixRecovery(), metadataReader: { _ in metadata })
+            model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
+            #expect(model.start())
+            for _ in 0..<1000 where model.isRunning { await Task.yield() }
+            #expect(model.analysisSummary == expected)
+        }
     }
 
     @Test("a split without an instrumental stem fails before delivery")
@@ -141,7 +202,7 @@ struct GuidedRemixTests {
         model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
         model.splitFirst = true
         var delivered: (LibraryItem?, URL, DerivedMetadata?)?
-        model.onDeliver = { delivered = ($0, $1, $2) }
+        model.onDeliver = { delivered = ($0, $1, $2); return .success(()) }
 
         #expect(model.start())
         for _ in 0..<1000 where model.isRunning { await Task.yield() }
@@ -167,7 +228,7 @@ struct GuidedRemixTests {
         model.sourceURL = URL(fileURLWithPath: "/tmp/song.wav")
         model.splitFirst = true
         var delivered = false
-        model.onDeliver = { _, _, _ in delivered = true }
+        model.onDeliver = { _, _, _ in delivered = true; return .success(()) }
 
         #expect(model.start())
         for _ in 0..<1000 where !recovery.waiting { await Task.yield() }

@@ -1,10 +1,19 @@
+import AVFoundation
 import Combine
 import Foundation
 
 @MainActor
 protocol ReimagineJobReattaching: AnyObject {
     func track(_ job: RemoteJob) throws
+    func trackForBackground(_ job: RemoteJob) throws
     func recoverSubmittedJob(id: String) async throws -> [LibraryItem]
+}
+
+extension ReimagineJobReattaching {
+    func trackForBackground(_ job: RemoteJob) throws {
+        try track(job)
+        Task { _ = try? await recoverSubmittedJob(id: job.id) }
+    }
 }
 
 extension JobReattacher: ReimagineJobReattaching {}
@@ -12,11 +21,23 @@ extension JobReattacher: ReimagineJobReattaching {}
 @MainActor
 final class ReimagineViewModel: ObservableObject, AssetAccepting {
     @Published var operation: ReimagineOperation = .reference
-    @Published var sourceURL: URL?
+    @Published var sourceURL: URL? {
+        didSet {
+            sourceDurationSeconds = sourceURL.flatMap(durationReader).flatMap {
+                $0.isFinite && $0 > 0 ? $0 : nil
+            }
+        }
+    }
+    @Published private(set) var sourceDurationSeconds: Double?
     @Published var prompt = ""
     @Published var lyrics = ""
     @Published var useLyrics = false
     @Published var preset = "turbo"
+    var hasAdvancedSettings: Bool {
+        !seedText.isEmpty || !bpmText.isEmpty || !key.isEmpty
+            || !timeSignature.isEmpty || vocalLanguage != .automatic
+    }
+
     @Published var seedText = ""
     @Published var variationCount = 2
     @Published var durationSeconds: Double = 30
@@ -54,6 +75,7 @@ final class ReimagineViewModel: ObservableObject, AssetAccepting {
     private let canceller: any DurableJobCancelling
     private let reattacher: any ReimagineJobReattaching
     private let sourceReader: @Sendable (URL) throws -> Data
+    private let durationReader: (URL) -> Double?
     private let flow = JobFlow()
     private var cancellables = Set<AnyCancellable>()
     private var isApplyingPrefill = false
@@ -65,12 +87,17 @@ final class ReimagineViewModel: ObservableObject, AssetAccepting {
     init(
         api: any DurableReimagineSubmitting & DurableJobCancelling,
         reattacher: any ReimagineJobReattaching,
-        sourceReader: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) }
+        sourceReader: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) },
+        durationReader: @escaping (URL) -> Double? = { url in
+            guard let file = try? AVAudioFile(forReading: url), file.processingFormat.sampleRate > 0 else { return nil }
+            return Double(file.length) / file.processingFormat.sampleRate
+        }
     ) {
         self.api = api
         self.canceller = api
         self.reattacher = reattacher
         self.sourceReader = sourceReader
+        self.durationReader = durationReader
         flow.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -223,6 +250,14 @@ final class ReimagineViewModel: ObservableObject, AssetAccepting {
             let interval = endSeconds - startSeconds
             guard startSeconds.isFinite, endSeconds.isFinite, (3...90).contains(interval) else {
                 flow.reject("REPAINT RANGE MUST BE 3–90 SECONDS")
+                return nil
+            }
+            guard startSeconds >= 0 else {
+                flow.reject("REPAINT START MUST BE AT OR AFTER 0 SECONDS")
+                return nil
+            }
+            if let sourceDurationSeconds, endSeconds > sourceDurationSeconds {
+                flow.reject("REPAINT END EXCEEDS SOURCE DURATION")
                 return nil
             }
         }

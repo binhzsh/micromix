@@ -5,29 +5,32 @@ import SwiftUI
 /// display. Runs off the main thread; callers should hop via `Task.detached`.
 enum WaveformPeaks {
     static func computePeaks(for url: URL, count: Int) -> [CGFloat] {
-        guard let file = try? AVAudioFile(forReading: url) else { return [] }
-        let frameLength = AVAudioFramePosition(file.length)
+        guard count > 0, let file = try? AVAudioFile(forReading: url) else { return [] }
+        let frameLength = file.length
         guard frameLength > 0 else { return [] }
-        let hop = max(1, frameLength / AVAudioFramePosition(count))
+        let bucketCount = Int(min(frameLength, Int64(count)))
+        let baseSize = frameLength / Int64(bucketCount)
+        let remainder = frameLength % Int64(bucketCount)
         let format = file.processingFormat
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(hop)) else { return [] }
+        let chunkSize: AVAudioFrameCount = 8192
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunkSize) else { return [] }
         var peaks: [CGFloat] = []
-        peaks.reserveCapacity(count)
-        var position: AVAudioFramePosition = 0
-        while position < frameLength, peaks.count < count {
-            let framesToRead = min(AVAudioFrameCount(hop), AVAudioFrameCount(frameLength - position))
-            file.framePosition = position
-            buffer.frameLength = 0
-            guard (try? file.read(into: buffer, frameCount: framesToRead)) != nil,
-                  buffer.frameLength > 0 else { break }
+        peaks.reserveCapacity(bucketCount)
+        for bucket in 0..<bucketCount {
+            var remaining = baseSize + (Int64(bucket) < remainder ? 1 : 0)
             var peak: Float = 0
-            if let channel = buffer.floatChannelData?[0] {
-                for index in 0..<Int(buffer.frameLength) {
-                    peak = max(peak, abs(channel[index]))
+            while remaining > 0 {
+                let requested = AVAudioFrameCount(min(remaining, Int64(chunkSize)))
+                guard (try? file.read(into: buffer, frameCount: requested)) != nil,
+                      buffer.frameLength > 0, let channels = buffer.floatChannelData else { return [] }
+                for channel in 0..<Int(format.channelCount) {
+                    for index in 0..<Int(buffer.frameLength) {
+                        peak = max(peak, abs(channels[channel][index * buffer.stride]))
+                    }
                 }
+                remaining -= Int64(buffer.frameLength)
             }
             peaks.append(CGFloat(peak))
-            position += Int64(framesToRead)
         }
         return peaks
     }
@@ -39,6 +42,7 @@ struct MiniWaveform: View {
     let item: LibraryItem
     let library: LocalLibrary
     var barCount = 24
+    var fillsWidth = false
 
     @State private var peaks: [CGFloat]?
 
@@ -51,7 +55,8 @@ struct MiniWaveform: View {
                     ForEach(Array(peaks.enumerated()), id: \.offset) { _, peak in
                         Capsule()
                             .fill(Palette.ink.opacity(0.55))
-                            .frame(width: barWidth, height: max(2, min(peak, 1) * 18))
+                            .frame(width: fillsWidth ? nil : barWidth, height: max(2, min(peak, 1) * 18))
+                            .frame(maxWidth: fillsWidth ? .infinity : nil)
                     }
                 }
             } else {
@@ -59,20 +64,23 @@ struct MiniWaveform: View {
                     ForEach(0..<barCount, id: \.self) { _ in
                         Capsule()
                             .fill(Palette.ink.opacity(0.16))
-                            .frame(width: barWidth, height: 2)
+                            .frame(width: fillsWidth ? nil : barWidth, height: 2)
+                            .frame(maxWidth: fillsWidth ? .infinity : nil)
                     }
                 }
             }
         }
         .frame(height: 20, alignment: .center)
         .task(id: item.id) {
+            peaks = nil
             guard item.kind == .audio else { return }
             let url = library.resolvedURL(for: item)
             let count = barCount
             let computed = await Task.detached(priority: .utility) {
                 WaveformPeaks.computePeaks(for: url, count: count)
             }.value
-            peaks = computed.isEmpty ? [] : computed
+            guard !Task.isCancelled else { return }
+            peaks = computed
         }
         .accessibilityLabel("Waveform preview of \(item.title)")
     }
