@@ -24,6 +24,23 @@ class LocalContractTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 202, response.text)
                 self.assertEqual(response.json()['parameters']['preset'], preset['id'])
 
+    def test_catalog_operations_match_api_acceptance(self):
+        source = self.client.post('/v1/assets', files={
+            'audio_file': ('source.wav', b'fixture', 'audio/wav'),
+        }).json()['id']
+        for preset in self.client.get('/v1/capabilities').json()['generation_presets']:
+            self.assertEqual(preset['musical_metadata'], preset['id'] != 'minimax-cover')
+            self.assertEqual(preset['health_model'],
+                             'minimax_music3' if preset['id'] == 'minimax-cover' else 'ace_step')
+            for operation in ('reference-generation', 'remix', 'repaint'):
+                body = {'prompt': 'jazz', 'preset': preset['id']}
+                body['reference_asset_id' if operation == 'reference-generation' else 'source_asset_id'] = source
+                if operation == 'repaint':
+                    body.update(start_seconds=1, end_seconds=5)
+                response = self.client.post('/v1/jobs/' + operation, json=body)
+                self.assertEqual(response.status_code,
+                                 202 if operation in preset['operations'] else 422, response.text)
+
     def test_generation_duration_limits_are_preset_specific(self):
         for preset, duration, expected in [
             ('minimax-cover', 360, 202),

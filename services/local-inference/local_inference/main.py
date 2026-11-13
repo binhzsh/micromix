@@ -17,6 +17,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .capabilities import GENERATION_ENGINES, generation_engine, worker_environment
 from .runtime import Runtime
 
 SERVICE_ROOT = Path(__file__).resolve().parent.parent
@@ -46,9 +47,10 @@ class MusicRequest(BaseModel):
 
     @model_validator(mode="after")
     def supported_controls(self):
-        if self.preset == "minimax-cover" and self.variation_count != 1:
+        engine = generation_engine(self.preset)
+        if self.variation_count > engine.max_variations:
             raise ValueError("MiniMax supports one variation; use Turbo or Quality for alternatives")
-        if self.preset == "minimax-cover" and any(
+        if not engine.musical_metadata and any(
             value is not None for value in
             (self.vocal_language, self.bpm, self.key, self.time_signature)
         ):
@@ -61,7 +63,7 @@ class GenerationRequest(MusicRequest):
 
     @model_validator(mode="after")
     def supported_duration(self):
-        if self.preset == "minimax-cover" and self.duration_seconds > 360:
+        if self.duration_seconds > generation_engine(self.preset).max_duration_seconds:
             raise ValueError("MiniMax duration must not exceed 360 seconds")
         return self
 
@@ -111,13 +113,7 @@ class StemSplitRequest(BaseModel):
 
 def worker_command(manifest_path: Path) -> list[str]:
     manifest = json.loads(manifest_path.read_text())
-    operation = manifest["operation"]
-    if operation == "transcription":
-        environment = ".venv-muscriptor"
-    elif operation in {"generation", "reference-generation", "remix", "repaint"} and manifest["parameters"].get("preset") != "minimax-cover":
-        environment = ".venv-ace"
-    else:
-        environment = ".venv-mlx"
+    environment = worker_environment(manifest["operation"], manifest["parameters"])
     executable = SERVICE_ROOT / environment / "bin" / "python"
     if not executable.is_file():
         raise RuntimeError(
@@ -235,8 +231,10 @@ def create_app(
             await audio_file.close()
 
     def music(payload: MusicRequest, operation: str, asset_id: str | None = None) -> dict:
-        if operation != 'generation' and payload.preset == 'minimax-cover':
-            raise HTTPException(422, 'Reference, Remix and Repaint require the local Turbo or Quality model')
+        try:
+            generation_engine(payload.preset, operation)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
         params = payload.model_dump(exclude_none=True, exclude={'source_asset_id', 'reference_asset_id'})
         seed = payload.seed if payload.seed is not None else secrets.randbelow(2**32)
         params['seed'] = seed
@@ -289,11 +287,7 @@ def create_app(
     @app.get('/v1/capabilities')
     def capabilities():
         from .engines import TRANSCRIPTION_INSTRUMENTS
-        return {'generation_presets': [
-            {'id': 'turbo', 'label': 'XL Turbo', 'model': 'acestep-v15-xl-turbo', 'inference_steps': 8},
-            {'id': 'quality', 'label': 'XL Quality', 'model': 'acestep-v15-xl-sft', 'inference_steps': 50},
-            {'id': 'minimax-cover', 'label': 'MiniMax (text only)', 'model': 'MiniMax-Music3-mxfp8', 'inference_steps': 30},
-        ], 'transcription_instruments': list(TRANSCRIPTION_INSTRUMENTS),
+        return {'generation_presets': [engine.catalog_entry() for engine in GENERATION_ENGINES], 'transcription_instruments': list(TRANSCRIPTION_INSTRUMENTS),
             'vocal_models': _voice_names(voice_root), 'stem_targets': ['vocals', 'drums', 'bass', 'other'],
             'reimagine_modes': ['reference-generation', 'remix', 'repaint']}
 

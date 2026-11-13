@@ -44,6 +44,11 @@ class EngineTests(unittest.TestCase):
                 result = engines.run_manifest(self.manifest(operation, preset='quality', variation_count=4,
                     bpm=98, key='C major', time_signature='6/8', vocal_language='en', start_seconds=3, end_seconds=7, source_strength=.65, repaint_strength=.8))
                 self.assertEqual(len(result['outputs']), 4)
+                self.assertEqual(result['provenance']['model'], 'acestep-v15-xl-sft')
+                self.assertEqual(result['provenance']['task'], task)
+                self.assertEqual(len(result['provenance']['backend_states']), 4)
+                self.assertTrue(all(state['dit_eligible_backend'] == 'unknown'
+                                    for state in result['provenance']['backend_states']))
                 self.assertEqual([x[0].seed for x in calls[-4:]], [42, 43, 44, 45])
                 p, c = calls[-1]
                 self.assertEqual((p.task_type, p.bpm, p.keyscale, p.timesignature, p.vocal_language, p.inference_steps),
@@ -61,6 +66,40 @@ class EngineTests(unittest.TestCase):
                     self.assertEqual(p.src_audio, str(self.source))
                 if operation == 'repaint':
                     self.assertEqual((p.repainting_start, p.repainting_end), (3, 7))
+
+    def test_ace_persists_per_variation_execution_and_fallback_evidence(self):
+        def fail(**kwargs):
+            raise RuntimeError('simulated MLX fallback')
+        dit = SimpleNamespace(device='mps', use_mlx_dit=True, mlx_decoder=object(),
+                              use_mlx_vae=True, mlx_vae=object(),
+                              _mlx_run_diffusion=fail, _mlx_vae_decode=fail,
+                              model=SimpleNamespace(generate_audio=lambda **kwargs: None),
+                              vae=SimpleNamespace(decode=lambda **kwargs: None))
+        lm = SimpleNamespace(device='mps', llm_backend='pt',
+                             llm=SimpleNamespace(generate=lambda **kwargs: None))
+
+        def generate(handler, planner, params, config, save_dir):
+            planner.llm.generate()
+            for mlx, pytorch in [(handler._mlx_run_diffusion, handler.model.generate_audio),
+                                 (handler._mlx_vae_decode, handler.vae.decode)]:
+                try:
+                    mlx()
+                except RuntimeError:
+                    pytorch()
+            path = Path(save_dir) / 'render.wav'
+            path.write_bytes(b'audio')
+            return SimpleNamespace(success=True, audios=[{'path': str(path)}])
+
+        with patch.object(engines, '_load_ace', return_value=(dit, lm, SimpleNamespace, SimpleNamespace, generate)):
+            result = engines.run_manifest(self.manifest(variation_count=2))
+        provenance = result['provenance']
+        self.assertEqual(len(provenance['execution_traces']), 2)
+        self.assertTrue(all(state['vae_eligible_backend'] == 'mlx' for state in provenance['backend_states']))
+        for trace in provenance['execution_traces']:
+            self.assertEqual(trace['components']['dit']['successful_backends'], ['pytorch'])
+            self.assertEqual(trace['components']['vae']['successful_backends'], ['pytorch'])
+            self.assertEqual(trace['components']['planner']['successful_backends'], ['pytorch'])
+            self.assertTrue(all(call['attempted'] <= 1 for call in trace['calls']))
 
     def test_ace_conditions_on_decoded_pcm_instead_of_the_original_container(self):
         """M4A and other containers soundfile cannot open must never reach ACE-Step."""

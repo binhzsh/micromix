@@ -10,6 +10,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from .ace_trace import ACEExecutionTrace
+from .capabilities import MUSIC_OPERATIONS, generation_engine, worker_environment
+
 # Runtime workers may load only artifacts already present in the local model cache.
 # Model setup is an explicit, separate network operation.
 os.environ.setdefault('HF_HUB_OFFLINE', '1')
@@ -103,7 +106,7 @@ def _load_ace(preset: str, thinking: bool):
     root = Path(os.environ.get('MICROMIX_ACE_ROOT', '~/.cache/micromix/ace')).expanduser()
     checkpoints = Path(os.environ.get('ACESTEP_CHECKPOINTS_DIR', root / 'checkpoints')).expanduser()
     dit = AceStepHandler()
-    model = 'acestep-v15-xl-turbo' if preset == 'turbo' else 'acestep-v15-xl-sft'
+    model = generation_engine(preset).model
     message, success = dit.initialize_service(project_root=str(root), config_path=model,
         device='mps', use_flash_attention=False, compile_model=False, use_mlx_dit=True)
     if not success:
@@ -118,9 +121,41 @@ def _load_ace(preset: str, thinking: bool):
     return dit, lm, GenerationParams, GenerationConfig, generate_music
 
 
+def _ace_backend_state(dit, lm) -> dict:
+    """Report handler configuration only; runtime fallbacks can differ.
+
+    Upstream can fall back during VAE decoding without clearing its flags.
+    Do not represent eligible/configured components as observed execution.
+    """
+    device = str(getattr(dit, 'device', 'unknown'))
+
+    def component(flag: str, model: str) -> str:
+        enabled = getattr(dit, flag, None)
+        if enabled is True and getattr(dit, model, None) is not None:
+            return 'mlx'
+        if enabled is False and device != 'unknown':
+            return f'pytorch:{device}'
+        return 'unknown'
+
+    planner_backend = getattr(lm, 'llm_backend', None)
+    planner = 'unknown'
+    if planner_backend == 'pt':
+        planner = f'pytorch:{getattr(lm, "device", "unknown")}'
+    elif planner_backend in ('mlx', 'vllm'):
+        planner = planner_backend
+    return {
+        'evidence': 'handler-configuration-not-execution',
+        'dit_eligible_backend': component('use_mlx_dit', 'mlx_decoder'),
+        'vae_eligible_backend': component('use_mlx_vae', 'mlx_vae'),
+        'planner_configured_backend': None if lm is None else planner,
+        'executed_backends': 'unknown',
+    }
+
+
 def _ace(manifest: dict, directory: Path) -> dict:
     p = manifest['parameters']
     operation = manifest['operation']
+    engine = generation_engine(p.get('preset', 'turbo'), operation)
     thinking = operation in ('generation', 'reference-generation')
     # ACE-Step reads conditioning audio through soundfile and only falls back to
     # torchcodec, which cannot link the installed FFmpeg. Decode to the stereo
@@ -133,6 +168,8 @@ def _ace(manifest: dict, directory: Path) -> dict:
             'remix': 'cover', 'repaint': 'repaint'}[operation]
     seeds = variation_seeds(p)
     outputs = []
+    backend_states = []
+    execution_traces = []
     instrumental = operation == 'generation' and not p.get('lyrics')
     lyrics = p.get('lyrics') or ('[Instrumental]' if instrumental else '')
     for position, seed in enumerate(seeds):
@@ -142,7 +179,7 @@ def _ace(manifest: dict, directory: Path) -> dict:
             instrumental=instrumental, bpm=p.get('bpm'), keyscale=p.get('key') or '',
             timesignature=str(p.get('time_signature') or '').split('/')[0],
             vocal_language=p.get('vocal_language') or 'unknown', duration=p.get('duration_seconds', 30),
-            inference_steps=8 if p.get('preset', 'turbo') == 'turbo' else 50, seed=seed,
+            inference_steps=engine.inference_steps, seed=seed,
             reference_audio=str(source) if operation == 'reference-generation' else None,
             src_audio=str(source) if operation in ('remix', 'repaint') else None,
             audio_cover_strength=p.get('source_strength', p.get('strength', p.get('audio_cover_strength', 1.0))),
@@ -150,14 +187,19 @@ def _ace(manifest: dict, directory: Path) -> dict:
             repainting_start=p.get('start_seconds', 0), repainting_end=p.get('end_seconds', -1),
             thinking=thinking, use_cot_metas=thinking, use_cot_caption=thinking, use_cot_language=thinking)
         config = Config(batch_size=1, use_random_seed=False, seeds=[seed], audio_format='wav')
-        result = generate(dit, lm, params, config, save_dir=str(destination))
+        with ACEExecutionTrace(dit, lm) as trace:
+            result = generate(dit, lm, params, config, save_dir=str(destination))
+        execution_traces.append(trace.snapshot())
         if not result.success or len(result.audios) != 1:
             raise RuntimeError(f'ACE-Step generation failed: {getattr(result, "error", None)}')
         produced = Path(result.audios[0]['path'])
         target = directory / f'variation-{position + 1}.wav'
         shutil.copyfile(produced, target)
         outputs.append(_output(target, f'variation-{position + 1}'))
+        backend_states.append(_ace_backend_state(dit, lm))
     return {'outputs': outputs, 'provenance': {'engine': 'ace-step', 'revision': ACE_REVISION,
+            'model': engine.model, 'task': task, 'backend_states': backend_states,
+            'execution_traces': execution_traces,
             'seeds': seeds, 'planner': 'acestep-5Hz-lm-4B' if thinking else None}}
 
 
@@ -396,13 +438,11 @@ def run_manifest(manifest: dict) -> dict:
     directory = Path(manifest['output_dir']).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     operation = manifest['operation']
+    environment = worker_environment(operation, manifest['parameters'])
     try:
-        if operation in ('generation', 'reference-generation', 'remix', 'repaint'):
-            preset = manifest['parameters'].get('preset', 'turbo')
-            if preset == 'minimax-cover':
+        if operation in MUSIC_OPERATIONS:
+            if environment == '.venv-mlx':
                 return _minimax(manifest, directory)
-            if preset not in ('turbo', 'quality'):
-                raise ValueError(f'Unknown generation preset: {preset}')
             return _ace(manifest, directory)
         adapter = {'transcription': _transcription, 'lyrics-transcription': _lyrics_transcription,
                    'vocal-swap': _vocal_swap, 'stem-split': _stem_split}.get(operation)
@@ -410,5 +450,5 @@ def run_manifest(manifest: dict) -> dict:
             raise ValueError(f'Unknown operation: {operation}')
         return adapter(manifest, directory)
     except ImportError as exc:
-        engine = 'muscriptor' if operation == 'transcription' else ('ace' if operation in ('generation', 'reference-generation', 'remix', 'repaint') and manifest['parameters'].get('preset') != 'minimax-cover' else 'mlx')
+        engine = environment.removeprefix('.venv-')
         raise RuntimeError(f'Missing local model dependency ({exc}). Run bash scripts/setup-local-models.sh --engine {engine}; see services/local-inference/MODELS.md') from exc
