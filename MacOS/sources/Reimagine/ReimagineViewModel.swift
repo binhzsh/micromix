@@ -116,8 +116,19 @@ final class ReimagineViewModel: ObservableObject, AssetAccepting {
         }
     }
 
+    func capabilityIssue(for capabilities: GenerationPreset?) -> String? {
+        guard let capabilities, capabilities.id == preset else { return "Choose an available Reimagine engine." }
+        // Only reference generation submits musical metadata and duration.
+        let hasMetadata = operation == .reference && (
+            [bpmText, key, timeSignature].contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                || vocalLanguage != .automatic)
+        return capabilities.settingsIssue(operation: operation.capabilityOperation,
+                                          duration: operation == .reference ? durationSeconds : nil,
+                                          variations: variationCount, hasMetadata: hasMetadata)
+    }
+
     @discardableResult
-    func start() -> Bool {
+    func start(capabilities: GenerationPreset) -> Bool {
         guard !isRunning else { return false }
         guard let sourceURL else {
             flow.reject("SELECT AN AUDIO FILE")
@@ -131,6 +142,10 @@ final class ReimagineViewModel: ObservableObject, AssetAccepting {
         }
 
         guard let settings = validatedSettings(for: operation) else { return false }
+        if let issue = capabilityIssue(for: capabilities) {
+            flow.reject(issue)
+            return false
+        }
         let seed = settings.seed
         let bpm = settings.bpm
         let durationSeconds = self.durationSeconds

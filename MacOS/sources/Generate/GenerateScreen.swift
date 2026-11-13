@@ -6,6 +6,7 @@ struct GenerateScreen: View {
     @ObservedObject var viewModel: GenerateViewModel
     var localInferenceAvailable: Bool = true
     var modelStatuses: [String: String] = [:]
+    var generationCatalog: GenerationCatalogState = .loaded(GenerationPreset.legacyPresets)
     var router: WorkflowRouter? = nil
     var player: AudioPlayer? = nil
     var library: LocalLibrary? = nil
@@ -93,7 +94,10 @@ struct GenerateScreen: View {
                 PrimaryActionButton(
                     title: viewModel.isRunning ? "GENERATING…" : (viewModel.phase.offersRetry ? "RETRY GENERATION" : "GENERATE"),
                     isEnabled: canGenerate,
-                    action: { viewModel.start() }
+                    action: {
+                        guard canGenerate, let preset = generationCatalog.preset(id: viewModel.preset) else { return }
+                        viewModel.start(capabilities: preset)
+                    }
                 )
                 .keyboardShortcut(.return, modifiers: [.command])
                 .accessibilityHint(canGenerate ? "Starts music generation" : unavailableReason)
@@ -127,12 +131,12 @@ struct GenerateScreen: View {
                                 Typography.monoLabel("ENGINE", size: 10)
                                     .foregroundColor(Palette.ink.opacity(0.68))
                                 HStack(spacing: 6) {
-                                    ForEach(["turbo", "quality"], id: \.self) { preset in
-                                        let selected = viewModel.preset == preset
+                                    ForEach(generationCatalog.presets(for: "generation")) { preset in
+                                        let selected = viewModel.preset == preset.id
                                         Button {
-                                            viewModel.preset = preset
+                                            viewModel.preset = preset.id
                                         } label: {
-                                            Text(preset == "turbo" ? "XL TURBO" : "XL QUALITY")
+                                            Text(preset.label.uppercased())
                                                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                                 .foregroundColor(selected ? .white : Palette.ink)
                                                 .padding(.horizontal, 10)
@@ -144,7 +148,7 @@ struct GenerateScreen: View {
                                                 )
                                         }
                                         .buttonStyle(.plain)
-                                        .accessibilityLabel(preset == "turbo" ? "XL Turbo engine" : "XL Quality engine")
+                                        .accessibilityLabel("\(preset.label) engine")
                                     }
                                 }
                             }
@@ -180,16 +184,27 @@ struct GenerateScreen: View {
             || !viewModel.timeSignature.isEmpty || viewModel.vocalLanguage != .automatic
     }
 
+    private var requiredModel: String {
+        WorkflowReadiness.generationModel(preset: viewModel.preset, catalog: generationCatalog)
+    }
+
+    var capabilityIssue: String? {
+        generationCatalog.selectionIssue(id: viewModel.preset, operation: "generation")
+            ?? viewModel.capabilityIssue(for: generationCatalog.preset(id: viewModel.preset))
+    }
+
     var canGenerate: Bool {
         !viewModel.effectiveInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !viewModel.isBlocked
             && localInferenceAvailable
-            && !WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [WorkflowReadiness.generationModel(preset: viewModel.preset)])
+            && capabilityIssue == nil
+            && !WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [requiredModel])
     }
 
     var unavailableReason: String {
         if !localInferenceAvailable { return "Local inference is unavailable. Start the local sidecar and retry." }
-        if WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [WorkflowReadiness.generationModel(preset: viewModel.preset)]) { return WorkflowReadiness.description(connected: true, statuses: modelStatuses, models: [WorkflowReadiness.generationModel(preset: viewModel.preset)]) }
+        if let capabilityIssue { return capabilityIssue }
+        if WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [requiredModel]) { return WorkflowReadiness.description(connected: true, statuses: modelStatuses, models: [requiredModel]) }
         if viewModel.isBlocked { return "Generation is already running" }
         return "Enter a prompt or lyrics first"
     }

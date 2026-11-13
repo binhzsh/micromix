@@ -7,6 +7,7 @@ struct ReimagineScreen: View {
     @ObservedObject var viewModel: ReimagineViewModel
     var localInferenceAvailable: Bool = true
     var modelStatuses: [String: String] = [:]
+    var generationCatalog: GenerationCatalogState = .loaded(GenerationPreset.legacyPresets)
     var analysisAvailable: Bool = true
     var onAnalyzeSource: (URL) -> Void = { _ in }
     var onOpenLibrary: () -> Void = {}
@@ -99,8 +100,9 @@ struct ReimagineScreen: View {
                 VStack(alignment: .leading, spacing: 10) {
                     sectionLabel("PRESET")
                     HStack {
-                        presetButton("XL TURBO", value: "turbo")
-                        presetButton("XL QUALITY", value: "quality")
+                        ForEach(generationCatalog.presets(for: viewModel.operation.capabilityOperation)) { preset in
+                            presetButton(preset.label.uppercased(), value: preset.id)
+                        }
                     }
                 }
 
@@ -148,7 +150,10 @@ struct ReimagineScreen: View {
                     PrimaryActionButton(
                         title: viewModel.isRunning ? "REIMAGINING…" : (viewModel.phase.offersRetry ? "RETRY REIMAGINING" : "START REIMAGINING"),
                         isEnabled: canStart,
-                        action: { _ = viewModel.start() }
+                        action: {
+                            guard canStart, let preset = generationCatalog.preset(id: viewModel.preset) else { return }
+                            _ = viewModel.start(capabilities: preset)
+                        }
                     )
                     .accessibilityHint(canStart ? "Starts the Reimagine render" : unavailableReason)
                     if !canStart && !viewModel.isRunning {
@@ -244,9 +249,19 @@ struct ReimagineScreen: View {
         }
     }
 
+    private var requiredModel: String {
+        WorkflowReadiness.generationModel(preset: viewModel.preset, catalog: generationCatalog)
+    }
+
+    var capabilityIssue: String? {
+        generationCatalog.selectionIssue(id: viewModel.preset, operation: viewModel.operation.capabilityOperation)
+            ?? viewModel.capabilityIssue(for: generationCatalog.preset(id: viewModel.preset))
+    }
+
     var canStart: Bool {
         localInferenceAvailable
-            && !WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [WorkflowReadiness.generationModel(preset: viewModel.preset)])
+            && capabilityIssue == nil
+            && !WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [requiredModel])
             && !viewModel.isRunning
             && viewModel.sourceURL != nil
             && !viewModel.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -254,7 +269,8 @@ struct ReimagineScreen: View {
 
     var unavailableReason: String {
         if !localInferenceAvailable { return "Local inference is unavailable. Start the local sidecar and retry." }
-        if WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [WorkflowReadiness.generationModel(preset: viewModel.preset)]) { return WorkflowReadiness.description(connected: true, statuses: modelStatuses, models: [WorkflowReadiness.generationModel(preset: viewModel.preset)]) }
+        if let capabilityIssue { return capabilityIssue }
+        if WorkflowReadiness.hasConfirmedMissing(statuses: modelStatuses, models: [requiredModel]) { return WorkflowReadiness.description(connected: true, statuses: modelStatuses, models: [requiredModel]) }
         if viewModel.isRunning { return "A Reimagine render is already running" }
         if viewModel.sourceURL == nil { return "Select an audio source first" }
         return "Enter a prompt first"

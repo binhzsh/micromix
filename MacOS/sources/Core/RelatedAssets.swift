@@ -17,10 +17,10 @@ struct RelatedAssets: Equatable, Sendable {
 enum RelatedAssetsResolver {
     static func related(for item: LibraryItem, in items: [LibraryItem]) -> RelatedAssets {
         let others = items.filter { $0.id != item.id }
-        let localParentID = correctionSourceID(for: item)
-        var parents = others.filter { $0.kind == .lyrics && $0.id == localParentID }
+        let localParentIDs = Set(localParents(for: item))
+        var parents = others.filter { localParentIDs.contains($0.id) && (item.derivation != nil || $0.kind == .lyrics) }
         var children = others.filter { candidate in
-            item.kind == .lyrics && correctionSourceID(for: candidate) == item.id
+            localParents(for: candidate).contains(item.id) && (candidate.derivation != nil || item.kind == .lyrics)
         }
 
         guard let provenance = item.provenance else {
@@ -60,7 +60,13 @@ enum RelatedAssetsResolver {
         )
     }
 
-    /// Match only the exact format emitted by saveLyricsCorrection, not arbitrary legacy text.
+    private static func localParents(for item: LibraryItem) -> [UUID] {
+        if let derivation = item.derivation { return derivation.parentLibraryItemIDs }
+        return correctionSourceID(for: item).map { [$0] } ?? []
+    }
+
+    /// Match only the old format emitted by saveLyricsCorrection, not arbitrary text.
+    /// New records use explicit IDs; text parsing is read-only legacy compatibility.
     private static func correctionSourceID(for item: LibraryItem) -> UUID? {
         let source = item.promptOrSource
         let marker = " (Library ID: "

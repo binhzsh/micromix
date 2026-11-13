@@ -194,6 +194,7 @@ struct MicromixAPITests {
     @MainActor func voiceCatalogConnectionStates() async {
         let monitor = ConnectionMonitor(api: makeAPI())
         #expect(monitor.voiceCatalog == .unavailable)
+        #expect(monitor.generationCatalog == .unavailable)
         MockURLProtocol.handler = { request in
             let body = request.url?.path == "/v1/health"
                 ? #"{"service":"micromix-local-inference","status":"ready","models":{}}"#
@@ -203,6 +204,7 @@ struct MicromixAPITests {
         await monitor.refresh()
         #expect(monitor.voiceCatalog == .loaded([]))
         #expect(monitor.instrumentCatalog == .loaded([]))
+        #expect(monitor.generationCatalog == .loaded([]))
         MockURLProtocol.handler = { request in
             if request.url?.path == "/v1/capabilities" { throw URLError(.timedOut) }
             let body = #"{"service":"micromix-local-inference","status":"ready","models":{}}"#
@@ -211,14 +213,18 @@ struct MicromixAPITests {
         await monitor.refresh()
         #expect(monitor.voiceCatalog == .failed)
         #expect(monitor.instrumentCatalog == .failed)
+        #expect(monitor.generationCatalog == .failed)
         MockURLProtocol.handler = { request in
             let body = request.url?.path == "/v1/health"
                 ? #"{"service":"micromix-local-inference","status":"ready","models":{}}"#
-                : #"{"generation_presets":[],"transcription_instruments":[],"vocal_models":["test-voice"]}"#
+                : #"{"generation_presets":[{"id":"turbo","label":"Turbo","model":"local","inference_steps":8,"operations":["generation"],"max_duration_seconds":60,"max_variations":2,"musical_metadata":true,"health_model":"ace_step"}],"transcription_instruments":[],"vocal_models":["test-voice"]}"#
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
         }
         await monitor.refresh()
         #expect(monitor.voiceCatalog == .loaded(["test-voice"]))
+        #expect(monitor.generationCatalog.presets(for: "generation").map(\.id) == ["turbo"])
+        #expect(monitor.generationCatalog.preset(id: "turbo")?.durationLimit == 60)
+        #expect(monitor.generationCatalog.presets(for: "remix").isEmpty)
         MockURLProtocol.handler = { _ in throw URLError(.cannotConnectToHost) }
         await monitor.refresh()
         #expect(monitor.voiceCatalog == .unavailable)

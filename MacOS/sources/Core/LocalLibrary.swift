@@ -22,12 +22,20 @@ final class LibraryRecord {
         promptOrSource = item.promptOrSource
         durationSeconds = item.durationSeconds
         relativePath = item.relativePath
-        provenanceData = item.provenance.flatMap { try? JSONEncoder().encode($0) }
+        if let derivation = item.derivation {
+            provenanceData = try? JSONEncoder().encode(LibraryMetadataEnvelope(
+                formatVersion: 1, provenance: item.provenance, derivation: derivation))
+        } else {
+            provenanceData = item.provenance.flatMap { try? JSONEncoder().encode($0) }
+        }
         remoteOutputAssetID = item.remoteOutputAssetID
     }
 
     var item: LibraryItem {
-        LibraryItem(
+        let envelope = provenanceData.flatMap { try? JSONDecoder().decode(LibraryMetadataEnvelope.self, from: $0) }
+        let supportedEnvelope = envelope.flatMap { $0.formatVersion == 1 ? $0 : nil }
+        let legacyProvenance = provenanceData.flatMap { try? JSONDecoder().decode(LibraryProvenance.self, from: $0) }
+        return LibraryItem(
             id: id,
             kind: LibraryItemKind(rawValue: kindRawValue) ?? .audio,
             title: title,
@@ -35,8 +43,9 @@ final class LibraryRecord {
             promptOrSource: promptOrSource,
             durationSeconds: durationSeconds,
             relativePath: relativePath,
-            provenance: provenanceData.flatMap { try? JSONDecoder().decode(LibraryProvenance.self, from: $0) },
-            remoteOutputAssetID: remoteOutputAssetID
+            provenance: supportedEnvelope?.provenance ?? legacyProvenance,
+            remoteOutputAssetID: remoteOutputAssetID,
+            derivation: supportedEnvelope?.derivation
         )
     }
 }
@@ -149,8 +158,9 @@ final class LocalLibrary: ObservableObject {
         let id = UUID()
         let correction = LibraryItem(
             id: id, kind: .lyrics, title: "Corrected — \(original.title)", createdAt: .now,
-            promptOrSource: "Corrected from \(original.title) (Library ID: \(original.id.uuidString))",
-            durationSeconds: nil, relativePath: "lyrics/\(id.uuidString).txt"
+            promptOrSource: "Corrected from \(original.title)",
+            durationSeconds: nil, relativePath: "lyrics/\(id.uuidString).txt",
+            derivation: LibraryDerivation(operation: "lyrics-correction", parentLibraryItemIDs: [original.id])
         )
         try add(correction, bytes: Data(text.utf8))
         return correction
@@ -454,8 +464,8 @@ final class LocalLibrary: ObservableObject {
             throw BundleExportError(description: "Missing library files: \(details). Restore the files or remove the affected library items, then export again.")
         }
 
-        let jobID = item.provenance?.jobID ?? item.id.uuidString
-        let folderName = Self.sanitized("\(String(jobID.suffix(8)))-\(item.title)")
+        let identity = item.provenance?.jobID ?? item.id.uuidString
+        let folderName = Self.sanitized("\(String(identity.suffix(8)))-\(item.title)")
         let exportsRoot = rootDirectory.appendingPathComponent("Exports", isDirectory: true)
         try FileManager.default.createDirectory(at: exportsRoot, withIntermediateDirectories: true)
 
@@ -465,7 +475,8 @@ final class LocalLibrary: ObservableObject {
         do {
             var lines = [
                 "MICROMIX EXPORT — \(Self.timestamp())",
-                "JOB \(jobID)\(item.provenance?.operation.map { " · OPERATION \($0)" } ?? "")",
+                item.provenance.map { "JOB \($0.jobID)\($0.operation.map { " · OPERATION \($0)" } ?? "")" }
+                    ?? "LIBRARY ITEM \(item.id.uuidString)\(item.derivation.map { " · OPERATION \($0.operation)" } ?? "")",
                 "SOURCE: \(item.promptOrSource.isEmpty ? "(none recorded)" : item.promptOrSource)",
                 "Direct library relatives only. This bundle does not guarantee complete reproduction.",
                 "Full available metadata and source availability: manifest.json",
@@ -489,10 +500,16 @@ final class LocalLibrary: ObservableObject {
                     )
                 } ?? []
                 entries.append(BundleManifestEntry(filename: name, item: entry, inputs: inputs))
-                lines.append("\(name) — \(entry.provenance?.operation ?? entry.kind.rawValue.uppercased()) · \(role)")
-                if entry.provenance == nil {
+                lines.append("\(name) — \(entry.provenance?.operation ?? entry.derivation?.operation ?? entry.kind.rawValue.uppercased()) · \(role)")
+                if let derivation = entry.derivation {
+                    for parentID in derivation.parentLibraryItemIDs {
+                        let status = grouped.contains { $0.id == parentID } ? "bundled" : "not available in this bundle"
+                        lines.append("  Local parent \(parentID.uuidString): \(status).")
+                    }
+                }
+                if entry.provenance == nil && entry.derivation == nil {
                     lines.append("  WARNING: provenance and original source availability are unknown.")
-                } else if inputs.isEmpty {
+                } else if inputs.isEmpty && entry.derivation == nil {
                     lines.append("  Original source availability is unknown; no inputs were recorded.")
                 }
                 for input in inputs where input.bundledLibraryItemID == nil {

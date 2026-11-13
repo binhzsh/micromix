@@ -42,11 +42,48 @@ struct LocalLibraryTests {
             #expect(reopened.items.contains(where: { $0.id == corrected.id }))
             #expect(try String(contentsOf: reopened.resolvedURL(for: original), encoding: .utf8) == "raw words")
             #expect(try String(contentsOf: reopened.resolvedURL(for: corrected), encoding: .utf8) == "corrected words\n")
-            #expect(corrected.promptOrSource.contains(original.id.uuidString))
+            #expect(corrected.derivation == LibraryDerivation(operation: "lyrics-correction", parentLibraryItemIDs: [original.id]))
+            #expect(reopened.items.first(where: { $0.id == corrected.id })?.derivation == corrected.derivation)
+            #expect(!corrected.promptOrSource.contains("Library ID:"))
             #expect(corrected.provenance == nil && corrected.remoteOutputAssetID == nil)
             var copied = ""
             LibraryScreen.copyLyrics(try String(contentsOf: reopened.resolvedURL(for: corrected), encoding: .utf8)) { copied = $0 }
             #expect(copied == "corrected words\n")
+        }
+    }
+
+    @Test("local lineage survives rename, export, reopen and parent removal")
+    func localLineagePersistenceAndExport() throws {
+        struct Manifest: Decodable {
+            struct Entry: Decodable { let item: LibraryItem }
+            let entries: [Entry]
+        }
+        try withLibrary { library, directory in
+            let original = LibraryItem(id: UUID(), kind: .lyrics, title: "ASR", createdAt: .now,
+                promptOrSource: "song.wav", durationSeconds: nil, relativePath: "lyrics/raw.txt")
+            try library.add(original, bytes: Data("raw".utf8))
+            let corrected = try library.saveLyricsCorrection(of: original, text: "edited")
+            try library.rename(id: original.id, title: "Renamed original")
+            try library.rename(id: corrected.id, title: "Renamed edit")
+            let reopened = LocalLibrary(directory: directory)
+            let child = try #require(reopened.items.first { $0.id == corrected.id })
+            #expect(RelatedAssetsResolver.related(for: child, in: reopened.items).parents.map(\.id) == [original.id])
+            let bundle = try reopened.exportBundle(for: child)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let manifest = try decoder.decode(Manifest.self, from: Data(contentsOf: bundle.appendingPathComponent("manifest.json")))
+            #expect(Set(manifest.entries.map { $0.item.id }) == Set([original.id, child.id]))
+            #expect(manifest.entries.first { $0.item.id == child.id }?.item.derivation == child.derivation)
+            try reopened.remove(id: original.id)
+            let afterDelete = LocalLibrary(directory: directory)
+            let orphan = try #require(afterDelete.items.first { $0.id == child.id })
+            #expect(orphan.derivation?.parentLibraryItemIDs == [original.id])
+            #expect(RelatedAssetsResolver.related(for: orphan, in: afterDelete.items).parents.isEmpty)
+            let orphanBundle = try afterDelete.exportBundle(for: orphan)
+            let notes = try String(contentsOf: orphanBundle.appendingPathComponent("manifest.txt"), encoding: .utf8)
+            #expect(notes.contains("not available in this bundle"))
+            #expect(notes.contains("LIBRARY ITEM \(child.id.uuidString)"))
+            #expect(!notes.contains("\nJOB "))
         }
     }
 

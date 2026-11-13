@@ -64,10 +64,18 @@ final class GenerateViewModel: ObservableObject, AssetAccepting {
     var isRunning: Bool { flow.isRunning }
     var isBlocked: Bool { flow.isRunning }
 
-    /// Start generation. Ignored (and returns false) if already running or the
-    /// effective input is empty.
+    func capabilityIssue(for capabilities: GenerationPreset?) -> String? {
+        guard let capabilities, capabilities.id == preset else { return "Choose an available generation engine." }
+        let hasMetadata = [bpmText, key, timeSignature].contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            || vocalLanguage != .automatic
+        return capabilities.settingsIssue(operation: "generation", duration: durationSeconds,
+                                          variations: variationCount, hasMetadata: hasMetadata)
+    }
+
+    /// Submit only with explicitly supplied catalog capabilities; never invent
+    /// a fallback when a live catalog removes or restricts the selected engine.
     @discardableResult
-    func start() -> Bool {
+    func start(capabilities: GenerationPreset) -> Bool {
         guard !isRunning else { return false }
         let input = effectiveInput
         guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -75,6 +83,10 @@ final class GenerateViewModel: ObservableObject, AssetAccepting {
             return false
         }
         guard let options = generationOptions() else { return false }
+        if let issue = capabilityIssue(for: capabilities) {
+            flow.reject(issue)
+            return false
+        }
 
         let api = self.api
         let library = self.library

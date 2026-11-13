@@ -108,6 +108,43 @@ struct RelatedAssetsTests {
         #expect(RelatedAssetsResolver.related(for: original, in: items).children == [correction])
     }
 
+    @Test("explicit local IDs override legacy-looking descriptions and deduplicate parents")
+    func explicitLocalLineage() {
+        let parent = lyrics(title: "Parent", source: "raw")
+        let misleading = lyrics(title: "Other", source: "raw")
+        let child = LibraryItem(id: UUID(), kind: .lyrics, title: "Edit", createdAt: .now,
+            promptOrSource: "Corrected from Other (Library ID: \(misleading.id.uuidString))",
+            durationSeconds: nil, relativePath: "lyrics/edit.txt",
+            derivation: LibraryDerivation(operation: "lyrics-correction", parentLibraryItemIDs: [parent.id, parent.id]))
+        let items = [parent, misleading, child]
+        #expect(RelatedAssetsResolver.related(for: child, in: items).parents == [parent])
+        #expect(RelatedAssetsResolver.related(for: parent, in: items).children == [child])
+        #expect(RelatedAssetsResolver.related(for: misleading, in: items).children.isEmpty)
+    }
+
+    @Test("existing remote payloads and new local envelopes share the unchanged record schema")
+    @MainActor
+    func metadataEnvelopeCompatibility() throws {
+        let remote = item(title: "Remote", checksum: "sha", jobID: "job")
+        let oldRecord = LibraryRecord(item: remote)
+        let raw = try #require(oldRecord.provenanceData)
+        #expect(try JSONDecoder().decode(LibraryProvenance.self, from: raw) == remote.provenance)
+        #expect(oldRecord.item == remote)
+        let derived = LibraryItem(id: UUID(), kind: .lyrics, title: "Edit", createdAt: .now,
+            promptOrSource: "edit", durationSeconds: nil, relativePath: "lyrics/edit.txt",
+            provenance: remote.provenance,
+            derivation: LibraryDerivation(operation: "lyrics-correction", parentLibraryItemIDs: [remote.id]))
+        let newRecord = LibraryRecord(item: derived)
+        #expect(newRecord.item == derived)
+        let unknown = try JSONEncoder().encode(LibraryMetadataEnvelope(formatVersion: 999,
+            provenance: remote.provenance, derivation: derived.derivation!))
+        newRecord.provenanceData = unknown
+        #expect(newRecord.item.derivation == nil)
+        #expect(newRecord.provenanceData == unknown) // unsupported payload is never rewritten
+        let oldJSON = try JSONEncoder().encode(remote)
+        #expect(try JSONDecoder().decode(LibraryItem.self, from: oldJSON).derivation == nil)
+    }
+
     @Test("invalid, missing, legacy and non-lyrics sources do not create local links")
     func ignoresInvalidCorrectionSources() {
         let original = lyrics(title: "Original", source: "legacy")

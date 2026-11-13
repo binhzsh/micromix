@@ -57,6 +57,55 @@ struct GenerationPreset: Codable, Equatable, Identifiable, Sendable {
     let label: String
     let model: String
     let inferenceSteps: Int
+    var operations: [String]? = nil
+    var maxDurationSeconds: Double? = nil
+    var maxVariations: Int? = nil
+    var musicalMetadata: Bool? = nil
+    var healthModel: String? = nil
+
+    /// Only known old presets receive compatibility defaults. An unfamiliar
+    /// preset without explicit capabilities must not acquire invented support.
+    static let legacyPresets: [GenerationPreset] = [
+        GenerationPreset(id: "turbo", label: "XL Turbo", model: "acestep-v15-xl-turbo", inferenceSteps: 8,
+                         operations: ["generation", "reference-generation", "remix", "repaint"],
+                         maxDurationSeconds: 600, maxVariations: 4, musicalMetadata: true, healthModel: "ace_step"),
+        GenerationPreset(id: "quality", label: "XL Quality", model: "acestep-v15-xl-sft", inferenceSteps: 50,
+                         operations: ["generation", "reference-generation", "remix", "repaint"],
+                         maxDurationSeconds: 600, maxVariations: 4, musicalMetadata: true, healthModel: "ace_step"),
+        GenerationPreset(id: "minimax-cover", label: "MiniMax (text only)", model: "MiniMax-Music3-mxfp8", inferenceSteps: 30,
+                         operations: ["generation"], maxDurationSeconds: 360, maxVariations: 1,
+                         musicalMetadata: false, healthModel: "minimax_music3"),
+    ]
+
+    private var legacy: GenerationPreset? {
+        // Compatibility applies to genuinely old-format entries, not each
+        // omitted field of a partial modern contract.
+        guard operations == nil, maxDurationSeconds == nil, maxVariations == nil,
+              musicalMetadata == nil, healthModel == nil else { return nil }
+        return Self.legacyPresets.first { $0.id == id }
+    }
+    var supportedOperations: [String] { operations ?? legacy?.operations ?? [] }
+    var durationLimit: Double { maxDurationSeconds ?? legacy?.maxDurationSeconds ?? 0 }
+    var variationLimit: Int { maxVariations ?? legacy?.maxVariations ?? 0 }
+    var supportsMusicalMetadata: Bool { musicalMetadata ?? legacy?.musicalMetadata ?? false }
+    var readinessModel: String { healthModel ?? legacy?.healthModel ?? "Unknown preset (\(id))" }
+
+    func settingsIssue(operation: String, duration: Double?, variations: Int, hasMetadata: Bool) -> String? {
+        guard supportedOperations.contains(operation) else { return "\(label) does not support this operation. Choose a supported engine." }
+        guard durationLimit.isFinite, durationLimit >= 10, variationLimit > 0 else {
+            return "\(label) has incomplete capability limits. Refresh the engine catalog."
+        }
+        if let duration, !duration.isFinite || duration < 10 || duration > durationLimit {
+            return "\(label) supports durations from 10 to \(String(format: "%.0f", durationLimit)) seconds. Existing settings were kept."
+        }
+        guard variations >= 1, variations <= variationLimit else {
+            return "\(label) supports up to \(variationLimit) variation(s). Adjust Variations or choose another engine."
+        }
+        if hasMetadata && !supportsMusicalMetadata {
+            return "\(label) does not support BPM, key, meter or vocal-language controls. Clear those settings or choose another engine."
+        }
+        return nil
+    }
 }
 
 enum VocalLanguage: String, CaseIterable, Codable, Identifiable, Sendable {
@@ -257,6 +306,20 @@ enum LibraryItemKind: String, Codable, Sendable {
     }
 }
 
+/// Local edits have Library identities, not invented remote jobs/assets.
+struct LibraryDerivation: Codable, Equatable, Sendable {
+    let operation: String
+    let parentLibraryItemIDs: [UUID]
+}
+
+/// Versioned envelope stored in the existing provenance blob only for items
+/// with local lineage. Legacy remote-only payloads retain their original form.
+struct LibraryMetadataEnvelope: Codable {
+    let formatVersion: Int
+    let provenance: LibraryProvenance?
+    let derivation: LibraryDerivation
+}
+
 /// A single persisted result in the local library.
 struct LibraryItem: Codable, Identifiable, Equatable, Sendable {
     let id: UUID
@@ -272,6 +335,7 @@ struct LibraryItem: Codable, Identifiable, Equatable, Sendable {
     let provenance: LibraryProvenance?
     /// Stable remote output asset identity used to make recovery imports idempotent.
     let remoteOutputAssetID: String?
+    let derivation: LibraryDerivation?
 
     init(
         id: UUID,
@@ -282,7 +346,8 @@ struct LibraryItem: Codable, Identifiable, Equatable, Sendable {
         durationSeconds: Double?,
         relativePath: String,
         provenance: LibraryProvenance? = nil,
-        remoteOutputAssetID: String? = nil
+        remoteOutputAssetID: String? = nil,
+        derivation: LibraryDerivation? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -293,6 +358,7 @@ struct LibraryItem: Codable, Identifiable, Equatable, Sendable {
         self.relativePath = relativePath
         self.provenance = provenance
         self.remoteOutputAssetID = remoteOutputAssetID
+        self.derivation = derivation
     }
 }
 

@@ -844,8 +844,8 @@ private struct WorkspaceCanvas: View {
 
     private var requiredModels: [String]? {
         switch mode {
-        case .generate: return [WorkflowReadiness.generationModel(preset: generate.preset)]
-        case .reimagine: return [WorkflowReadiness.generationModel(preset: reimagine.preset)]
+        case .generate: return [WorkflowReadiness.generationModel(preset: generate.preset, catalog: connection.generationCatalog)]
+        case .reimagine: return [WorkflowReadiness.generationModel(preset: reimagine.preset, catalog: connection.generationCatalog)]
         case .transcribe: return [transcribe.output == .midi ? "muscriptor" : "whisper"]
         case .vocalSwap: return ["mlx_rvc"]
         case .stemSplit: return ["sam_audio"]
@@ -860,13 +860,14 @@ private struct WorkspaceCanvas: View {
             }
             switch mode {
             case .generate:
-                GenerateScreen(viewModel: generate, localInferenceAvailable: connection.isConnected, modelStatuses: connection.modelStatuses, router: router, player: player, library: library,
+                GenerateScreen(viewModel: generate, localInferenceAvailable: connection.isConnected, modelStatuses: connection.modelStatuses, generationCatalog: connection.generationCatalog, router: router, player: player, library: library,
                                onShowInLibrary: { item in selectedID = item.id; mode = .library })
             case .reimagine:
                 ReimagineScreen(
                     viewModel: reimagine,
                     localInferenceAvailable: connection.isConnected,
                     modelStatuses: connection.modelStatuses,
+                    generationCatalog: connection.generationCatalog,
                     analysisAvailable: !analyze.isRunning,
                     onAnalyzeSource: { url in
                         guard !analyze.isRunning else { return }

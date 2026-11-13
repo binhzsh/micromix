@@ -3,6 +3,14 @@ import SwiftUI
 import Testing
 @testable import Micromix
 
+/// Existing flow fixtures use a deliberately supplied old-format catalog.
+private extension GenerateViewModel {
+    @MainActor @discardableResult
+    func start() -> Bool {
+        start(capabilities: GenerationPreset.legacyPresets.first { $0.id == preset }!)
+    }
+}
+
 /// Fakes standing in for `MicromixAPI` / `LocalLibrary` in the GENERATE flow.
 @MainActor
 private final class FakeGenerator: GenerateServicing, DurableGenerationSubmitting, DurableJobServicing, DurableJobCancelling, @unchecked Sendable {
@@ -136,6 +144,37 @@ struct GenerateViewModelTests {
         vm.preset = "minimax-cover"
         #expect(GenerateScreen(viewModel: vm, modelStatuses: statuses).canGenerate)
         #expect(!GenerateScreen(viewModel: vm, modelStatuses: ["minimax_music3": "weights_missing"]).canGenerate)
+    }
+
+    @Test("catalog failure and incompatible engines preserve settings and block submission")
+    func capabilityGates() {
+        let api = FakeGenerator()
+        let vm = GenerateViewModel(api: api, library: FakeLibrary())
+        vm.prompt = "ambient"
+        for state in [GenerationCatalogState.loading, .failed, .loaded([])] {
+            let screen = GenerateScreen(viewModel: vm, generationCatalog: state)
+            #expect(!screen.canGenerate)
+            #expect(screen.capabilityIssue != nil)
+        }
+        vm.preset = "minimax-cover"
+        vm.bpmText = "123"
+        vm.variationCount = 2
+        #expect(!vm.start())
+        #expect(vm.bpmText == "123")
+        #expect(vm.variationCount == 2)
+        #expect(api.capturedInput == nil)
+        vm.variationCount = 1
+        let screen = GenerateScreen(viewModel: vm)
+        #expect(!screen.canGenerate)
+        #expect(screen.unavailableReason.contains("Clear those settings"))
+        vm.preset = "turbo"
+        #expect(screen.canGenerate)
+        #expect(vm.bpmText == "123")
+        var restricted = GenerationPreset.legacyPresets[0]
+        restricted.musicalMetadata = false
+        #expect(!vm.start(capabilities: restricted))
+        #expect(vm.bpmText == "123")
+        #expect(api.capturedInput == nil)
     }
 
     @Test("start() from idle enters running then resolves to done with a .wav item")

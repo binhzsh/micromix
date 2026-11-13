@@ -70,7 +70,7 @@ struct WorkflowRouterTests {
         #expect(generate.vocalLanguage == .vietnamese)
         #expect(switched == .generate)
         switched = nil
-        #expect(generate.start())
+        #expect(generate.start(capabilities: GenerationPreset.legacyPresets[0]))
         if case .success = router.useGenerateLyrics("must not replace") { Issue.record("Busy handoff must be rejected") }
         #expect(generate.lyrics == "corrected\nwords")
         #expect(generate.prompt == "dream pop")

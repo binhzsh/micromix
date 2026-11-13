@@ -12,6 +12,7 @@ final class ConnectionMonitor: ObservableObject {
     /// Instruments for the transcribe picker, fetched at launch / refresh.
     @Published private(set) var instruments: [String] = []
     @Published private(set) var vocalModels: [String] = []
+    @Published private(set) var generationPresets: [GenerationPreset] = []
     private enum CapabilitiesState { case loading, loaded, failed }
     @Published private var capabilitiesState: CapabilitiesState = .loading
 
@@ -30,6 +31,15 @@ final class ConnectionMonitor: ObservableObject {
         case .loading: return .loading
         case .failed: return .failed
         case .loaded: return .loaded(vocalModels)
+        }
+    }
+
+    var generationCatalog: GenerationCatalogState {
+        guard isConnected else { return .unavailable }
+        switch capabilitiesState {
+        case .loading: return .loading
+        case .failed: return .failed
+        case .loaded: return .loaded(generationPresets)
         }
     }
 
@@ -70,11 +80,13 @@ final class ConnectionMonitor: ObservableObject {
             guard generation == capabilitiesGeneration else { return }
             instruments = capabilities.transcriptionInstruments
             vocalModels = capabilities.vocalModels
+            generationPresets = capabilities.generationPresets
             capabilitiesState = .loaded
         } catch {
             guard generation == capabilitiesGeneration else { return }
             instruments = []
             vocalModels = []
+            generationPresets = []
             capabilitiesState = .failed
         }
     }

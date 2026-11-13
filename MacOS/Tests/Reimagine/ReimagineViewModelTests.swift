@@ -2,6 +2,14 @@ import Foundation
 import Testing
 @testable import Micromix
 
+/// Existing flow fixtures explicitly supply the legacy catalog contract.
+private extension ReimagineViewModel {
+    @MainActor @discardableResult
+    func start() -> Bool {
+        start(capabilities: GenerationPreset.legacyPresets.first { $0.id == preset }!)
+    }
+}
+
 @MainActor
 private final class AcceptedReimagineAPI: DurableReimagineSubmitting, DurableJobCancelling, @unchecked Sendable {
     private(set) var submittedRequests: [ReimagineRequest] = []
@@ -240,6 +248,28 @@ struct ReimagineViewModelTests {
         let offline = ReimagineScreen(viewModel: model, localInferenceAvailable: false)
         #expect(!offline.canStart)
         #expect(offline.unavailableReason == "Local inference is unavailable. Start the local sidecar and retry.")
+    }
+
+    @Test("text-only engines and removed capabilities never upload Reimagine sources")
+    func capabilityGates() {
+        let api = NeverCalledReimagineAPI()
+        let model = ReimagineViewModel(api: api, reattacher: RecordingReattacher())
+        model.sourceURL = URL(fileURLWithPath: "/tmp/source.wav")
+        model.prompt = "jazz"
+        model.preset = "minimax-cover"
+        model.bpmText = "120"
+        for operation in [ReimagineOperation.reference, .remix, .repaint] {
+            model.operation = operation
+            #expect(!ReimagineScreen(viewModel: model).canStart)
+            #expect(!model.start())
+        }
+        #expect(model.bpmText == "120")
+        #expect(api.callCount == 0)
+        model.preset = "turbo"
+        model.operation = .reference
+        let unavailable = ReimagineScreen(viewModel: model, generationCatalog: .loaded([]))
+        #expect(!unavailable.canStart)
+        #expect(unavailable.unavailableReason.contains("No generation engines"))
     }
 
     @Test("advanced settings indicate every non-default value")

@@ -5,8 +5,8 @@ struct WorkflowReadiness {
     static func hasConfirmedMissing(statuses: [String: String], models: [String]) -> Bool {
         models.contains { model in
             switch statuses[model] {
-            case "weights_missing": return ["muscriptor", "whisper", "minimax_music3", "mlx_rvc", "sam_audio"].contains(model)
-            case "unavailable": return ["ace_step", "muscriptor", "whisper"].contains(model)
+            case "weights_missing": return model != "ace_step"
+            case "unavailable": return !["minimax_music3", "mlx_rvc", "sam_audio"].contains(model)
             default: return false
             }
         }
@@ -39,12 +39,9 @@ struct WorkflowReadiness {
         return details.joined(separator: "; ") + (missing ? ". Submission is disabled; see services/local-inference/MODELS.md for local setup." : ".") + " Markers do not verify model loading, inference or output quality."
     }
 
-    static func generationModel(preset: String) -> String {
-        switch preset {
-        case "turbo", "quality": return "ace_step"
-        case "minimax-cover": return "minimax_music3"
-        default: return "Unknown preset (\(preset))"
-        }
+    static func generationModel(preset: String, catalog: GenerationCatalogState? = nil) -> String {
+        let source = catalog ?? .loaded(GenerationPreset.legacyPresets)
+        return source.preset(id: preset)?.readinessModel ?? "Unknown preset (\(preset))"
     }
 }
 
