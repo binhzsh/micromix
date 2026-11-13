@@ -139,6 +139,10 @@ The app uses only the loopback local-inference endpoint at `127.0.0.1:8902`.
 
 The approved [audio-first editor proposal](docs/TIMELINE_EDITOR_PROPOSAL.md) expands the existing basic timeline toward local cover production. Its implementation and acceptance are in progress, not complete. Logic Pro remains an optional handoff for advanced editing and finishing.
 
+## Model architecture and modernization
+
+See [model-stack reconciliation](docs/MODEL_STACK_RECONCILIATION.md) for engine responsibilities, capability routing, reusable native analysis, checkpoint-license gaps and remaining validation. [YuE2-Studio source research](docs/evaluations/yue2-studio-reference.md) covers score-first covers and reproducible synthesis patterns without adding that application as a dependency. Implementation progress remains in [PLAN.md](PLAN.md); new models and performance claims require separate evaluation.
+
 ## Verification
 
 Lightweight backend contract tests (no model downloads or inference):

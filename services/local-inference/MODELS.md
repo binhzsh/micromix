@@ -7,6 +7,28 @@ use only cached artifacts and fail with a local setup error if an artifact is
 missing; rendering never fetches a model from the network. Download or update
 models only through an explicit setup command while online.
 
+## Capability routing and backend evidence
+
+`local_inference/capabilities.py` is the shared generation contract for catalog entries, limits, operation validation and worker-environment selection. `/v1/capabilities` preserves existing fields and adds each preset's `operations`, `max_duration_seconds`, `max_variations`, `musical_metadata` and `health_model`. Existing native clients can ignore these additive fields. The current native app consumes them for operation-filtered engine choices and settings/readiness checks. Only complete old-format entries for known preset IDs receive compatibility defaults; missing fields in partial modern entries are not silently filled with legacy support. Switching engines never silently clears incompatible settings; submission explains what must be changed. The legacy `minimax-cover` ID remains text-only; unsupported combinations fail before loading a model, including direct worker manifests.
+
+ACE output provenance adds the selected `model`, `task` and per-variation `backend_states`. These are **handler configuration, not execution traces**: `dit_eligible_backend`, `vae_eligible_backend` and `planner_configured_backend` describe available/configured paths. Upstream can fall back from MLX VAE during a render without clearing flags, so `executed_backends` remains `unknown`. Missing attributes are not assumed to mean MPS or MLX. Runtime copies this provenance into persisted job parameters and existing Library provenance; no new database is needed.
+
+`execution_traces` now adds separate per-variation **component call-boundary evidence**. Instance-local hooks observe `_mlx_run_diffusion`, PyTorch `model.generate_audio`, `_mlx_vae_decode`, PyTorch `vae.decode` (including tiled/CPU fallback), and the PT planner's `llm.generate`. Counts distinguish attempts, successes and exceptions; input-device lists distinguish successful calls from failed ones. Missing/unpatchable hooks or uncalled components remain unknown, and a planner disabled for cover/repaint is `not_requested`. The existing `backend_states` fields remain configuration-only; read `execution_traces` for observed boundaries.
+
+Hooks are restored after each synchronous generation call, including exceptions. They retain no tensors, prompts, raw exception text or per-chunk histories; counts/device lists are bounded. This does not trace individual kernels, text encoders, internal framework bridges or asynchronous device completion, and it is not a performance benchmark. Diagnostics for a terminally failed job are not newly persisted by this slice. Live model loading/audio and full job-failure diagnostics remain separate gates.
+
+Lightweight tracing checks without weights:
+
+```sh
+cd services/local-inference
+.venv/bin/python -m unittest discover -s tests -v
+HF_HUB_OFFLINE=1 .venv-ace/bin/python -m unittest discover -s tests -p test_ace_trace.py -v
+```
+
+The installed-runtime test executes upstream decode/tiled/CPU-fallback control flow using fake decoders and tiny CPU tensors. Its MPS failure is simulated; it does not run real MPS inference.
+
+See [model-stack reconciliation](../../docs/MODEL_STACK_RECONCILIATION.md) for candidate decisions, unresolved checkpoint rights, user-led performance/quality gates and remaining modernization work. No new model was installed by that slice.
+
 ## Install libraries
 
 From the repository root, to prepare isolated model environments:

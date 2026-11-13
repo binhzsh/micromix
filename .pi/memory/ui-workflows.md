@@ -1,5 +1,11 @@
 # UI and workflow facts
 
+- 2026-11-13: New lyrics corrections persist LibraryDerivation parent UUIDs in a versioned envelope in existing provenanceData; remote-only raw payloads and old text-linked corrections stay readable without changing the SwiftData schema. Explicit IDs override descriptions, survive rename/deletion, and export through existing bundle manifests; local exports say LIBRARY ITEM rather than inventing a JOB. Native regression: 307 passed/46 suites with AudioPlayerTests excluded. Portable analysis artifacts remain pending.
+
+- 2026-11-13: Second modernization slice passed 304 native tests/46 suites with AudioPlayerTests excluded; backend 64 passed/1 skipped. Native Generate/Reimagine now use advertised engine operations/limits and preserve incompatible settings. Visual/manual acceptance remains open; no new models/inference were run.
+
+- 2026-11-13: `LocalMusicAnalyzer.analyze` now shares a recomputable content/analyzer/OS-keyed cache under user Caches/Micromix/MusicAnalysis; existing callers reuse it without Library migration. It stores current summary fields only, not portable beat/bar/section project metadata. Final native regression passed 299 tests/45 suites with AudioPlayerTests excluded; full run failed its existing 300 ms naturalCompletion assertion.
+
 - 2026-11-12: `PLAN.md` consolidates the active UI/workflow backlog; `LYRICS_PLAN.md` and `TIMELINE_PLAN.md` are superseded history. The exact pre-audit local plan, including uncommitted baseline evidence, is preserved in `PLAN.archive-2026-11-12.md`.
 - 2026-11-12: Source-only audit evidence is in `docs/evaluations/ui-ux-audit-2026-11-12.md`; no rendered UI, real inference, listening or Logic acceptance was performed by that audit.
 - 2026-11-12: Current app already has sidebar navigation, collapsible session inspector, lyrics ASR drafts, Library search/collections/A-B and a temporary numeric multitrack audition editor; avoid planning these as entirely missing features.
