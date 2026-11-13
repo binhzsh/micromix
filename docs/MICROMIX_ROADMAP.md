@@ -114,6 +114,10 @@ See [runtime setup](../services/local-inference/MODELS.md) and
 (Vocal Improve, automatic song preparation/reference mixing, Mashup, Complete) are
 new product work, not features shipped by the retired server.
 
+### Unaccepted implementation update — 2026-11-12
+
+The working tree based on `53704f7` implements the UI/workflow and basic timeline increments tracked in [PLAN.md](../PLAN.md), including selected-result actions, safer recovery and Library deletion, guided handoffs, corrected lyrics drafts, and versioned local arrangements with a separate rendered-reference export. The full headless native suite passed **259 tests in 35 suites**. This is implementation evidence only: visual accessibility, native close/quit protection, audio quality, arrangement reopening and Logic import remain user-led acceptance gates. No product phase or model-quality gate is marked accepted on this basis.
+
 ## Completed work
 
 Workflow chaining landed on 2026-10-16 and advances Phase 1's exit gate: results

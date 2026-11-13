@@ -27,6 +27,11 @@ guided steps.
 - Lineage display, A/B compare, inline audio and MIDI preview, and job bundle
   export keep chosen results moving into Logic without file hunting.
 
+Timeline reference export stages selected audio trims. When the destination volume
+cannot clone a source, it temporarily copies the entire source there instead;
+allow extra disk space up to the combined size of distinct source files, in addition
+to decoded trims and the final export. Temporary snapshots are removed after use.
+
 See [model setup and exact runtime pins](services/local-inference/MODELS.md) and
 [manual acceptance](docs/evaluations/local-migration.md). Dependency presence does
 not prove weights, inference compatibility, or audio quality. The native SwiftData
