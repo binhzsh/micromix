@@ -4,7 +4,7 @@ import Foundation
 import MusicUnderstanding
 #endif
 
-struct LocalMusicAnalysis: Equatable, Sendable {
+struct LocalMusicAnalysis: Codable, Equatable, Sendable {
     let durationSeconds: Double
     let beatsPerMinute: Double?
     let key: String?
@@ -21,6 +21,22 @@ struct LocalMusicAnalysis: Equatable, Sendable {
 
 enum LocalMusicAnalyzer {
     static func analyze(url: URL) async throws -> LocalMusicAnalysis {
+        // Bump the schema identity when requested attributes or interpretation change.
+        // OS builds matter because Apple's bundled analyzer may change independently.
+        let analyzerID = "summary-v1-\(ProcessInfo.processInfo.operatingSystemVersionString)-\(nativeAnalyzerAvailable)"
+        return try await MusicAnalysisCache.shared.analyze(url: url, analyzerID: analyzerID) {
+            try await analyzeUncached(url: $0)
+        }
+    }
+
+    private static var nativeAnalyzerAvailable: Bool {
+        #if canImport(MusicUnderstanding)
+        if #available(macOS 27.0, *) { return true }
+        #endif
+        return false
+    }
+
+    private static func analyzeUncached(url: URL) async throws -> LocalMusicAnalysis {
         let asset = AVURLAsset(url: url)
         let duration = try await asset.load(.duration).seconds
 
