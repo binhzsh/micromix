@@ -105,6 +105,64 @@ import Testing
         #expect(expected == actual)
     }
 
+    @Test func streamsFileBackedProxyInBoundedBlocks() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inputURL = directory.appendingPathComponent("input.wav")
+        let outputURL = directory.appendingPathComponent("proxy.wav")
+        let inputFormat = try #require(AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1))
+        let outputFormat = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let source = (0..<44_100).map { Float(sin(Double($0) * 0.071)) * 0.3 }
+        do {
+            let file = try AVAudioFile(forWriting: inputURL, settings: inputFormat.settings)
+            let buffer = try #require(AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: 441))
+            for start in stride(from: 0, to: source.count, by: 441) {
+                buffer.frameLength = 441
+                let channel = try #require(buffer.floatChannelData?[0])
+                for index in 0..<441 { channel[index] = source[start + index] }
+                try file.write(from: buffer)
+            }
+        }
+        var largestRead = 0
+        var largestWrite = 0
+        do {
+            let input = try AVAudioFile(forReading: inputURL, commonFormat: .pcmFormatFloat32, interleaved: false)
+            let output = try AVAudioFile(forWriting: outputURL, settings: outputFormat.settings)
+            try TimelinePCMProxy.convert(blockFrames: 127) { requested in
+                largestRead = max(largestRead, requested)
+                guard input.framePosition < input.length else { return [] }
+                let buffer = try #require(AVAudioPCMBuffer(pcmFormat: input.processingFormat,
+                                                          frameCapacity: AVAudioFrameCount(requested)))
+                try input.read(into: buffer, frameCount: AVAudioFrameCount(requested))
+                let channel = try #require(buffer.floatChannelData?[0])
+                return Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
+            } write: { samples in
+                largestWrite = max(largestWrite, samples.count)
+                let buffer = try #require(AVAudioPCMBuffer(pcmFormat: outputFormat,
+                                                          frameCapacity: AVAudioFrameCount(samples.count)))
+                buffer.frameLength = AVAudioFrameCount(samples.count)
+                let channel = try #require(buffer.floatChannelData?[0])
+                samples.withUnsafeBufferPointer { channel.update(from: $0.baseAddress!, count: samples.count) }
+                try output.write(from: buffer)
+            }
+        }
+        #expect(largestRead <= 127)
+        #expect(largestWrite <= 127)
+        let expected = try oneShot(source)
+        let reader = try TimelineFilePCMReader(url: outputURL)
+        #expect(reader.length == Int64(expected.count))
+        var position = 0
+        while position < expected.count {
+            let count = min(101, expected.count - position)
+            let samples = try reader.read(start: Int64(position), count: count)
+            for index in samples.indices {
+                #expect(abs(samples[index] - expected[position + index]) < 0.00001)
+            }
+            position += count
+        }
+    }
+
     @Test func rejectsInvalidInputAndBounds() throws {
         #expect(throws: TimelinePCMProxy.Failure.self) {
             try TimelinePCMProxy.convert(blockFrames: 0, read: { _ in [] }, write: { _ in })
