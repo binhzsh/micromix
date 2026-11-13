@@ -273,12 +273,41 @@ def _vocal_swap(manifest: dict, directory: Path) -> dict:
 
 
 def _load_sam():
-    from mlx_audio.sts import SAMAudio, SAMAudioProcessor, save_audio
-    model_path = str(MODELS_DIR / 'sam-audio-large')
-    model = SAMAudio.from_pretrained(model_path)
+    import json
+    import mlx.core as mx
+    import mlx.nn as nn
+    from mlx_audio.sts import SAMAudio, save_audio
+    from mlx_audio.sts.models.sam_audio.config import SAMAudioConfig
+    from .sam_validation import large_checkpoint_config, validate_parameter_shapes
+
+    model_path = MODELS_DIR / 'sam-audio-large'
+    index = json.loads((model_path / 'model.safetensors.index.json').read_text())['weight_map']
+    weights = {}
+    for filename in sorted(set(index.values())):
+        # The index is model metadata, not permission to read outside the snapshot.
+        if Path(filename).name != filename:
+            raise ValueError('Invalid SAM-Audio checkpoint shard path')
+        shard = mx.load(str(model_path / filename))
+        if weights.keys() & shard.keys():
+            raise ValueError('Duplicate SAM-Audio checkpoint weights')
+        weights.update(shard)
+    if set(index) != set(weights):
+        raise ValueError('SAM-Audio checkpoint index does not match its shards')
+    config = large_checkpoint_config(json.loads((model_path / 'config.json').read_text()), weights)
+    model = SAMAudio(SAMAudioConfig.from_dict(config))
+    sanitized = model.sanitize(weights)
+    validate_parameter_shapes(dict(nn.utils.tree_flatten(model.parameters())), sanitized)
+    # The upstream loader's strict mode also requires unused watermark tensors.
+    # All other parameters have been checked against its supported layouts above.
+    model.load_weights(list(sanitized.items()), strict=False)
+    mx.eval(model.parameters())
+    model.eval()
+    model.post_load_hook(model_path)
     # SAM's T5 text encoder lazily downloads t5-base from HuggingFace; with the
     # offline policy that fails. Pre-populate both parts from the local snapshot.
     t5_dir = MODELS_DIR / 't5-base'
+    if not (t5_dir / 'model.safetensors').is_file():
+        raise FileNotFoundError(f'SAM-Audio requires local T5 weights in {t5_dir}')
     if (t5_dir / 'model.safetensors').is_file():
         import json as _json
         import mlx.core as _mx
@@ -306,7 +335,7 @@ def _load_sam():
             t5.eval()
             enc.model = t5
             enc.tokenizer = _transformers.AutoTokenizer.from_pretrained(str(t5_dir))
-    return model, SAMAudioProcessor.from_pretrained(model_path), save_audio
+    return model, model.processor, save_audio
 
 
 def _stem_split(manifest: dict, directory: Path) -> dict:
